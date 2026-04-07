@@ -375,116 +375,203 @@ export default function LandingPage() {
           </nav>
         </header>
 
-        {/* Hero Section */}
+        {/* Hero Section - Unique Animated Design */}
         <section className="relative min-h-screen pt-28 pb-20 px-6 overflow-hidden flex items-center">
+          {/* Animated orbs */}
           <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute top-24 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-violet-500/16 blur-[120px]" />
-            <div className="absolute bottom-16 right-16 h-64 w-64 rounded-full bg-cyan-500/10 blur-[110px]" />
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-violet-500/20 rounded-full blur-[120px] animate-pulse" />
+            <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-cyan-500/15 rounded-full blur-[100px] animate-pulse" style={{ animationDelay: '1s' }} />
+            <div className="absolute top-1/2 right-1/3 w-64 h-64 bg-orange-500/10 rounded-full blur-[80px] animate-pulse" style={{ animationDelay: '2s' }} />
           </div>
 
-          <div className="mx-auto grid max-w-7xl items-center gap-14 lg:grid-cols-[1.05fr_0.95fr] relative z-10 w-full">
-            <div className="max-w-2xl">
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-medium uppercase tracking-[0.2em] text-white/65">
-                <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                AI operations platform
-              </div>
-
-              <h1 className="text-5xl font-semibold leading-tight tracking-tight text-white md:text-6xl lg:text-7xl">
-                Run AI agents
-                <span className="block bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-transparent">
-                  with clarity.
-                </span>
-              </h1>
-
-              <p className="mt-6 max-w-xl text-lg leading-8 text-white/58 md:text-xl">
-                Orkestria helps your team organize agents, automate workflows, and operate from one clean workspace.
-              </p>
-
-              <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-                <Link
-                  href="/register"
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-sm font-semibold text-slate-950 transition hover:scale-[1.02]"
-                >
-                  Get started
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-2xl border border-white/12 bg-white/[0.03] px-6 py-3.5 text-sm font-medium text-white/80 transition hover:border-white/20 hover:bg-white/[0.05] hover:text-white"
-                >
-                  Login
-                </Link>
-              </div>
-
-              <div className="mt-12 grid max-w-2xl gap-4 sm:grid-cols-3">
-                {[
-                  { value: '24/7', label: 'agents available' },
-                  { value: '1 place', label: 'for ops and control' },
-                  { value: 'Fast', label: 'setup and execution' },
-                ].map((item) => (
-                  <div key={item.label} className="rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-4 backdrop-blur-sm">
-                    <div className="text-lg font-semibold text-white">{item.value}</div>
-                    <p className="mt-1 text-sm text-white/45">{item.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="absolute -left-4 top-10 h-40 w-40 rounded-full bg-violet-500/18 blur-3xl" />
-              <div className="absolute -right-2 bottom-6 h-40 w-40 rounded-full bg-cyan-500/14 blur-3xl" />
-
-              <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#07101b]/85 p-6 shadow-[0_20px_80px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-                <div className="flex items-center justify-between border-b border-white/8 pb-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-white/40">Live workspace</p>
-                    <h2 className="mt-2 text-xl font-semibold text-white">A simpler way to run your agents</h2>
-                  </div>
-                  <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                    12 online
+          <div className="mx-auto max-w-7xl w-full relative z-10">
+            <div className="grid lg:grid-cols-2 gap-16 items-center">
+              {/* Left content */}
+              <div className="order-2 lg:order-1">
+                {/* Animated Logo Hero Element */}
+                <div className="relative mb-8">
+                  <div className="absolute -left-4 top-0 w-1 h-full bg-gradient-to-b from-violet-500 via-pink-500 to-orange-500 rounded-full" />
+                  <div className="pl-6">
+                    <p className="text-sm font-medium text-violet-400 mb-2 tracking-widest uppercase">AI-Powered Platform</p>
+                    <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.05] tracking-tight">
+                      <span className="text-white block">Your Agents.</span>
+                      <span className="text-white block">Your Rules.</span>
+                      <span className="block mt-2 bg-gradient-to-r from-violet-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">
+                        Infinite Scale.
+                      </span>
+                    </h1>
                   </div>
                 </div>
 
-                <div className="mt-6 space-y-4">
-                  {[
-                    ['Lead Scout', 'Finding and qualifying new opportunities'],
-                    ['Sales Rep', 'Following up and moving deals forward'],
-                    ['Analyst', 'Tracking pipeline and performance'],
-                  ].map(([title, desc], index) => (
-                    <div key={title} className="flex items-start justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
-                      <div className="flex items-start gap-3">
-                        <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br ${agentTypes[index]?.color ?? 'from-cyan-500 to-blue-500'}`}>
-                          {(() => {
-                            const Icon = agentTypes[index]?.icon ?? Bot;
-                            return <Icon className="h-5 w-5 text-white" />;
-                          })()}
+                <p className="text-lg text-white/60 max-w-xl mb-10 leading-relaxed">
+                  Deploy intelligent AI squads that work 24/7. From lead generation to customer success, 
+                  Orkestria orchestrates your entire operation with precision and power.
+                </p>
+
+                {/* CTA Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4 mb-12">
+                  <Link
+                    href="/register"
+                    className="group relative px-8 py-4 rounded-2xl font-semibold overflow-hidden"
+                  >
+                    <span className="absolute inset-0 bg-gradient-to-r from-violet-500 via-pink-500 to-orange-500" />
+                    <span className="absolute inset-0 bg-gradient-to-r from-violet-600 via-pink-600 to-orange-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <span className="relative z-10 flex items-center justify-center gap-2 text-white">
+                      Start Building Free
+                      <ArrowRight className="h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                    </span>
+                  </Link>
+                  <button className="group flex items-center justify-center gap-3 px-8 py-4 rounded-2xl font-medium text-white border border-white/20 hover:border-white/40 hover:bg-white/5 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center group-hover:bg-white/20 transition-colors">
+                      <Play className="h-4 w-4 ml-0.5" />
+                    </div>
+                    Watch Demo
+                  </button>
+                </div>
+
+                {/* Quick stats */}
+                <div className="flex flex-wrap gap-8">
+                  {stats.slice(0, 3).map((stat) => (
+                    <div key={stat.label} className="text-left">
+                      <div className="text-3xl font-bold text-white mb-1">
+                        <AnimatedCounter end={stat.value} suffix={stat.suffix} />
+                      </div>
+                      <p className="text-sm text-white/40">{stat.label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right - Hero Visual */}
+              <div className="order-1 lg:order-2 relative">
+                <div className="relative mx-auto max-w-2xl">
+                  <div className="absolute -top-10 right-10 h-40 w-40 rounded-full bg-cyan-500/15 blur-3xl" />
+                  <div className="absolute bottom-8 left-0 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" />
+
+                  <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/30 backdrop-blur-2xl md:p-6">
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                    <div className="grid gap-4">
+                      <div className="grid gap-4 md:grid-cols-[1.25fr_0.75fr]">
+                        <div className="rounded-[28px] border border-white/10 bg-[#07111d]/80 p-5">
+                          <div className="mb-4 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-300/80">Live command center</p>
+                              <h3 className="mt-2 text-2xl font-semibold text-white">AI squads running in sync</h3>
+                            </div>
+                            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                              12 agents online
+                            </div>
+                          </div>
+
+                          <div className="mb-5 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                              <p className="text-xs uppercase tracking-[0.2em] text-white/40">Qualified</p>
+                              <p className="mt-2 text-3xl font-semibold text-white">284</p>
+                              <p className="mt-1 text-xs text-emerald-300">+18% this week</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                              <p className="text-xs uppercase tracking-[0.2em] text-white/40">Outreach</p>
+                              <p className="mt-2 text-3xl font-semibold text-white">1.2k</p>
+                              <p className="mt-1 text-xs text-cyan-300">Batch emails active</p>
+                            </div>
+                            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-4">
+                              <p className="text-xs uppercase tracking-[0.2em] text-white/40">Reply rate</p>
+                              <p className="mt-2 text-3xl font-semibold text-white">37%</p>
+                              <p className="mt-1 text-xs text-violet-300">Across 4 workflows</p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            {["Lead discovery", "Qualification", "Email sequence", "CRM sync"].map((item, idx) => (
+                              <div key={item} className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className={`h-10 w-10 rounded-2xl bg-gradient-to-br ${agentTypes[idx]?.color ?? 'from-cyan-500 to-blue-500'} flex items-center justify-center`}>
+                                    {(() => {
+                                      const Icon = agentTypes[idx]?.icon ?? Bot;
+                                      return <Icon className="h-5 w-5 text-white" />;
+                                    })()}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-medium text-white">{item}</p>
+                                    <p className="text-xs text-white/45">{agentTypes[idx]?.label ?? 'Automation'} working now</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-white/60">
+                                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(74,222,128,0.8)]" />
+                                  Stable
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-medium text-white">{title}</p>
-                          <p className="mt-1 text-sm text-white/48">{desc}</p>
+
+                        <div className="flex flex-col gap-4">
+                          <div className="rounded-[28px] border border-white/10 bg-gradient-to-br from-violet-500/18 via-fuchsia-500/10 to-cyan-500/10 p-5">
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Pipeline velocity</p>
+                            <div className="mt-4 flex items-end gap-2">
+                              {[42, 58, 55, 72, 68, 84, 91].map((height, index) => (
+                                <div key={index} className="flex-1 rounded-t-2xl bg-gradient-to-t from-cyan-400/70 to-violet-400/80" style={{ height: `${height}px` }} />
+                              ))}
+                            </div>
+                            <p className="mt-4 text-sm text-white/70">Conversion trend accelerating as squads qualify and follow up automatically.</p>
+                          </div>
+
+                          <div className="rounded-[28px] border border-white/10 bg-[#09121f]/85 p-5">
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/55">Coverage</p>
+                            <div className="mt-4 space-y-4">
+                              <div>
+                                <div className="mb-2 flex items-center justify-between text-sm text-white/70">
+                                  <span>Outbound orchestration</span>
+                                  <span>94%</span>
+                                </div>
+                                <div className="h-2.5 rounded-full bg-white/10">
+                                  <div className="h-2.5 w-[94%] rounded-full bg-gradient-to-r from-cyan-400 to-violet-400" />
+                                </div>
+                              </div>
+                              <div>
+                                <div className="mb-2 flex items-center justify-between text-sm text-white/70">
+                                  <span>Lead enrichment</span>
+                                  <span>88%</span>
+                                </div>
+                                <div className="h-2.5 rounded-full bg-white/10">
+                                  <div className="h-2.5 w-[88%] rounded-full bg-gradient-to-r from-violet-400 to-pink-400" />
+                                </div>
+                              </div>
+                              <div>
+                                <div className="mb-2 flex items-center justify-between text-sm text-white/70">
+                                  <span>Ops automation</span>
+                                  <span>79%</span>
+                                </div>
+                                <div className="h-2.5 rounded-full bg-white/10">
+                                  <div className="h-2.5 w-[79%] rounded-full bg-gradient-to-r from-pink-400 to-orange-400" />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.85)]" />
-                    </div>
-                  ))}
-                </div>
 
-                <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                  {[
-                    ['284', 'qualified leads'],
-                    ['37%', 'reply rate'],
-                    ['4', 'active workflows'],
-                  ].map(([value, label]) => (
-                    <div key={label} className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-                      <p className="text-2xl font-semibold text-white">{value}</p>
-                      <p className="mt-1 text-sm text-white/45">{label}</p>
+                      <div className="grid gap-3 sm:grid-cols-4">
+                        {agentTypes.map((agent, i) => (
+                          <FloatingElement key={agent.label} delay={i * 180}>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 transition-transform hover:-translate-y-1">
+                              <div className={`mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br ${agent.color}`}>
+                                <agent.icon className="h-5 w-5 text-white" />
+                              </div>
+                              <p className="text-sm font-medium text-white">{agent.label}</p>
+                              <p className="mt-1 text-xs text-white/45">{agent.desc}</p>
+                            </div>
+                          </FloatingElement>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Bottom gradient fade */}
           <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#030810] to-transparent" />
         </section>
 

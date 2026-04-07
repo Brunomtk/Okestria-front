@@ -1196,7 +1196,7 @@ export function useRebuiltAgentTick(
     const now = Date.now();
     const frameAdvance = Math.min(2.2, Math.max(0.75, delta * 60));
 
-    const moved: RenderAgent[] = renderAgentsRef.current.map((agent): RenderAgent => {
+    const moved = renderAgentsRef.current.map((agent) => {
       const isJanitor = "role" in agent && agent.role === "janitor";
       if (isJanitor) {
         if (agent.janitorPauseUntil && now < agent.janitorPauseUntil) {
@@ -1204,8 +1204,7 @@ export function useRebuiltAgentTick(
         }
         if (agent.janitorPauseUntil && now >= agent.janitorPauseUntil) {
           const nextIndex = (agent.janitorRouteIndex ?? 0) + 1;
-          const janitorRoute = agent.janitorRoute ?? [];
-          const nextStop = janitorRoute[nextIndex];
+          const nextStop = agent.janitorRoute[nextIndex];
           if (!nextStop) {
             return { ...agent, frame: agent.frame + frameAdvance, janitorPauseUntil: undefined, state: "standing" as const };
           }
@@ -1310,7 +1309,7 @@ export function useRebuiltAgentTick(
         }
       }
 
-      let working: RenderAgent = agent;
+      let working = agent;
       let path = working.path ?? [];
       const targetDistance = Math.hypot(working.targetX - working.x, working.targetY - working.y);
       if (path.length === 0 && targetDistance > PATH_REPLAN_DISTANCE) {
@@ -1380,7 +1379,7 @@ export function useRebuiltAgentTick(
       let nextY = working.y;
       let nextFacing = working.facing;
       let nextPath = path;
-      let nextState: RenderAgent["state"] = working.state;
+      let nextState = working.state;
 
       if (distance > speed && distance > 0.001) {
         nextX = working.x + (dx / distance) * speed;
@@ -1399,9 +1398,7 @@ export function useRebuiltAgentTick(
         } else {
           nextPath = [];
           if (isJanitor) {
-            const janitorRoute = agent.janitorRoute ?? [];
-            const janitorPauseMs = agent.janitorPauseMs ?? 0;
-            const stop = janitorRoute[agent.janitorRouteIndex ?? 0] ?? janitorRoute.at(-1);
+            const stop = agent.janitorRoute[agent.janitorRouteIndex ?? 0] ?? agent.janitorRoute.at(-1);
             return {
               ...working,
               x: nextX,
@@ -1411,8 +1408,8 @@ export function useRebuiltAgentTick(
               state: "standing" as const,
               facing: stop?.facing ?? nextFacing,
               janitorPauseUntil:
-                (agent.janitorRouteIndex ?? 0) < janitorRoute.length - 1
-                  ? now + janitorPauseMs
+                (agent.janitorRouteIndex ?? 0) < agent.janitorRoute.length - 1
+                  ? now + agent.janitorPauseMs
                   : undefined,
             };
           }

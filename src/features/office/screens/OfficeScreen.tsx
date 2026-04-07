@@ -3179,7 +3179,7 @@ export function OfficeScreen({
         });
         const agentsResult = (await remoteClient.call("agents.list", {})) as {
           mainKey?: string;
-          agents?: Array<{ id?: string; name?: string; slug?: string }>;
+          agents?: Array<{ id?: string; name?: string }>;
         };
         const remoteAgents = Array.isArray(agentsResult.agents)
           ? agentsResult.agents.filter((entry) => {
@@ -4824,7 +4824,7 @@ export function OfficeScreen({
                         }));
                       }}
                       onSend={(message) => {
-                        void handleChatSend(focusedRemoteChatTarget.id, "", { text: message });
+                        void handleChatSend(focusedRemoteChatTarget.id, "", message);
                       }}
                     />
                   ) : (

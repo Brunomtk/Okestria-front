@@ -53,7 +53,6 @@ import {
 } from "@/lib/avatars/profile";
 import { applySessionSettingMutation } from "@/features/agents/state/sessionSettingsMutations";
 import type { AgentCreateModalSubmitPayload } from "@/features/agents/creation/types";
-import type { ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import {
   isGatewayDisconnectLikeError,
   type EventFrame,
@@ -864,9 +863,9 @@ const AgentsPageScreen = () => {
     });
   });
   const handleChatSend = useCallback(
-    async (agentId: string, sessionKey: string, payload: ChatSendPayload) => {
+    async (agentId: string, sessionKey: string, message: string) => {
       stopVoiceReplyPlayback();
-      await handleSend(agentId, sessionKey, payload);
+      await handleSend(agentId, sessionKey, message);
     },
     [handleSend, stopVoiceReplyPlayback]
   );

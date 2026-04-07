@@ -23,8 +23,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
-  type RefObject,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";

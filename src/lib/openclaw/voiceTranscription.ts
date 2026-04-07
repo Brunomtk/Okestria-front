@@ -3,8 +3,10 @@ import * as fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
+const require = createRequire(import.meta.url);
 const CONFIGURED_OPENCLAW_PACKAGE_ROOT = process.env.OPENCLAW_PACKAGE_ROOT?.trim() ?? "";
 
 const OPENCLAW_DIST_INDEX_RELATIVE_PATH = path.join("dist", "index.js");
@@ -98,15 +100,6 @@ const nativeImport = new Function(
   "specifier",
   "return import(specifier);",
 ) as (specifier: string) => Promise<unknown>;
-
-const resolveInstalledOpenClawPackageRoot = (): string | null => {
-  const packageRootFromEnv = process.env.OPENCLAW_PACKAGE_ROOT?.trim() ?? "";
-  if (!packageRootFromEnv) return null;
-
-  const normalized = path.resolve(packageRootFromEnv);
-  const indexPath = path.join(normalized, OPENCLAW_DIST_INDEX_RELATIVE_PATH);
-  return fs.existsSync(indexPath) ? normalized : null;
-};
 
 
 export const normalizeVoiceMimeType = (value: string | null | undefined): string => {
