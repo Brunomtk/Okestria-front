@@ -1327,12 +1327,26 @@ export function OfficeScreen({
         agentSlugs: companyScopedAgentSlugsRef.current,
       };
     }
-    const scope = await fetchCompanyAgentScope();
-    companyScopedAgentIdsRef.current = scope.gatewayAgentIds;
-    companyScopedAgentSlugsRef.current = scope.agentSlugs;
-    lastCompanyScopedAgentIdsLoadAtRef.current = now;
-    setCompanyScopedAgentIds(scope.gatewayAgentIds);
-    return scope;
+    try {
+      const scope = await fetchCompanyAgentScope();
+      companyScopedAgentIdsRef.current = scope.gatewayAgentIds;
+      companyScopedAgentSlugsRef.current = scope.agentSlugs;
+      lastCompanyScopedAgentIdsLoadAtRef.current = now;
+      setCompanyScopedAgentIds(scope.gatewayAgentIds);
+      return scope;
+    } catch (error) {
+      if (
+        companyScopedAgentIdsRef.current !== null &&
+        companyScopedAgentSlugsRef.current !== null
+      ) {
+        console.warn("Failed to refresh company-scoped agent scope. Reusing cached scope.", error);
+        return {
+          gatewayAgentIds: companyScopedAgentIdsRef.current,
+          agentSlugs: companyScopedAgentSlugsRef.current,
+        };
+      }
+      throw error;
+    }
   }, []);
 
   const loadCompanySquads = useCallback(async (force = false) => {
@@ -1351,6 +1365,50 @@ export function OfficeScreen({
   useEffect(() => {
     void loadCompanySquads(false);
   }, [loadCompanySquads, state.agents.length]);
+
+  useEffect(() => {
+    if (status !== "connected") return;
+    void loadCompanyScopedAgentScope(true);
+    const intervalId = window.setInterval(() => {
+      void loadCompanyScopedAgentScope(true);
+    }, 20_000);
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadCompanyScopedAgentScope, status]);
+
+  useEffect(() => {
+    const allowedIds = companyScopedAgentIdsRef.current;
+    if (!Array.isArray(allowedIds)) return;
+    const allowedIdSet = new Set(
+      allowedIds
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    );
+    for (const agent of state.agents) {
+      if (!allowedIdSet.has(agent.agentId.trim())) {
+        dispatch({ type: "removeAgent", agentId: agent.agentId });
+      }
+    }
+    setRemoteChatByAgentId((previous) => {
+      const next = Object.fromEntries(
+        Object.entries(previous).filter(([agentId]) => allowedIdSet.has(agentId.trim())),
+      );
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+    setPreparedPhoneCallsByAgentId((previous) => {
+      const next = Object.fromEntries(
+        Object.entries(previous).filter(([agentId]) => allowedIdSet.has(agentId.trim())),
+      );
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+    setPreparedTextMessagesByAgentId((previous) => {
+      const next = Object.fromEntries(
+        Object.entries(previous).filter(([agentId]) => allowedIdSet.has(agentId.trim())),
+      );
+      return Object.keys(next).length === Object.keys(previous).length ? previous : next;
+    });
+  }, [companyScopedAgentIds, dispatch, state.agents]);
 
   const loadAgents = useCallback(async (options?: {
     forceSettings?: boolean;
@@ -1512,6 +1570,13 @@ export function OfficeScreen({
     setLoading,
     status,
   ]);
+
+  useEffect(() => {
+    if (status !== "connected") return;
+    if (!agentsLoaded) return;
+    if (!Array.isArray(companyScopedAgentIds)) return;
+    void loadAgents({ forceSettings: true, silent: true, minIntervalMs: 1_500 });
+  }, [agentsLoaded, companyScopedAgentIds, loadAgents, status]);
 
   const handleCloseCreateAgentWizard = useCallback(
     (createdAgentId: string | null) => {

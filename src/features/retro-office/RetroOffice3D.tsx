@@ -76,6 +76,7 @@ import {
   ensureOfficeArtRoomRemoved,
   ensureOfficeAtm,
   ensureOfficeGymRoom,
+  ensureOfficeNoLamps,
   ensureOfficeNoPlants,
   ensureOfficePhoneBooth,
   ensureOfficePingPongTable,
@@ -348,7 +349,7 @@ const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     key: "lounge",
     label: "Lounge",
-    items: ["couch", "couch_v", "beanbag", "ottoman", "lamp", "jukebox", "arcade", "foosball", "air_hockey"],
+    items: ["couch", "couch_v", "beanbag", "ottoman", "jukebox", "arcade", "foosball", "air_hockey"],
   },
   {
     key: "kitchen",
@@ -358,7 +359,7 @@ const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     key: "tech",
     label: "Tech & Rooms",
-    items: ["atm", "server_rack", "server_terminal", "phone_booth", "sms_booth", "qa_terminal", "device_rack", "test_bench"],
+    items: ["atm", "server_rack", "phone_booth", "sms_booth", "qa_terminal", "device_rack", "test_bench"],
   },
   {
     key: "gym",
@@ -484,18 +485,11 @@ const PALETTE: PaletteEntry[] = [
   { type: "clock", label: "Clock", icon: "🕒", defaults: {} },
   { type: "sink", label: "Sink", icon: "🚰", defaults: { w: 40, h: 40 } },
   { type: "vending", label: "Vending", icon: "🥤", defaults: { facing: 180 } },
-  { type: "lamp", label: "Lamp", icon: "💡", defaults: {} },
   {
     type: "server_rack",
     label: "Server Rack",
     icon: "🗄️",
     defaults: { facing: 180 },
-  },
-  {
-    type: "server_terminal",
-    label: "Server Console",
-    icon: "🖲️",
-    defaults: { facing: 0 },
   },
   {
     type: "qa_terminal",
@@ -1276,6 +1270,25 @@ const getAgentInitials = (name: string | null | undefined): string => {
     .join("");
 };
 
+const clampFurnitureItemToCanvas = (item: FurnitureItem): FurnitureItem => {
+  const { width, height } = getItemBaseSize(item);
+  const maxX = Math.max(0, CANVAS_W - width);
+  const maxY = Math.max(0, CANVAS_H - height);
+  const nextX = snap(Math.min(maxX, Math.max(0, item.x)));
+  const nextY = snap(Math.min(maxY, Math.max(0, item.y)));
+  if (nextX === item.x && nextY === item.y) {
+    return item;
+  }
+  return {
+    ...item,
+    x: nextX,
+    y: nextY,
+  };
+};
+
+const sanitizeFurnitureLayout = (items: FurnitureItem[]) =>
+  items.map(clampFurnitureItemToCanvas);
+
 export function RetroOffice3D({
   agents,
   companyId = null,
@@ -1473,20 +1486,22 @@ export function RetroOffice3D({
   const resolvedInitialFurniture = useMemo(
     () =>
       ensureOfficeNoPlants(
-        ensureOfficeArtRoomRemoved(
-          ensureOfficeJukebox(
-            ensureOfficeQaLab(
-              ensureOfficeGymRoom(
-                ensureOfficeServerRoom(
-                  ensureOfficePhoneBooth(
-                    ensureOfficeSmsBooth(
-                      ensureOfficeAtm(
-                        ensureOfficePingPongTable(
-                          (
-                            initialFurniture ??
-                            (companyId ? materializeDefaults() : loadFurniture(storageNamespace)) ??
-                            materializeDefaults()
-                          ).filter((item) => !isRetiredPingPongLamp(item)),
+        ensureOfficeNoLamps(
+          ensureOfficeArtRoomRemoved(
+            ensureOfficeJukebox(
+              ensureOfficeQaLab(
+                ensureOfficeGymRoom(
+                  ensureOfficeServerRoom(
+                    ensureOfficePhoneBooth(
+                      ensureOfficeSmsBooth(
+                        ensureOfficeAtm(
+                          ensureOfficePingPongTable(
+                            (
+                              initialFurniture ??
+                              (companyId ? materializeDefaults() : loadFurniture(storageNamespace)) ??
+                              materializeDefaults()
+                            ).filter((item) => !isRetiredPingPongLamp(item)),
+                          ),
                         ),
                       ),
                     ),
@@ -1499,12 +1514,16 @@ export function RetroOffice3D({
       ),
     [companyId, initialFurniture, storageNamespace],
   );
-  const [furniture, setFurniture] = useState<FurnitureItem[]>(resolvedInitialFurniture);
+  const [furniture, setFurniture] = useState<FurnitureItem[]>(sanitizeFurnitureLayout(resolvedInitialFurniture));
 
   useEffect(() => {
     if (!companyId || storageNamespace !== "default" || readOnly) return;
-    setFurniture(resolvedInitialFurniture);
+    setFurniture(sanitizeFurnitureLayout(resolvedInitialFurniture));
   }, [companyId, readOnly, resolvedInitialFurniture, storageNamespace]);
+  useEffect(() => {
+    setFurniture((prev) => sanitizeFurnitureLayout(prev));
+  }, []);
+
 
   useEffect(() => {
     if (!companyId || storageNamespace !== "default" || readOnly) return;
@@ -1532,17 +1551,21 @@ export function RetroOffice3D({
         if (!parsed?.furniture?.length || cancelled) return;
 
         setFurniture(
-          ensureOfficeNoPlants(
-            ensureOfficeArtRoomRemoved(
-              ensureOfficeJukebox(
-                ensureOfficeQaLab(
-                  ensureOfficeGymRoom(
-                    ensureOfficeServerRoom(
-                      ensureOfficePhoneBooth(
-                        ensureOfficeSmsBooth(
-                          ensureOfficeAtm(
-                            ensureOfficePingPongTable(
-                              parsed.furniture.filter((item) => !isRetiredPingPongLamp(item)),
+          sanitizeFurnitureLayout(
+            ensureOfficeNoPlants(
+              ensureOfficeNoLamps(
+                ensureOfficeArtRoomRemoved(
+                  ensureOfficeJukebox(
+                    ensureOfficeQaLab(
+                      ensureOfficeGymRoom(
+                        ensureOfficeServerRoom(
+                          ensureOfficePhoneBooth(
+                            ensureOfficeSmsBooth(
+                              ensureOfficeAtm(
+                                ensureOfficePingPongTable(
+                                  parsed.furniture.filter((item) => !isRetiredPingPongLamp(item)),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -2083,9 +2106,11 @@ export function RetroOffice3D({
         ? (furniture.find(
             (item) =>
               item._uid === activeGithubTerminalUid &&
-              item.type === "server_terminal",
+              (item.type === "server_terminal" || item.type === "server_rack"),
           ) ?? null)
-        : serverTerminal,
+        : (serverTerminal ??
+            furniture.find((item) => item.type === "server_rack") ??
+            null),
     [activeGithubTerminalUid, furniture, serverTerminal],
   );
   const activeQaTerminal = useMemo(
@@ -3833,7 +3858,9 @@ export function RetroOffice3D({
     (updater: (item: FurnitureItem) => FurnitureItem) => {
       if (!selectedUid) return;
       setFurniture((prev) =>
-        prev.map((item) => (item._uid === selectedUid ? updater(item) : item)),
+        prev.map((item) =>
+          item._uid === selectedUid ? clampFurnitureItemToCanvas(updater(item)) : item,
+        ),
       );
     },
     [selectedUid],
@@ -3883,7 +3910,7 @@ export function RetroOffice3D({
         .filter((item) => item.type === "desk_cubicle")
         .map((item) => item._uid),
     );
-    setFurniture(ensureOfficeNoPlants(materializeDefaults()));
+    setFurniture(ensureOfficeNoPlants(ensureOfficeNoLamps(materializeDefaults())));
     setSelectedUid(null);
     setDrag({ kind: "idle" });
     setGhostPos(null);

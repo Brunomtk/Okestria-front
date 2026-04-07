@@ -410,16 +410,21 @@ export class GatewayBrowserClient {
   private connectSent = false;
   private connectTimer: number | null = null;
   private backoffMs = 800;
+  private keepAliveTimer: number | null = null;
+  private keepAliveInFlight = false;
+  private lastInboundAt = 0;
 
   constructor(private opts: GatewayBrowserClientOptions) {}
 
   start() {
     this.closed = false;
+    this.lastInboundAt = Date.now();
     this.connect();
   }
 
   stop() {
     this.closed = true;
+    this.clearKeepAlive();
     this.ws?.close();
     this.ws = null;
     this.flushPending(new Error("gateway client stopped"));
@@ -431,11 +436,18 @@ export class GatewayBrowserClient {
 
   private connect() {
     if (this.closed) return;
+    this.clearKeepAlive();
+    this.keepAliveInFlight = false;
     this.ws = new WebSocket(this.opts.url);
-    this.ws.onopen = () => this.queueConnect();
+    this.ws.onopen = () => {
+      this.lastInboundAt = Date.now();
+      this.queueConnect();
+    };
     this.ws.onmessage = (ev) => this.handleMessage(String(ev.data ?? ""));
     this.ws.onclose = (ev) => {
       const reason = String(ev.reason ?? "");
+      this.clearKeepAlive();
+      this.keepAliveInFlight = false;
       this.ws = null;
       this.flushPending(new Error(`gateway closed (${ev.code}): ${reason}`));
       this.opts.onClose?.({ code: ev.code, reason });
@@ -549,6 +561,9 @@ export class GatewayBrowserClient {
 
     void this.request<GatewayHelloOk>("connect", params)
       .then((hello) => {
+        this.lastInboundAt = Date.now();
+        this.keepAliveInFlight = false;
+        this.startKeepAlive();
         if (hello?.auth?.deviceToken && deviceIdentity) {
           storeDeviceAuthToken({
             deviceId: deviceIdentity.deviceId,
@@ -562,6 +577,8 @@ export class GatewayBrowserClient {
         this.opts.onHello?.(hello);
       })
       .catch((err) => {
+        this.keepAliveInFlight = false;
+        this.clearKeepAlive();
         if (canFallbackToShared && deviceIdentity) {
           clearDeviceAuthToken({ deviceId: deviceIdentity.deviceId, role, scope: authScopeKey });
         }
@@ -578,6 +595,7 @@ export class GatewayBrowserClient {
   }
 
   private handleMessage(raw: string) {
+    this.lastInboundAt = Date.now();
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
@@ -651,9 +669,60 @@ export class GatewayBrowserClient {
   private queueConnect() {
     this.connectNonce = null;
     this.connectSent = false;
+    this.clearKeepAlive();
+    this.keepAliveInFlight = false;
     if (this.connectTimer !== null) window.clearTimeout(this.connectTimer);
     this.connectTimer = window.setTimeout(() => {
       void this.sendConnect();
     }, 750);
+  }
+
+  private clearKeepAlive() {
+    if (this.keepAliveTimer !== null) {
+      window.clearTimeout(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+  }
+
+  private startKeepAlive() {
+    this.clearKeepAlive();
+    if (this.closed) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    this.keepAliveTimer = window.setTimeout(() => {
+      void this.runKeepAlive();
+    }, 20_000);
+  }
+
+  private async runKeepAlive() {
+    this.clearKeepAlive();
+    if (this.closed) return;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (!this.connectSent) {
+      this.startKeepAlive();
+      return;
+    }
+    if (this.keepAliveInFlight) {
+      const silentForMs = Date.now() - this.lastInboundAt;
+      if (silentForMs >= 12_000) {
+        this.ws.close(1012, "keepalive timeout");
+        return;
+      }
+      this.startKeepAlive();
+      return;
+    }
+
+    this.keepAliveInFlight = true;
+    try {
+      await this.request("status", {});
+      this.lastInboundAt = Date.now();
+    } catch {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.close(1012, "keepalive failed");
+        return;
+      }
+    } finally {
+      this.keepAliveInFlight = false;
+      this.startKeepAlive();
+    }
   }
 }

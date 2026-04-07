@@ -48,7 +48,7 @@ const DEFAULT_ATM_MACHINE: FurnitureSeed = {
 const DEFAULT_SMS_BOOTH: FurnitureSeed = {
   type: "sms_booth",
   x: 700,
-  y: 10,
+  y: 72,
   facing: 0,
 };
 
@@ -114,9 +114,8 @@ const DEFAULT_SERVER_ROOM_ITEMS: FurnitureSeed[] = [
     facing: 90,
   },
   { type: "wall", x: 220, y: 660, w: WALL_THICKNESS, h: 60 },
-  { type: "server_rack", x: 50, y: 595, facing: 0 },
-  { type: "server_rack", x: 125, y: 595, facing: 0 },
-  { type: "server_terminal", x: 110, y: 645, facing: 180 },
+  { type: "server_rack", x: 42, y: 590, facing: 0 },
+  { type: "server_rack", x: 102, y: 590, facing: 0 },
 ];
 
 const LEGACY_GYM_ROOM_ITEMS: FurnitureSeed[] = [
@@ -408,7 +407,6 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   DEFAULT_ATM_MACHINE,
   { type: "whiteboard", x: 40, y: 200, w: 10, h: 60 },
   { type: "clock", x: 550, y: 5 },
-    { type: "lamp", x: 980, y: 260 },
   { type: "trash", x: 830, y: 20 },
   ...DEFAULT_SERVER_ROOM_ITEMS,
   ...DEFAULT_GYM_ITEMS,
@@ -563,6 +561,23 @@ const stripQaLabItems = (items: FurnitureItem[]) =>
     return true;
   });
 
+const stripServerRoomItems = (items: FurnitureItem[]) =>
+  items.filter((item) => {
+    if (item.type === "server_rack" || item.type === "server_terminal") {
+      return false;
+    }
+    if (PREVIOUS_SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item))) {
+      return false;
+    }
+    if (item.type === "door" || item.type === "wall") {
+      const insideDefaultServerRoom = intersectsRect(item, -8, 552, 238, 732);
+      const insidePreviousBottomRight = intersectsRect(item, 812, 532, 1108, 728);
+      const insidePreviousTopRight = intersectsRect(item, 812, -8, 1108, 238);
+      return !insideDefaultServerRoom && !insidePreviousBottomRight && !insidePreviousTopRight;
+    }
+    return true;
+  });
+
 const stripOfficeArtRoomAndRepositionAtm = (items: FurnitureItem[]): FurnitureItem[] => {
   const stripped = items.filter((item) => {
     if (PREVIOUS_ART_ROOM_SIGNATURES.has(createFurnitureSignature(item))) return false;
@@ -581,6 +596,9 @@ const stripOfficeArtRoomAndRepositionAtm = (items: FurnitureItem[]): FurnitureIt
 
 export const ensureOfficeNoPlants = (items: FurnitureItem[]): FurnitureItem[] =>
   items.filter((item) => item.type !== "plant");
+
+export const ensureOfficeNoLamps = (items: FurnitureItem[]): FurnitureItem[] =>
+  items.filter((item) => item.type !== "lamp");
 
 export const ensureOfficePingPongTable = (
   items: FurnitureItem[],
@@ -640,23 +658,35 @@ export const ensureOfficeSmsBooth = (
 export const ensureOfficeServerRoom = (
   items: FurnitureItem[],
 ): FurnitureItem[] => {
-  const hasCurrentServerRoom = items.some((item) =>
-    SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)),
-  );
-  if (hasCurrentServerRoom) return items;
+  const hasDesiredServerRoom = hasAllSignatures(items, SERVER_ROOM_SIGNATURES) &&
+    !items.some((item) => item.type === "server_terminal");
+  if (hasDesiredServerRoom && hasServerRoomMigrationApplied()) {
+    return items;
+  }
 
   const hasPreviousServerRoom = items.some((item) =>
     PREVIOUS_SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)),
   );
+  const hasAnyServerRoomContent = items.some(
+    (item) =>
+      item.type === "server_rack" ||
+      item.type === "server_terminal" ||
+      PREVIOUS_SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)) ||
+      SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)) ||
+      ((item.type === "wall" || item.type === "door") &&
+        (intersectsRect(item, -8, 552, 238, 732) ||
+          intersectsRect(item, 812, 532, 1108, 728) ||
+          intersectsRect(item, 812, -8, 1108, 238))),
+  );
+
+  if (!hasAnyServerRoomContent && hasServerRoomMigrationApplied()) {
+    return items;
+  }
+
+  const stripped = stripServerRoomItems(items);
+  const nextItems = [...stripped];
 
   if (hasPreviousServerRoom) {
-    const withoutPreviousServerRoom = items.filter(
-      (item) =>
-        !PREVIOUS_SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)) &&
-        item.type !== "server_rack" &&
-        item.type !== "server_terminal",
-    );
-    const nextItems = [...withoutPreviousServerRoom];
     for (const diningItem of DEFAULT_DINING_ITEMS) {
       const hasDiningItem = nextItems.some(
         (item) =>
@@ -667,20 +697,14 @@ export const ensureOfficeServerRoom = (
         nextItems.push({ ...diningItem, _uid: nextUid() });
       }
     }
-    return [
-      ...nextItems,
-      ...DEFAULT_SERVER_ROOM_ITEMS.map((item) => ({
-        ...item,
-        _uid: nextUid(),
-      })),
-    ];
   }
 
-  if (items.some((item) => item.type === "server_terminal")) return items;
-  if (hasServerRoomMigrationApplied()) return items;
   return [
-    ...items,
-    ...DEFAULT_SERVER_ROOM_ITEMS.map((item) => ({ ...item, _uid: nextUid() })),
+    ...nextItems,
+    ...DEFAULT_SERVER_ROOM_ITEMS.map((item) => ({
+      ...item,
+      _uid: nextUid(),
+    })),
   ];
 };
 

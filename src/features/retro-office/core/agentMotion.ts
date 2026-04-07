@@ -2,19 +2,24 @@ import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
 import {
-  AGENT_RADIUS,
+  CANVAS_W,
   DESK_STICKY_MS,
   PING_PONG_SESSION_MS,
   WALK_SPEED,
   WORKING_WALK_SPEED_MULTIPLIER,
 } from "@/features/retro-office/core/constants";
 import {
+  clampPointToZone,
   isRemoteOfficeAgentId,
+  LOCAL_OFFICE_CANVAS_HEIGHT,
+  REMOTE_OFFICE_ZONE,
   REMOTE_ROAM_POINTS,
 } from "@/features/retro-office/core/district";
 import {
+  AGENT_SPAWN_POINTS,
   buildNavGrid,
   GYM_DEFAULT_TARGET,
+  isInAgentPauseExclusionZone,
   MEETING_OVERFLOW_LOCATIONS,
   planOfficePath,
   projectPointToNavigable,
@@ -25,8 +30,10 @@ import {
   resolveSmsBoothRoute,
   resolveServerRoomRoute,
   ROAM_POINTS,
+  ROAM_ROUTE_MODELS,
   SERVER_ROOM_TARGET,
   type NavGrid,
+  type RoamRouteModel,
 } from "@/features/retro-office/core/navigation";
 import type {
   FurnitureItem,
@@ -37,28 +44,45 @@ import type {
 import type { StandupMeeting } from "@/lib/office/standup/types";
 
 const AWAY_THRESHOLD_MS = 15 * 60 * 1000;
-const ARRIVAL_EPSILON = 14;
-const PATH_REPLAN_DISTANCE = 20;
-const COLLISION_FREEZE_MS = 280;
-const COLLISION_RECOVERY_MS = 700;
-const STALL_SAMPLE_MS = 1400;
-const STALL_MOVE_EPSILON = 8;
-const MAX_STALL_REPLANS = 2;
-const MIN_AUTONOMOUS_TRAVEL_DISTANCE = 48;
-const MIN_FORCED_TRAVEL_DISTANCE = 28;
+const ARRIVAL_EPSILON = 10;
+const MIN_AUTONOMOUS_TRAVEL_DISTANCE = 52;
+const TARGET_KEY_GRID = 18;
+const SLOT_RESERVATION_RADIUS = 34;
+const TARGET_RESERVATION_RADIUS = 42;
+const STALL_EPSILON = 8;
+const STALL_RESET_MS = 2200;
+const REPEAT_TARGET_RESET_THRESHOLD = 3;
+const DECISION_JITTER_MS = 500;
+const MOTION_ZONE_PADDING = 28;
 
 type AgentMode = "forced" | "autonomous" | "error";
+type AgentIntent =
+  | "desk"
+  | "meeting_room"
+  | "gym"
+  | "qa_lab"
+  | "server_room"
+  | "sms_booth"
+  | "phone_booth"
+  | "lounge"
+  | "kitchen"
+  | "jukebox"
+  | "roam"
+  | "roam_remote";
 
 type AgentBrain = {
   mode: AgentMode;
   currentActionKey: string;
-  currentLingerMs: number;
   nextDecisionAt: number;
-  stallX: number;
-  stallY: number;
-  stallSince: number;
-  stallCount: number;
+  lingerMs: number;
+  lastTargetKey: string;
+  sameTargetPlanCount: number;
   recentActions: string[];
+  roamModel: RoamRouteModel;
+  roamIndex: number;
+  progressX: number;
+  progressY: number;
+  progressSince: number;
 };
 
 type RoutePlan = {
@@ -67,9 +91,9 @@ type RoutePlan = {
   lingerMs: number;
   targetX: number;
   targetY: number;
-  path: { x: number; y: number }[];
   facing: number;
-  arrivalState: RenderAgent["state"];
+  path: { x: number; y: number }[];
+  state: RenderAgent["state"];
   interactionTarget?: RenderAgent["interactionTarget"];
   smsBoothStage?: RenderAgent["smsBoothStage"];
   phoneBoothStage?: RenderAgent["phoneBoothStage"];
@@ -80,92 +104,49 @@ type RoutePlan = {
   workoutStyle?: RenderAgent["workoutStyle"];
 };
 
-type WorkingIntent =
-  | { kind: "meeting_room" }
-  | { kind: "gym" }
-  | { kind: "qa_lab" }
-  | { kind: "server_room" }
-  | { kind: "sms_booth" }
-  | { kind: "phone_booth" }
-  | { kind: "desk" };
-
-type LoungePoint = {
-  x: number;
-  y: number;
-  facing: number;
-};
-
-type KitchenPoint = {
-  x: number;
-  y: number;
-  facing: number;
-};
-
-type FunPoint = {
-  x: number;
-  y: number;
-  facing: number;
-};
-
+type LoungePoint = { x: number; y: number; facing: number };
+type KitchenPoint = { x: number; y: number; facing: number };
+type FunPoint = { x: number; y: number; facing: number };
 
 type JanitorSceneActor = Extract<SceneActor, { role: "janitor" }>;
 type JanitorRenderAgent = Extract<RenderAgent, { role: "janitor" }>;
 
-const isJanitorSceneActor = (agent: SceneActor): agent is JanitorSceneActor =>
-  "role" in agent && agent.role === "janitor";
+const isJanitorSceneActor = (actor: SceneActor): actor is JanitorSceneActor =>
+  "role" in actor && actor.role === "janitor";
 
-const isJanitorRenderAgent = (agent: RenderAgent): agent is JanitorRenderAgent =>
-  "role" in agent && agent.role === "janitor";
+const isJanitorRenderAgent = (actor: RenderAgent): actor is JanitorRenderAgent =>
+  "role" in actor && actor.role === "janitor";
 
-const DEFAULT_BRAIN = (x: number, y: number, now: number): AgentBrain => ({
-  mode: "autonomous",
-  currentActionKey: "spawn",
-  currentLingerMs: 0,
-  nextDecisionAt: now,
-  stallX: x,
-  stallY: y,
-  stallSince: now,
-  stallCount: 0,
-  recentActions: [],
-});
+const ROAM_MODEL_ORDER: RoamRouteModel[] = [
+  "loop",
+  "focus_shift",
+  "cross_current",
+  "north_bypass",
+  "south_sweep",
+  "zigzag",
+  "orbit",
+  "perimeter_drift",
+  "serpentine",
+  "diagonal_weave",
+];
 
-const nextRecentActions = (recent: string[], actionKey: string) =>
-  [actionKey, ...recent.filter((entry) => entry !== actionKey)].slice(0, 6);
+const resolveAgentMotionZone = (agentId: string) =>
+  isRemoteOfficeAgentId(agentId)
+    ? {
+        minX: MOTION_ZONE_PADDING,
+        maxX: REMOTE_OFFICE_ZONE.maxX - MOTION_ZONE_PADDING,
+        minY: REMOTE_OFFICE_ZONE.minY + MOTION_ZONE_PADDING,
+        maxY: REMOTE_OFFICE_ZONE.maxY - MOTION_ZONE_PADDING,
+      }
+    : {
+        minX: MOTION_ZONE_PADDING,
+        maxX: CANVAS_W - MOTION_ZONE_PADDING,
+        minY: MOTION_ZONE_PADDING,
+        maxY: LOCAL_OFFICE_CANVAS_HEIGHT - MOTION_ZONE_PADDING,
+      };
 
-const setBrainPlan = (
-  brain: AgentBrain,
-  plan: RoutePlan,
-  now: number,
-  arrived = false,
-) => {
-  brain.mode = plan.mode;
-  brain.currentActionKey = plan.actionKey;
-  brain.currentLingerMs = plan.lingerMs;
-  brain.nextDecisionAt = arrived ? now + plan.lingerMs : Number.POSITIVE_INFINITY;
-  brain.stallCount = 0;
-  brain.stallSince = now;
-};
-
-const resetBrainProgress = (brain: AgentBrain, x: number, y: number, now: number) => {
-  brain.stallX = x;
-  brain.stallY = y;
-  brain.stallSince = now;
-  brain.stallCount = 0;
-};
-
-const chooseRoamPoint = (agentId: string) => {
-  const points = isRemoteOfficeAgentId(agentId) ? REMOTE_ROAM_POINTS : ROAM_POINTS;
-  return points[Math.floor(Math.random() * points.length)] ?? { x: 320, y: 220 };
-};
-
-const chooseDistinctRoamPoint = (agentId: string, currentX: number, currentY: number) => {
-  const points = isRemoteOfficeAgentId(agentId) ? REMOTE_ROAM_POINTS : ROAM_POINTS;
-  const distinct = points.filter(
-    (point) => Math.hypot(point.x - currentX, point.y - currentY) >= MIN_AUTONOMOUS_TRAVEL_DISTANCE,
-  );
-  const pool = distinct.length > 0 ? distinct : points;
-  return pool[Math.floor(Math.random() * pool.length)] ?? { x: currentX + 80, y: currentY + 40 };
-};
+const clampAgentPointToMotionZone = (agentId: string, x: number, y: number) =>
+  clampPointToZone(x, y, resolveAgentMotionZone(agentId));
 
 const hashAgentId = (value: string) => {
   let hash = 0;
@@ -175,93 +156,70 @@ const hashAgentId = (value: string) => {
   return hash;
 };
 
-const chooseSpawnPoint = (agentId: string) => {
-  if (isRemoteOfficeAgentId(agentId)) {
-    return chooseRoamPoint(agentId);
-  }
-  return {
-    x: 120 + Math.random() * 760,
-    y: 100 + Math.random() * 500,
-  };
-};
-
 const angleFrom = (fromX: number, fromY: number, toX: number, toY: number) =>
   Math.atan2(toX - fromX, toY - fromY);
 
-const toDeskAnchor = (
-  deskLocations: { x: number; y: number }[],
-  deskIndex: number | undefined,
-  currentX: number,
-  currentY: number,
-) => {
-  const desk =
-    typeof deskIndex === "number" ? (deskLocations[deskIndex] ?? null) : null;
-  if (desk) {
-    return { x: desk.x, y: desk.y, facing: Math.PI / 2 };
+const buildPlanTargetKey = (x: number, y: number) =>
+  `${Math.round(x / TARGET_KEY_GRID)}:${Math.round(y / TARGET_KEY_GRID)}`;
+
+const chooseRandom = <T,>(items: T[], fallback: T): T =>
+  items[Math.floor(Math.random() * items.length)] ?? fallback;
+
+const shuffleArray = <T,>(items: T[]): T[] => {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex]!, next[index]!];
   }
-  const fallback = MEETING_OVERFLOW_LOCATIONS[0] ?? { x: currentX, y: currentY, facing: Math.PI / 2 };
-  return { x: fallback.x, y: fallback.y, facing: fallback.facing };
+  return next;
 };
 
-const buildLoungePoints = (furnitureItems: FurnitureItem[]): LoungePoint[] =>
-  furnitureItems
-    .filter((item) => ["couch", "couch_v", "beanbag", "ottoman"].includes(item.type))
-    .map((item) => {
-      const width = item.w ?? 60;
-      const height = item.h ?? 60;
-      const centerX = item.x + width / 2;
-      const centerY = item.y + height / 2;
-      const x = item.type === "couch_v" ? item.x + width + 22 : centerX;
-      const y = item.type === "couch_v" ? centerY : item.y + height + 18;
-      return {
-        x,
-        y,
-        facing: angleFrom(x, y, centerX, centerY),
-      };
-    });
+const DEFAULT_BRAIN = (x: number, y: number, now: number): AgentBrain => ({
+  mode: "autonomous",
+  currentActionKey: "spawn",
+  nextDecisionAt: now,
+  lingerMs: 0,
+  lastTargetKey: "",
+  sameTargetPlanCount: 0,
+  recentActions: [],
+  roamModel: chooseRandom(ROAM_MODEL_ORDER, "loop"),
+  roamIndex: Math.floor(Math.random() * 3),
+  progressX: x,
+  progressY: y,
+  progressSince: now,
+});
 
-const buildKitchenPoints = (furnitureItems: FurnitureItem[]): KitchenPoint[] =>
-  furnitureItems.flatMap((item) => {
-    if (!["coffee_machine", "water_cooler", "fridge", "vending", "sink", "cabinet"].includes(item.type)) {
-      return [];
-    }
-    const width = item.w ?? 40;
-    const height = item.h ?? 40;
-    const centerX = item.x + width / 2;
-    const centerY = item.y + height / 2;
-    const frontPoint = {
-      x: centerX,
-      y: item.y + height + 18,
-      facing: angleFrom(centerX, item.y + height + 18, centerX, centerY),
-    };
-    const sidePoint = width >= 42
-      ? {
-          x: item.x - 18,
-          y: centerY,
-          facing: angleFrom(item.x - 18, centerY, centerX, centerY),
-        }
-      : null;
-    return sidePoint ? [frontPoint, sidePoint] : [frontPoint];
-  });
+const markPlanOnBrain = (
+  brain: AgentBrain,
+  plan: RoutePlan,
+  now: number,
+  arrived: boolean,
+) => {
+  const targetKey = buildPlanTargetKey(plan.targetX, plan.targetY);
+  if (brain.lastTargetKey === targetKey) {
+    brain.sameTargetPlanCount += 1;
+  } else {
+    brain.lastTargetKey = targetKey;
+    brain.sameTargetPlanCount = 1;
+  }
+  brain.mode = plan.mode;
+  brain.currentActionKey = plan.actionKey;
+  brain.lingerMs = plan.lingerMs;
+  brain.nextDecisionAt = arrived ? now + plan.lingerMs : Number.POSITIVE_INFINITY;
+  brain.recentActions = [
+    plan.actionKey,
+    ...brain.recentActions.filter((entry) => entry !== plan.actionKey),
+  ].slice(0, 6);
+  brain.progressSince = now;
+};
 
-const buildFunPoints = (furnitureItems: FurnitureItem[]): FunPoint[] =>
-  furnitureItems
-    .filter((item) => ["jukebox", "arcade", "foosball", "air_hockey"].includes(item.type))
-    .map((item) => {
-      const width = item.w ?? 60;
-      const height = item.h ?? 60;
-      const centerX = item.x + width / 2;
-      const centerY = item.y + height / 2;
-      const x = centerX;
-      const y = item.y + height + 18;
-      return {
-        x,
-        y,
-        facing: angleFrom(x, y, centerX, centerY),
-      };
-    });
+const resetBrainProgress = (brain: AgentBrain, x: number, y: number, now: number) => {
+  brain.progressX = x;
+  brain.progressY = y;
+  brain.progressSince = now;
+};
 
-const scoreAutonomousCandidate = (
+const scoreCandidate = (
   actionKey: string,
   currentX: number,
   currentY: number,
@@ -271,97 +229,195 @@ const scoreAutonomousCandidate = (
   baseWeight: number,
 ) => {
   const distance = Math.hypot(targetX - currentX, targetY - currentY);
-  const distanceFactor = Math.min(1.35, Math.max(0.72, distance / 260));
-  const recentIndex = recentActions.indexOf(actionKey);
-  const recentPenalty = recentIndex < 0 ? 1 : Math.max(0.34, 0.84 - recentIndex * 0.14);
-  return baseWeight * distanceFactor * recentPenalty * (0.9 + Math.random() * 0.35);
+  const distanceFactor = Math.min(1.35, Math.max(0.7, distance / 260));
+  const repeatPenalty = recentActions.includes(actionKey) ? 0.58 : 1;
+  return baseWeight * distanceFactor * repeatPenalty * (0.88 + Math.random() * 0.24);
 };
 
-const buildRecoveredPath = (
-  startX: number,
-  startY: number,
-  rawTargetX: number,
-  rawTargetY: number,
-  grid: NavGrid,
-) => {
-  const candidates: Array<{ x: number; y: number }> = [
-    projectPointToNavigable(rawTargetX, rawTargetY, grid),
-  ];
-  const offsets = [
-    [24, 0],
-    [-24, 0],
-    [0, 24],
-    [0, -24],
-    [36, 20],
-    [-36, 20],
-    [36, -20],
-    [-36, -20],
-  ];
-  for (const [offsetX, offsetY] of offsets) {
-    candidates.push(projectPointToNavigable(rawTargetX + offsetX, rawTargetY + offsetY, grid));
+const chooseWeighted = <T extends { score: number }>(candidates: T[]): T | null => {
+  const eligible = candidates.filter((candidate) => Number.isFinite(candidate.score) && candidate.score > 0);
+  if (eligible.length === 0) return null;
+  const total = eligible.reduce((sum, candidate) => sum + candidate.score, 0);
+  let cursor = Math.random() * total;
+  for (const candidate of eligible) {
+    cursor -= candidate.score;
+    if (cursor <= 0) return candidate;
   }
+  return eligible[eligible.length - 1] ?? null;
+};
 
-  for (const candidate of candidates) {
-    const distance = Math.hypot(candidate.x - startX, candidate.y - startY);
-    if (distance <= ARRIVAL_EPSILON) {
-      return { targetX: candidate.x, targetY: candidate.y, path: [] as { x: number; y: number }[] };
+const isPointBusy = (
+  agentId: string,
+  x: number,
+  y: number,
+  agents: RenderAgent[],
+  radius = TARGET_RESERVATION_RADIUS,
+) =>
+  agents.some((other) => {
+    if (other.id === agentId) return false;
+    if (Math.hypot(other.x - x, other.y - y) < radius) return true;
+    if (Math.hypot(other.targetX - x, other.targetY - y) < radius) return true;
+    const tail = other.path[other.path.length - 1];
+    return tail ? Math.hypot(tail.x - x, tail.y - y) < radius : false;
+  });
+
+const pickAvailablePoint = <T extends { x: number; y: number }>(
+  agentId: string,
+  points: T[],
+  others: RenderAgent[],
+  currentX: number,
+  currentY: number,
+  minDistance = MIN_AUTONOMOUS_TRAVEL_DISTANCE,
+): T | null => {
+  const ordered = shuffleArray(points);
+  const distant = ordered.filter(
+    (point) =>
+      Math.hypot(point.x - currentX, point.y - currentY) >= minDistance &&
+      !isInAgentPauseExclusionZone(point.x, point.y) &&
+      !isPointBusy(agentId, point.x, point.y, others),
+  );
+  if (distant.length > 0) return distant[0] ?? null;
+  const relaxed = ordered.filter(
+    (point) => !isInAgentPauseExclusionZone(point.x, point.y) && !isPointBusy(agentId, point.x, point.y, others),
+  );
+  return relaxed[0] ?? null;
+};
+
+const chooseSpawnPoint = (agentId: string) => {
+  if (isRemoteOfficeAgentId(agentId)) {
+    const remote = chooseRandom(REMOTE_ROAM_POINTS, REMOTE_ROAM_POINTS[0] ?? { x: 200, y: REMOTE_OFFICE_ZONE.minY + 100 });
+    return { x: remote.x, y: remote.y, facing: Math.PI / 2 };
+  }
+  const seed = hashAgentId(agentId);
+  const anchor = AGENT_SPAWN_POINTS[seed % AGENT_SPAWN_POINTS.length] ?? { x: 520, y: 520, facing: Math.PI / 2 };
+  const offsetX = ((seed % 7) - 3) * 18;
+  const offsetY = (((seed >> 3) % 5) - 2) * 16;
+  return { x: anchor.x + offsetX, y: anchor.y + offsetY, facing: anchor.facing };
+};
+
+const buildLoungePoints = (items: FurnitureItem[]): LoungePoint[] =>
+  items
+    .filter((item) => ["couch", "couch_v", "beanbag", "ottoman"].includes(item.type))
+    .flatMap((item) => {
+      const width = item.w ?? 60;
+      const height = item.h ?? 60;
+      const centerX = item.x + width / 2;
+      const centerY = item.y + height / 2;
+      const points = item.type === "couch_v"
+        ? [
+            { x: item.x + width + 24, y: centerY, facing: angleFrom(item.x + width + 24, centerY, centerX, centerY) },
+            { x: item.x + width + 24, y: centerY - 20, facing: angleFrom(item.x + width + 24, centerY - 20, centerX, centerY) },
+          ]
+        : [
+            { x: centerX, y: item.y + height + 18, facing: angleFrom(centerX, item.y + height + 18, centerX, centerY) },
+            { x: centerX - 26, y: item.y + height + 20, facing: angleFrom(centerX - 26, item.y + height + 20, centerX, centerY) },
+            { x: centerX + 26, y: item.y + height + 20, facing: angleFrom(centerX + 26, item.y + height + 20, centerX, centerY) },
+          ];
+      return points.filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
+    });
+
+const isPantryDoorConflictPoint = (x: number, y: number) => x <= 290 && y >= 390;
+
+const finalizeKitchenPoint = (point: KitchenPoint): KitchenPoint | null => {
+  if (isInAgentPauseExclusionZone(point.x, point.y) || isPantryDoorConflictPoint(point.x, point.y)) {
+    return null;
+  }
+  const clamped = clampAgentPointToMotionZone("pantry-anchor", point.x, point.y);
+  return { ...point, x: clamped.x, y: clamped.y };
+};
+
+const buildKitchenPoints = (items: FurnitureItem[]): KitchenPoint[] =>
+  items.flatMap((item) => {
+    if (!["coffee_machine", "water_cooler", "fridge", "vending", "sink", "cabinet"].includes(item.type)) {
+      return [];
     }
-    const path = planOfficePath(startX, startY, candidate.x, candidate.y, grid);
-    if (path.length > 0) {
-      return { targetX: candidate.x, targetY: candidate.y, path };
-    }
-  }
+    const width = item.w ?? 40;
+    const height = item.h ?? 40;
+    const centerX = item.x + width / 2;
+    const centerY = item.y + height / 2;
+    const points = [
+      { x: item.x + width + 18, y: centerY - 10, facing: angleFrom(item.x + width + 18, centerY - 10, centerX, centerY) },
+      { x: item.x + width + 18, y: centerY + 10, facing: angleFrom(item.x + width + 18, centerY + 10, centerX, centerY) },
+      { x: item.x + width + 34, y: centerY, facing: angleFrom(item.x + width + 34, centerY, centerX, centerY) },
+      { x: centerX + Math.max(12, width * 0.14), y: item.y + height + 18, facing: angleFrom(centerX + Math.max(12, width * 0.14), item.y + height + 18, centerX, centerY) },
+      { x: centerX + Math.max(26, width * 0.36), y: item.y + height + 26, facing: angleFrom(centerX + Math.max(26, width * 0.36), item.y + height + 26, centerX, centerY) },
+      { x: centerX + Math.max(38, width * 0.52), y: item.y + height + 34, facing: angleFrom(centerX + Math.max(38, width * 0.52), item.y + height + 34, centerX, centerY) },
+    ];
+    return points
+      .map((point) => finalizeKitchenPoint(point))
+      .filter((point): point is KitchenPoint => Boolean(point));
+  });
 
-  const safeFallback = projectPointToNavigable(rawTargetX, rawTargetY, grid);
-  return { targetX: safeFallback.x, targetY: safeFallback.y, path: [] as { x: number; y: number }[] };
+const buildPantryAnchorPoints = (items: FurnitureItem[]): KitchenPoint[] => {
+  const pantryItems = items.filter((item) =>
+    ["coffee_machine", "water_cooler", "fridge", "vending", "sink", "cabinet"].includes(item.type),
+  );
+  if (pantryItems.length === 0) return [];
+
+  const minX = Math.min(...pantryItems.map((item) => item.x));
+  const maxX = Math.max(...pantryItems.map((item) => item.x + (item.w ?? 40)));
+  const minY = Math.min(...pantryItems.map((item) => item.y));
+  const maxY = Math.max(...pantryItems.map((item) => item.y + (item.h ?? 40)));
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  const rightLaneX = maxX + 26;
+  const farRightLaneX = maxX + 48;
+  const lowerLaneY = maxY + 18;
+  const farLowerY = maxY + 34;
+  const upperLaneY = Math.max(minY - 22, 24);
+
+  const candidatePoints: KitchenPoint[] = [
+    { x: rightLaneX, y: centerY - 34, facing: angleFrom(rightLaneX, centerY - 34, centerX, centerY) },
+    { x: rightLaneX, y: centerY + 34, facing: angleFrom(rightLaneX, centerY + 34, centerX, centerY) },
+    { x: farRightLaneX, y: centerY - 18, facing: angleFrom(farRightLaneX, centerY - 18, centerX, centerY) },
+    { x: farRightLaneX, y: centerY + 18, facing: angleFrom(farRightLaneX, centerY + 18, centerX, centerY) },
+    { x: farRightLaneX + 20, y: centerY - 48, facing: angleFrom(farRightLaneX + 20, centerY - 48, centerX, centerY) },
+    { x: farRightLaneX + 20, y: centerY + 48, facing: angleFrom(farRightLaneX + 20, centerY + 48, centerX, centerY) },
+    { x: centerX + 8, y: lowerLaneY + 8, facing: angleFrom(centerX + 8, lowerLaneY + 8, centerX, centerY) },
+    { x: centerX + 46, y: lowerLaneY + 14, facing: angleFrom(centerX + 46, lowerLaneY + 14, centerX, centerY) },
+    { x: centerX + 86, y: farLowerY + 8, facing: angleFrom(centerX + 86, farLowerY + 8, centerX, centerY) },
+    { x: centerX + 18, y: upperLaneY, facing: angleFrom(centerX + 18, upperLaneY, centerX, centerY) },
+    { x: centerX + 60, y: upperLaneY - 10, facing: angleFrom(centerX + 60, upperLaneY - 10, centerX, centerY) },
+    { x: centerX + 104, y: upperLaneY + 16, facing: angleFrom(centerX + 104, upperLaneY + 16, centerX, centerY) },
+  ];
+
+  const seen = new Set<string>();
+  return candidatePoints
+    .map((point) => finalizeKitchenPoint(point))
+    .filter((point): point is KitchenPoint => Boolean(point))
+    .filter((point) => {
+      const key = `${Math.round(point.x)}:${Math.round(point.y)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 };
 
-const inferArrivalState = (agent: RenderAgent): RenderAgent["state"] => {
-  if (agent.pingPongUntil !== undefined) return "standing";
-  switch (agent.interactionTarget) {
-    case "desk":
-      return "sitting";
-    case "lounge":
-      return "standing";
-    case "gym":
-      return agent.gymStage === "workout" ? "working_out" : "standing";
-    case "meeting_room":
-      return "sitting";
-    case "sms_booth":
-    case "phone_booth":
-    case "server_room":
-    case "qa_lab":
-    case "kitchen":
-    case "jukebox":
-      return "standing";
-    default:
-      return agent.state === "away" ? "away" : "standing";
-  }
+const buildFunPoints = (items: FurnitureItem[]): FunPoint[] =>
+  items
+    .filter((item) => ["jukebox", "arcade", "foosball", "air_hockey"].includes(item.type))
+    .flatMap((item) => {
+      const width = item.w ?? 60;
+      const height = item.h ?? 60;
+      const centerX = item.x + width / 2;
+      const centerY = item.y + height / 2;
+      return [
+        { x: centerX, y: item.y + height + 18, facing: angleFrom(centerX, item.y + height + 18, centerX, centerY) },
+        { x: centerX - 22, y: item.y + height + 22, facing: angleFrom(centerX - 22, item.y + height + 22, centerX, centerY) },
+        { x: centerX + 22, y: item.y + height + 22, facing: angleFrom(centerX + 22, item.y + height + 22, centerX, centerY) },
+      ].filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
+    });
+
+const shouldContinueStage = (agent: RenderAgent) => {
+  if (agent.interactionTarget === "gym") return agent.gymStage !== "workout";
+  if (agent.interactionTarget === "qa_lab") return agent.qaLabStage !== "station";
+  if (agent.interactionTarget === "server_room") return agent.serverRoomStage !== "terminal";
+  if (agent.interactionTarget === "sms_booth") return agent.smsBoothStage !== "typing";
+  if (agent.interactionTarget === "phone_booth") return agent.phoneBoothStage !== "receiver";
+  return false;
 };
 
-const applyPlanToAgent = (agent: RenderAgent, plan: RoutePlan): RenderAgent => ({
-  ...agent,
-  targetX: plan.targetX,
-  targetY: plan.targetY,
-  path: plan.path,
-  facing: plan.facing,
-  interactionTarget: plan.interactionTarget,
-  smsBoothStage: plan.smsBoothStage,
-  phoneBoothStage: plan.phoneBoothStage,
-  serverRoomStage: plan.serverRoomStage,
-  gymStage: plan.gymStage,
-  qaLabStage: plan.qaLabStage,
-  qaLabStationType: plan.qaLabStationType,
-  workoutStyle: plan.workoutStyle,
-  state: plan.path.length > 0 ? "walking" : plan.arrivalState,
-});
-
-const isInteractiveRoomTarget = (target: RenderAgent["interactionTarget"]) =>
-  target === "gym" ||
-  target === "qa_lab" ||
-  target === "server_room" ||
-  target === "sms_booth" ||
-  target === "phone_booth";
+const inferArrivalState = (plan: RoutePlan) => plan.state;
 
 export function useRebuiltAgentTick(
   agents: SceneActor[],
@@ -389,34 +445,11 @@ export function useRebuiltAgentTick(
   const renderAgentsRef = useRef<RenderAgent[]>([]);
   const renderAgentLookupRef = useRef<Map<string, RenderAgent>>(new Map());
   const deskByAgentRef = useRef<Map<string, number>>(new Map());
-  const stickyUntilRef = useRef<Map<string, number>>(new Map());
   const brainByAgentRef = useRef<Map<string, AgentBrain>>(new Map());
-  const gymByAgentRef = useRef<Map<string, number>>(new Map());
-  const qaByAgentRef = useRef<Map<string, number>>(new Map());
-  const nextGymRef = useRef(0);
-  const nextQaRef = useRef(0);
   const navGridRef = useRef<NavGrid | null>(null);
   const gridSourceRef = useRef<FurnitureItem[]>([]);
-  const gymCycleRef = useRef<Map<string, number[]>>(new Map());
-  const qaCycleRef = useRef<Map<string, number[]>>(new Map());
-
-  const buildShuffledIndexCycle = useCallback((length: number, preferredIndex?: number | null) => {
-    const indices = Array.from({ length }, (_, index) => index);
-    for (let index = indices.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1));
-      [indices[index], indices[swapIndex]] = [indices[swapIndex]!, indices[index]!];
-    }
-    if (
-      typeof preferredIndex === "number" &&
-      preferredIndex >= 0 &&
-      preferredIndex < length &&
-      indices[0] === preferredIndex &&
-      indices.length > 1
-    ) {
-      [indices[0], indices[1]] = [indices[1]!, indices[0]!];
-    }
-    return indices;
-  }, []);
+  const gymCycleByAgentRef = useRef<Map<string, number>>(new Map());
+  const qaCycleByAgentRef = useRef<Map<string, number>>(new Map());
 
   const getNavGrid = useCallback((): NavGrid => {
     const furniture = furnitureRef.current ?? [];
@@ -439,802 +472,653 @@ export function useRebuiltAgentTick(
       const fallback = seats[0] ?? { x: 145, y: 118, facing: Math.PI };
       const participantOrder = standupMeeting?.participantOrder ?? [];
       const index = participantOrder.indexOf(agentId);
-      return index < 0 ? fallback : (seats[index] ?? fallback);
+      return index >= 0 ? (seats[index] ?? fallback) : fallback;
     },
     [meetingSeatLocations, standupMeeting?.participantOrder],
   );
 
-  const chooseNextGymIndexForAgent = useCallback(
-    (agent: RenderAgent) => {
-      if (gymWorkoutLocations.length <= 1) {
-        return 0;
+  const buildPathToTarget = useCallback(
+    (agentId: string, fromX: number, fromY: number, rawTargetX: number, rawTargetY: number) => {
+      const grid = getNavGrid();
+      const safeTarget = clampAgentPointToMotionZone(agentId, rawTargetX, rawTargetY);
+      const projected = projectPointToNavigable(safeTarget.x, safeTarget.y, grid);
+      const clamped = clampAgentPointToMotionZone(agentId, projected.x, projected.y);
+      const path = planOfficePath(fromX, fromY, clamped.x, clamped.y, grid);
+      if (path.length > 0) {
+        return { targetX: clamped.x, targetY: clamped.y, path };
       }
-
-      if (agent.interactionTarget === "gym" && agent.workoutStyle) {
-        const currentIndex = gymWorkoutLocations.findIndex(
-          (location) => location.workoutStyle === agent.workoutStyle,
-        );
-        if (currentIndex >= 0) {
-          return currentIndex;
-        }
+      if (Math.hypot(clamped.x - fromX, clamped.y - fromY) <= ARRIVAL_EPSILON) {
+        return { targetX: clamped.x, targetY: clamped.y, path: [] as { x: number; y: number }[] };
       }
-
-      const previousIndex = gymByAgentRef.current.get(agent.id) ?? null;
-      let cycle = gymCycleRef.current.get(agent.id) ?? [];
-      if (cycle.length === 0) {
-        cycle = buildShuffledIndexCycle(gymWorkoutLocations.length, previousIndex);
-      }
-      const nextIndex = cycle.shift();
-      gymCycleRef.current.set(agent.id, cycle);
-      const resolvedIndex =
-        typeof nextIndex === "number"
-          ? nextIndex
-          : ((previousIndex ?? -1) + 1) % gymWorkoutLocations.length;
-      gymByAgentRef.current.set(agent.id, resolvedIndex);
-      return resolvedIndex;
+      return { targetX: clamped.x, targetY: clamped.y, path: [clamped] };
     },
-    [buildShuffledIndexCycle, gymWorkoutLocations],
+    [getNavGrid],
   );
 
-  const chooseNextQaIndexForAgent = useCallback(
-    (agent: RenderAgent) => {
-      if (qaLabStations.length <= 1) {
-        return 0;
+  const reserveDeskIndex = useCallback(
+    (agent: RenderAgent, others: RenderAgent[]) => {
+      if (deskLocations.length === 0) return null;
+      const explicit = assignedDeskIndexByAgentId[agent.id];
+      if (typeof explicit === "number" && explicit >= 0 && explicit < deskLocations.length) {
+        deskByAgentRef.current.set(agent.id, explicit);
+        return explicit;
       }
 
-      if (agent.interactionTarget === "qa_lab" && agent.qaLabStationType) {
-        const currentIndex = qaLabStations.findIndex(
-          (station) => station.stationType === agent.qaLabStationType,
-        );
-        if (currentIndex >= 0) {
-          return currentIndex;
-        }
+      const busy = new Set<number>();
+      others.forEach((other) => {
+        if (other.id === agent.id) return;
+        const claimed = deskByAgentRef.current.get(other.id);
+        if (typeof claimed === "number") busy.add(claimed);
+      });
+
+      const existing = deskByAgentRef.current.get(agent.id);
+      if (typeof existing === "number" && !busy.has(existing)) {
+        return existing;
       }
 
-      const previousIndex = qaByAgentRef.current.get(agent.id) ?? null;
-      let cycle = qaCycleRef.current.get(agent.id) ?? [];
-      if (cycle.length === 0) {
-        cycle = buildShuffledIndexCycle(qaLabStations.length, previousIndex);
+      const preferred = hashAgentId(agent.id) % deskLocations.length;
+      for (let offset = 0; offset < deskLocations.length; offset += 1) {
+        const index = (preferred + offset) % deskLocations.length;
+        const desk = deskLocations[index];
+        if (!desk) continue;
+        if (busy.has(index)) continue;
+        if (isPointBusy(agent.id, desk.x, desk.y, others, SLOT_RESERVATION_RADIUS)) continue;
+        deskByAgentRef.current.set(agent.id, index);
+        return index;
       }
-      const nextIndex = cycle.shift();
-      qaCycleRef.current.set(agent.id, cycle);
-      const resolvedIndex =
-        typeof nextIndex === "number"
-          ? nextIndex
-          : ((previousIndex ?? -1) + 1) % qaLabStations.length;
-      qaByAgentRef.current.set(agent.id, resolvedIndex);
-      return resolvedIndex;
+
+      return typeof existing === "number" ? existing : preferred;
     },
-    [buildShuffledIndexCycle, qaLabStations],
+    [assignedDeskIndexByAgentId, deskLocations],
   );
 
-  const buildRoutePlan = useCallback(
+  const chooseGymTarget = useCallback(
+    (agent: RenderAgent, others: RenderAgent[]) => {
+      if (gymWorkoutLocations.length === 0) return GYM_DEFAULT_TARGET;
+      const start = gymCycleByAgentRef.current.get(agent.id) ?? (hashAgentId(agent.id) % gymWorkoutLocations.length);
+      for (let offset = 0; offset < gymWorkoutLocations.length; offset += 1) {
+        const index = (start + offset) % gymWorkoutLocations.length;
+        const location = gymWorkoutLocations[index];
+        if (!location) continue;
+        if (isPointBusy(agent.id, location.x, location.y, others, SLOT_RESERVATION_RADIUS)) continue;
+        gymCycleByAgentRef.current.set(agent.id, (index + 1) % gymWorkoutLocations.length);
+        return location;
+      }
+      return gymWorkoutLocations[start] ?? GYM_DEFAULT_TARGET;
+    },
+    [gymWorkoutLocations],
+  );
+
+  const chooseQaTarget = useCallback(
+    (agent: RenderAgent, others: RenderAgent[]) => {
+      if (qaLabStations.length === 0) return QA_LAB_DEFAULT_TARGET;
+      const start = qaCycleByAgentRef.current.get(agent.id) ?? (hashAgentId(agent.id) % qaLabStations.length);
+      for (let offset = 0; offset < qaLabStations.length; offset += 1) {
+        const index = (start + offset) % qaLabStations.length;
+        const station = qaLabStations[index];
+        if (!station) continue;
+        if (isPointBusy(agent.id, station.x, station.y, others, SLOT_RESERVATION_RADIUS)) continue;
+        qaCycleByAgentRef.current.set(agent.id, (index + 1) % qaLabStations.length);
+        return station;
+      }
+      return qaLabStations[start] ?? QA_LAB_DEFAULT_TARGET;
+    },
+    [qaLabStations],
+  );
+
+  const applyPlanToAgent = useCallback((agent: RenderAgent, plan: RoutePlan): RenderAgent => {
+    const firstStep = plan.path[0];
+    const facing = firstStep ? angleFrom(agent.x, agent.y, firstStep.x, firstStep.y) : plan.facing;
+    return {
+      ...agent,
+      targetX: plan.targetX,
+      targetY: plan.targetY,
+      path: plan.path,
+      facing,
+      state: plan.path.length > 0 ? "walking" : plan.state,
+      walkSpeed: plan.mode === "forced" ? WALK_SPEED * WORKING_WALK_SPEED_MULTIPLIER : WALK_SPEED,
+      interactionTarget: plan.interactionTarget,
+      smsBoothStage: plan.smsBoothStage,
+      phoneBoothStage: plan.phoneBoothStage,
+      serverRoomStage: plan.serverRoomStage,
+      gymStage: plan.gymStage,
+      qaLabStage: plan.qaLabStage,
+      qaLabStationType: plan.qaLabStationType,
+      workoutStyle: plan.workoutStyle,
+    };
+  }, []);
+
+  const buildIntentPlan = useCallback(
     (
       agent: RenderAgent,
+      intent: AgentIntent,
       mode: AgentMode,
-      descriptor:
-        | { kind: "desk"; lingerMs?: number }
-        | { kind: "meeting_room"; lingerMs?: number }
-        | { kind: "gym"; lingerMs?: number }
-        | { kind: "qa_lab"; lingerMs?: number }
-        | { kind: "server_room"; lingerMs?: number }
-        | { kind: "sms_booth"; lingerMs?: number }
-        | { kind: "phone_booth"; lingerMs?: number }
-        | { kind: "lounge"; point: LoungePoint; lingerMs?: number }
-        | { kind: "kitchen"; point: KitchenPoint; lingerMs?: number }
-        | { kind: "jukebox"; point: FunPoint; lingerMs?: number }
-        | { kind: "roam"; point: { x: number; y: number }; lingerMs?: number },
+      others: RenderAgent[],
+      preferredPoint?: { x: number; y: number; facing?: number },
     ): RoutePlan => {
-      const grid = getNavGrid();
-      const makeDirectPlan = (
-        actionKey: string,
-        interactionTarget: RoutePlan["interactionTarget"],
-        rawTargetX: number,
-        rawTargetY: number,
-        facing: number,
-        arrivalState: RoutePlan["arrivalState"],
-        lingerMs: number,
-      ): RoutePlan => {
-        const route = buildRecoveredPath(agent.x, agent.y, rawTargetX, rawTargetY, grid);
-        return {
-          actionKey,
-          mode,
-          lingerMs,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing,
-          arrivalState,
-          interactionTarget,
-        };
-      };
-
-      if (descriptor.kind === "desk") {
-        const anchor = toDeskAnchor(
-          deskLocations,
-          deskByAgentRef.current.get(agent.id),
+      if (isRemoteOfficeAgentId(agent.id)) {
+        const remotePoint = preferredPoint ?? pickAvailablePoint(
+          agent.id,
+          REMOTE_ROAM_POINTS,
+          others,
           agent.x,
           agent.y,
-        );
-        return makeDirectPlan(
-          "desk_focus",
-          "desk",
-          anchor.x,
-          anchor.y,
-          anchor.facing,
-          "standing",
-          descriptor.lingerMs ?? 10_000,
-        );
-      }
-
-      if (descriptor.kind === "meeting_room") {
-        const seat = resolveMeetingTarget(agent.id);
-        return makeDirectPlan(
-          "standup",
-          "meeting_room",
-          seat.x,
-          seat.y,
-          seat.facing,
-          "sitting",
-          descriptor.lingerMs ?? 12_000,
-        );
-      }
-
-      if (descriptor.kind === "gym") {
-        const gymIndex = chooseNextGymIndexForAgent(agent);
-        const workout = gymWorkoutLocations[gymIndex] ?? GYM_DEFAULT_TARGET;
-        const stage = resolveGymRoute(agent.x, agent.y, workout);
-        const route = buildRecoveredPath(agent.x, agent.y, stage.targetX, stage.targetY, grid);
+          90,
+        ) ?? chooseRandom(REMOTE_ROAM_POINTS, REMOTE_ROAM_POINTS[0] ?? { x: agent.x, y: agent.y });
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, remotePoint.x, remotePoint.y);
         return {
-          actionKey: `gym_${workout.workoutStyle}`,
+          actionKey: "roam_remote",
           mode,
-          lingerMs: descriptor.lingerMs ?? 8_500,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing: stage.facing,
-          arrivalState: stage.stage === "workout" ? "working_out" : "standing",
+          lingerMs: 1200 + Math.random() * 1600,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: preferredPoint?.facing ?? agent.facing,
+          path: target.path,
+          state: "standing",
+        };
+      }
+
+      if (intent === "meeting_room") {
+        const targetSeat = resolveMeetingTarget(agent.id);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, targetSeat.x, targetSeat.y);
+        return {
+          actionKey: "meeting_room",
+          mode,
+          lingerMs: 1800,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: targetSeat.facing,
+          path: target.path,
+          state: "standing",
+          interactionTarget: "meeting_room",
+        };
+      }
+
+      if (intent === "desk") {
+        const deskIndex = reserveDeskIndex(agent, others);
+        const desk = typeof deskIndex === "number" ? deskLocations[deskIndex] : null;
+        const fallback = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
+        const targetPoint = desk ? { x: desk.x, y: desk.y, facing: Math.PI / 2 } : fallback;
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, targetPoint.x, targetPoint.y);
+        return {
+          actionKey: "desk",
+          mode,
+          lingerMs: DESK_STICKY_MS,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: targetPoint.facing ?? Math.PI / 2,
+          path: target.path,
+          state: "sitting",
+          interactionTarget: "desk",
+        };
+      }
+
+      if (intent === "gym") {
+        const workoutTarget = chooseGymTarget(agent, others);
+        const route = resolveGymRoute(agent.x, agent.y, workoutTarget);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, route.targetX, route.targetY);
+        return {
+          actionKey: `gym_${route.stage}`,
+          mode,
+          lingerMs: route.stage === "workout" ? 2200 + Math.random() * 1800 : 120,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: route.facing,
+          path: target.path,
+          state: route.stage === "workout" ? "working_out" : "standing",
           interactionTarget: "gym",
-          gymStage: stage.stage,
-          workoutStyle: workout.workoutStyle,
+          gymStage: route.stage,
+          workoutStyle: workoutTarget.workoutStyle,
         };
       }
 
-      if (descriptor.kind === "qa_lab") {
-        const qaIndex = chooseNextQaIndexForAgent(agent);
-        const station = qaLabStations[qaIndex] ?? {
-          ...QA_LAB_DEFAULT_TARGET,
-          stationType: "console" as const,
-        };
-        const stage = resolveQaLabRoute(agent.x, agent.y, station);
-        const route = buildRecoveredPath(agent.x, agent.y, stage.targetX, stage.targetY, grid);
+      if (intent === "qa_lab") {
+        const station = chooseQaTarget(agent, others);
+        const route = resolveQaLabRoute(agent.x, agent.y, station);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, route.targetX, route.targetY);
         return {
-          actionKey: `qa_${station.stationType}`,
+          actionKey: `qa_${route.stage}`,
           mode,
-          lingerMs: descriptor.lingerMs ?? 7_200,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing: stage.facing,
-          arrivalState: "standing",
+          lingerMs: route.stage === "station" ? 2000 + Math.random() * 1400 : 120,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: route.facing,
+          path: target.path,
+          state: "standing",
           interactionTarget: "qa_lab",
-          qaLabStage: stage.stage,
+          qaLabStage: route.stage,
           qaLabStationType: station.stationType,
         };
       }
 
-      if (descriptor.kind === "server_room") {
-        const stage = resolveServerRoomRoute(agent.x, agent.y);
-        const route = buildRecoveredPath(agent.x, agent.y, stage.targetX, stage.targetY, grid);
+      if (intent === "server_room") {
+        const route = resolveServerRoomRoute(agent.x, agent.y);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, route.targetX, route.targetY);
         return {
-          actionKey: "server_check",
+          actionKey: `server_room_${route.stage}`,
           mode,
-          lingerMs: descriptor.lingerMs ?? 6_000,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing: stage.facing,
-          arrivalState: "standing",
+          lingerMs: route.stage === "terminal" ? 1800 + Math.random() * 1000 : 100,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: route.facing,
+          path: target.path,
+          state: "standing",
           interactionTarget: "server_room",
-          serverRoomStage: stage.stage,
+          serverRoomStage: route.stage,
         };
       }
 
-      if (descriptor.kind === "sms_booth") {
-        const stage = resolveSmsBoothRoute(
-          (furnitureRef.current ?? []).find((item) => item.type === "sms_booth") ?? null,
-          agent.x,
-          agent.y,
-        );
-        const route = buildRecoveredPath(agent.x, agent.y, stage.targetX, stage.targetY, grid);
+      if (intent === "sms_booth") {
+        const booth = (furnitureRef.current ?? []).find((item) => item.type === "sms_booth");
+        const route = resolveSmsBoothRoute(booth, agent.x, agent.y);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, route.targetX, route.targetY);
         return {
-          actionKey: "sms_booth",
+          actionKey: `sms_booth_${route.stage}`,
           mode,
-          lingerMs: descriptor.lingerMs ?? 5_500,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing: stage.facing,
-          arrivalState: "standing",
+          lingerMs: route.stage === "typing" ? 1800 + Math.random() * 1200 : 100,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: route.facing,
+          path: target.path,
+          state: "standing",
           interactionTarget: "sms_booth",
-          smsBoothStage: stage.stage,
+          smsBoothStage: route.stage,
         };
       }
 
-      if (descriptor.kind === "phone_booth") {
-        const stage = resolvePhoneBoothRoute(
-          (furnitureRef.current ?? []).find((item) => item.type === "phone_booth") ?? null,
-          agent.x,
-          agent.y,
-        );
-        const route = buildRecoveredPath(agent.x, agent.y, stage.targetX, stage.targetY, grid);
+      if (intent === "phone_booth") {
+        const booth = (furnitureRef.current ?? []).find((item) => item.type === "phone_booth");
+        const route = resolvePhoneBoothRoute(booth, agent.x, agent.y);
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, route.targetX, route.targetY);
         return {
-          actionKey: "phone_booth",
+          actionKey: `phone_booth_${route.stage}`,
           mode,
-          lingerMs: descriptor.lingerMs ?? 5_500,
-          targetX: route.targetX,
-          targetY: route.targetY,
-          path: route.path,
-          facing: stage.facing,
-          arrivalState: "standing",
+          lingerMs: route.stage === "receiver" ? 1900 + Math.random() * 1200 : 100,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: route.facing,
+          path: target.path,
+          state: "standing",
           interactionTarget: "phone_booth",
-          phoneBoothStage: stage.stage,
+          phoneBoothStage: route.stage,
         };
       }
 
-      if (descriptor.kind === "lounge") {
-        return makeDirectPlan(
-          "lounge_break",
-          "lounge",
-          descriptor.point.x,
-          descriptor.point.y,
-          descriptor.point.facing,
-          "sitting",
-          descriptor.lingerMs ?? 5_500,
-        );
+      if (intent === "lounge") {
+        const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+        return {
+          actionKey: "lounge",
+          mode,
+          lingerMs: 1800 + Math.random() * 1600,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: point.facing ?? agent.facing,
+          path: target.path,
+          state: "sitting",
+          interactionTarget: "lounge",
+        };
       }
 
-      if (descriptor.kind === "kitchen") {
-        return makeDirectPlan(
-          "kitchen_break",
-          "kitchen",
-          descriptor.point.x,
-          descriptor.point.y,
-          descriptor.point.facing,
-          "standing",
-          descriptor.lingerMs ?? 4_200,
-        );
+      if (intent === "kitchen") {
+        const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+        return {
+          actionKey: "kitchen",
+          mode,
+          lingerMs: 1200 + Math.random() * 1600,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: point.facing ?? agent.facing,
+          path: target.path,
+          state: "standing",
+          interactionTarget: "kitchen",
+        };
       }
 
-      if (descriptor.kind === "jukebox") {
-        return makeDirectPlan(
-          "jukebox_stop",
-          "jukebox",
-          descriptor.point.x,
-          descriptor.point.y,
-          descriptor.point.facing,
-          "standing",
-          descriptor.lingerMs ?? 3_400,
-        );
+      if (intent === "jukebox") {
+        const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
+        const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+        return {
+          actionKey: "jukebox",
+          mode,
+          lingerMs: 1500 + Math.random() * 1600,
+          targetX: target.targetX,
+          targetY: target.targetY,
+          facing: point.facing ?? agent.facing,
+          path: target.path,
+          state: danceUntilByAgentId[agent.id] && danceUntilByAgentId[agent.id] > Date.now() ? "dancing" : "standing",
+          interactionTarget: "jukebox",
+        };
       }
 
-      return makeDirectPlan(
-        "roam",
-        undefined,
-        descriptor.point.x,
-        descriptor.point.y,
-        angleFrom(agent.x, agent.y, descriptor.point.x, descriptor.point.y),
-        "standing",
-        descriptor.lingerMs ?? 2_400,
-      );
+      const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
+      const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+      return {
+        actionKey: intent,
+        mode,
+        lingerMs: 900 + Math.random() * 1500,
+        targetX: target.targetX,
+        targetY: target.targetY,
+        facing: point.facing ?? angleFrom(agent.x, agent.y, point.x, point.y),
+        path: target.path,
+        state: "standing",
+      };
     },
-    [chooseNextGymIndexForAgent, chooseNextQaIndexForAgent, deskLocations, furnitureRef, getNavGrid, gymWorkoutLocations, qaLabStations, resolveMeetingTarget],
+    [
+      buildPathToTarget,
+      chooseGymTarget,
+      chooseQaTarget,
+      danceUntilByAgentId,
+      deskLocations,
+      furnitureRef,
+      reserveDeskIndex,
+      resolveMeetingTarget,
+    ],
   );
 
   const buildAutonomousPlan = useCallback(
-    (agent: RenderAgent): RoutePlan => {
-      const brain = brainByAgentRef.current.get(agent.id) ?? DEFAULT_BRAIN(agent.x, agent.y, Date.now());
-      const furnitureItems = furnitureRef.current ?? [];
-      const kitchenPoints = buildKitchenPoints(furnitureItems);
-      const funPoints = buildFunPoints(furnitureItems);
-      const candidates: Array<{ score: number; build: () => RoutePlan }> = [];
+    (agent: RenderAgent, others: RenderAgent[], brain: AgentBrain): RoutePlan => {
+      if (isRemoteOfficeAgentId(agent.id)) {
+        const point = pickAvailablePoint(agent.id, REMOTE_ROAM_POINTS, others, agent.x, agent.y, 100)
+          ?? chooseRandom(REMOTE_ROAM_POINTS, REMOTE_ROAM_POINTS[0] ?? { x: agent.x, y: agent.y });
+        return buildIntentPlan(agent, "roam_remote", "autonomous", others, {
+          x: point.x,
+          y: point.y,
+          facing: angleFrom(agent.x, agent.y, point.x, point.y),
+        });
+      }
 
-      const addCandidate = (
+      const furniture = furnitureRef.current ?? [];
+      const kitchenPoints = [...buildKitchenPoints(furniture), ...buildPantryAnchorPoints(furniture)];
+      const loungePoints = buildLoungePoints(furniture);
+      const funPoints = buildFunPoints(furniture);
+
+      const routeModel = ROAM_ROUTE_MODELS[brain.roamModel] ?? ROAM_ROUTE_MODELS.loop;
+      const roamRoutePoints = routeModel.map((point) => ({
+        x: point.x,
+        y: point.y,
+        facing: point.facing ?? angleFrom(agent.x, agent.y, point.x, point.y),
+      }));
+      const roamPool = [...roamRoutePoints, ...ROAM_POINTS.map((point) => ({ x: point.x, y: point.y, facing: angleFrom(agent.x, agent.y, point.x, point.y) }))];
+
+      const candidates: Array<{ score: number; plan: RoutePlan }> = [];
+      const pushCandidate = (
         actionKey: string,
-        baseWeight: number,
-        targetX: number,
-        targetY: number,
-        builder: () => RoutePlan,
+        weight: number,
+        build: () => RoutePlan | null,
       ) => {
-        const distance = Math.hypot(targetX - agent.x, targetY - agent.y);
-        if (distance < MIN_AUTONOMOUS_TRAVEL_DISTANCE) {
-          return;
-        }
+        const plan = build();
+        if (!plan) return;
         candidates.push({
-          score: scoreAutonomousCandidate(
+          score: scoreCandidate(
             actionKey,
             agent.x,
             agent.y,
-            targetX,
-            targetY,
+            plan.targetX,
+            plan.targetY,
             brain.recentActions,
-            baseWeight,
+            weight,
           ),
-          build: builder,
+          plan,
         });
       };
 
-      if (deskLocations.length > 0) {
-        const resolvedDeskIndex =
-          deskByAgentRef.current.get(agent.id) ??
-          (deskLocations.length > 0 ? hashAgentId(agent.id) % deskLocations.length : undefined);
-        const anchor = toDeskAnchor(
-          deskLocations,
-          resolvedDeskIndex,
-          agent.x,
-          agent.y,
-        );
-        addCandidate("desk_focus", 1.25, anchor.x, anchor.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "desk", lingerMs: 8_000 + Math.random() * 5_000 }),
-        );
-      }
+      pushCandidate("roam", 1.5, () => {
+        const routePoint = roamRoutePoints[brain.roamIndex % Math.max(1, roamRoutePoints.length)]
+          ?? pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 100);
+        if (!routePoint || isPointBusy(agent.id, routePoint.x, routePoint.y, others)) return null;
+        return buildIntentPlan(agent, "roam", "autonomous", others, routePoint);
+      });
 
-      for (const point of kitchenPoints) {
-        addCandidate("kitchen_break", 1.18, point.x, point.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "kitchen", point, lingerMs: 3_800 + Math.random() * 3_600 }),
-        );
-      }
+      pushCandidate("roam_wide", 1.3, () => {
+        const point = pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 120);
+        if (!point) return null;
+        return buildIntentPlan(agent, "roam", "autonomous", others, point);
+      });
 
-      for (const point of funPoints) {
-        addCandidate("jukebox_stop", 0.92, point.x, point.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "jukebox", point, lingerMs: 2_400 + Math.random() * 2_000 }),
-        );
-      }
+      pushCandidate("kitchen", 1.1, () => {
+        const point = pickAvailablePoint(agent.id, kitchenPoints, others, agent.x, agent.y, 90);
+        if (!point) return null;
+        return buildIntentPlan(agent, "kitchen", "autonomous", others, point);
+      });
 
-      if (meetingSeatLocations.length > 0) {
-        const seat = meetingSeatLocations[Math.floor(Math.random() * meetingSeatLocations.length)]!;
-        addCandidate("meeting_drop_in", 0.96, seat.x, seat.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "meeting_room", lingerMs: 4_600 + Math.random() * 2_800 }),
-        );
-      }
+      pushCandidate("lounge", 0.95, () => {
+        const point = pickAvailablePoint(agent.id, loungePoints, others, agent.x, agent.y, 80);
+        if (!point) return null;
+        return buildIntentPlan(agent, "lounge", "autonomous", others, point);
+      });
 
-      if (gymWorkoutLocations.length > 0) {
-        const gymIndexes = [...new Set([
-          chooseNextGymIndexForAgent(agent),
-          chooseNextGymIndexForAgent(agent),
-          Math.floor(Math.random() * gymWorkoutLocations.length),
-          Math.floor(Math.random() * gymWorkoutLocations.length),
-        ])];
-        for (const gymIndex of gymIndexes) {
-          const workout = gymWorkoutLocations[gymIndex] ?? GYM_DEFAULT_TARGET;
-          addCandidate(`gym_${workout.workoutStyle}`, 0.95 + Math.random() * 0.08, workout.x, workout.y, () =>
-            buildRoutePlan(agent, "autonomous", { kind: "gym", lingerMs: 5_800 + Math.random() * 6_800 }),
-          );
-        }
-      }
-
-      if (qaLabStations.length > 0) {
-        const qaIndexes = [...new Set([
-          chooseNextQaIndexForAgent(agent),
-          chooseNextQaIndexForAgent(agent),
-          Math.floor(Math.random() * qaLabStations.length),
-          Math.floor(Math.random() * qaLabStations.length),
-        ])];
-        for (const qaIndex of qaIndexes) {
-          const station = qaLabStations[qaIndex] ?? {
-            ...QA_LAB_DEFAULT_TARGET,
-            stationType: "console" as const,
-          };
-          addCandidate(`qa_${station.stationType}`, 0.9 + Math.random() * 0.1, station.x, station.y, () =>
-            buildRoutePlan(agent, "autonomous", { kind: "qa_lab", lingerMs: 4_600 + Math.random() * 5_600 }),
-          );
-        }
-      }
-
-      const hasServerRoom = (furnitureItems ?? []).some((item) =>
-        ["server_rack", "server_terminal", "qa_terminal", "device_rack", "test_bench"].includes(item.type),
+      pushCandidate("desk", 0.9, () =>
+        deskLocations.length > 0 ? buildIntentPlan(agent, "desk", "autonomous", others) : null,
       );
-      if (hasServerRoom) {
-        addCandidate("server_check", 0.88, SERVER_ROOM_TARGET.x, SERVER_ROOM_TARGET.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "server_room", lingerMs: 4_800 + Math.random() * 2_600 }),
-        );
+
+      pushCandidate("jukebox", danceUntilByAgentId[agent.id] && danceUntilByAgentId[agent.id] > Date.now() ? 1.15 : 0.55, () => {
+        const point = pickAvailablePoint(agent.id, funPoints, others, agent.x, agent.y, 90);
+        if (!point) return null;
+        return buildIntentPlan(agent, "jukebox", "autonomous", others, point);
+      });
+
+      pushCandidate("gym", 0.32, () =>
+        gymWorkoutLocations.length > 0 ? buildIntentPlan(agent, "gym", "autonomous", others) : null,
+      );
+
+      pushCandidate("qa_lab", 0.26, () =>
+        qaLabStations.length > 0 ? buildIntentPlan(agent, "qa_lab", "autonomous", others) : null,
+      );
+
+      pushCandidate("server_room", 0.2, () => buildIntentPlan(agent, "server_room", "autonomous", others));
+
+      const winner = chooseWeighted(candidates)?.plan;
+      if (winner) {
+        brain.roamIndex += 1;
+        if (brain.roamIndex % 4 === 0) {
+          const currentIndex = ROAM_MODEL_ORDER.indexOf(brain.roamModel);
+          brain.roamModel = ROAM_MODEL_ORDER[(currentIndex + 1) % ROAM_MODEL_ORDER.length] ?? brain.roamModel;
+        }
+        return winner;
       }
 
-      const hasSmsBooth = (furnitureItems ?? []).some((item) => item.type === "sms_booth");
-      if (hasSmsBooth) {
-        addCandidate("sms_booth", 0.84, agent.x + 1, agent.y + 1, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "sms_booth", lingerMs: 4_000 + Math.random() * 2_000 }),
-        );
-      }
-
-      const hasPhoneBooth = (furnitureItems ?? []).some((item) => item.type === "phone_booth");
-      if (hasPhoneBooth) {
-        addCandidate("phone_booth", 0.8, agent.x + 2, agent.y + 2, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "phone_booth", lingerMs: 4_000 + Math.random() * 2_000 }),
-        );
-      }
-
-      const roamPoints = [...new Set([0, 1, 2, 3, 4].map(() => Math.floor(Math.random() * 16)))]
-        .map(() => chooseDistinctRoamPoint(agent.id, agent.x, agent.y));
-      for (const roamPoint of roamPoints) {
-        addCandidate("roam", 0.76, roamPoint.x, roamPoint.y, () =>
-          buildRoutePlan(agent, "autonomous", { kind: "roam", point: roamPoint, lingerMs: 1_200 + Math.random() * 2_400 }),
-        );
-      }
-      const roamPoint = roamPoints[0] ?? chooseDistinctRoamPoint(agent.id, agent.x, agent.y);
-
-      const ranked = candidates
-        .filter(({ score }) => Number.isFinite(score) && score > 0)
-        .sort((left, right) => right.score - left.score);
-      const selected = ranked[0];
-      return selected ? selected.build() : buildRoutePlan(agent, "autonomous", { kind: "roam", point: roamPoint });
+      const fallback = pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 80)
+        ?? { x: agent.x + 60, y: agent.y + 20, facing: angleFrom(agent.x, agent.y, agent.x + 60, agent.y + 20) };
+      return buildIntentPlan(agent, "roam", "autonomous", others, fallback);
     },
-    [buildRoutePlan, chooseNextGymIndexForAgent, chooseNextQaIndexForAgent, deskLocations, furnitureRef, gymWorkoutLocations, meetingSeatLocations, qaLabStations],
+    [
+      buildIntentPlan,
+      danceUntilByAgentId,
+      deskLocations.length,
+      furnitureRef,
+      gymWorkoutLocations.length,
+      qaLabStations.length,
+    ],
   );
 
-  const buildForcedIntent = useCallback(
-    (
-      agentId: string,
-      effectiveStatus: RenderAgent["status"],
-      explicitMeetingHold: boolean,
-      explicitGymHold: boolean,
-      explicitSmsBoothHold: boolean,
-      explicitPhoneBoothHold: boolean,
-      explicitQaHold: boolean,
-      explicitGithubHold: boolean,
-      explicitDeskHold: boolean,
-      hasDesk: boolean,
-    ): WorkingIntent | null => {
-      if (explicitMeetingHold) return { kind: "meeting_room" };
-      if (explicitGymHold) return { kind: "gym" };
-      if (explicitSmsBoothHold) return { kind: "sms_booth" };
-      if (explicitPhoneBoothHold) return { kind: "phone_booth" };
-      if (explicitQaHold) return { kind: "qa_lab" };
-      if (explicitGithubHold) return { kind: "server_room" };
-      if (explicitDeskHold) {
-        if (hasDesk || deskLocations.length > 0) return { kind: "desk" };
-        return null;
-      }
+  const determineForcedIntent = useCallback(
+    (agent: RenderAgent): AgentIntent | null => {
+      if (isRemoteOfficeAgentId(agent.id)) return null;
+      if ((standupMeeting?.participantOrder ?? []).includes(agent.id)) return "meeting_room";
+      if (gymHoldByAgentId[agent.id]) return "gym";
+      if (smsBoothHoldByAgentId[agent.id]) return "sms_booth";
+      if (phoneBoothHoldByAgentId[agent.id]) return "phone_booth";
+      if (qaHoldByAgentId[agent.id]) return "qa_lab";
+      if (githubReviewByAgentId[agent.id]) return "server_room";
+      if (deskHoldByAgentId[agent.id] || typeof assignedDeskIndexByAgentId[agent.id] === "number") return "desk";
       return null;
     },
-    [deskLocations.length],
+    [
+      assignedDeskIndexByAgentId,
+      deskHoldByAgentId,
+      githubReviewByAgentId,
+      gymHoldByAgentId,
+      phoneBoothHoldByAgentId,
+      qaHoldByAgentId,
+      smsBoothHoldByAgentId,
+      standupMeeting?.participantOrder,
+    ],
   );
 
-  const buildPlanForIntent = useCallback(
-    (agent: RenderAgent, intent: WorkingIntent, mode: AgentMode) => {
-      switch (intent.kind) {
-        case "meeting_room":
-          return buildRoutePlan(agent, mode, { kind: "meeting_room", lingerMs: 12_000 });
-        case "gym":
-          return buildRoutePlan(agent, mode, { kind: "gym", lingerMs: 10_000 });
-        case "qa_lab":
-          return buildRoutePlan(agent, mode, { kind: "qa_lab", lingerMs: 9_000 });
-        case "server_room":
-          return buildRoutePlan(agent, mode, { kind: "server_room", lingerMs: 8_000 });
-        case "sms_booth":
-          return buildRoutePlan(agent, mode, { kind: "sms_booth", lingerMs: 8_000 });
-        case "phone_booth":
-          return buildRoutePlan(agent, mode, { kind: "phone_booth", lingerMs: 8_000 });
-        case "desk":
-        default:
-          return buildRoutePlan(agent, mode, { kind: "desk", lingerMs: 15_000 });
-      }
+  const buildRecoveryPlan = useCallback(
+    (agent: RenderAgent, others: RenderAgent[], brain: AgentBrain) => {
+      const pool = isRemoteOfficeAgentId(agent.id)
+        ? REMOTE_ROAM_POINTS.map((point) => ({ x: point.x, y: point.y, facing: angleFrom(agent.x, agent.y, point.x, point.y) }))
+        : [
+            ...ROAM_POINTS.map((point) => ({ x: point.x, y: point.y, facing: angleFrom(agent.x, agent.y, point.x, point.y) })),
+            ...MEETING_OVERFLOW_LOCATIONS,
+          ];
+      const point = pickAvailablePoint(agent.id, pool, others, agent.x, agent.y, 120)
+        ?? chooseRandom(pool, { x: agent.x + 80, y: agent.y + 20, facing: angleFrom(agent.x, agent.y, agent.x + 80, agent.y + 20) });
+      brain.sameTargetPlanCount = 0;
+      return buildIntentPlan(agent, isRemoteOfficeAgentId(agent.id) ? "roam_remote" : "roam", "autonomous", others, point);
     },
-    [buildRoutePlan],
-  );
-
-  const maybeContinueStagedInteraction = useCallback(
-    (agent: RenderAgent, mode: AgentMode): RoutePlan | null => {
-      switch (agent.interactionTarget) {
-        case "gym":
-          return agent.gymStage === "workout" ? null : buildRoutePlan(agent, mode, { kind: "gym", lingerMs: 8_500 });
-        case "qa_lab":
-          return agent.qaLabStage === "station" ? null : buildRoutePlan(agent, mode, { kind: "qa_lab", lingerMs: 7_000 });
-        case "server_room":
-          return agent.serverRoomStage === "terminal" ? null : buildRoutePlan(agent, mode, { kind: "server_room", lingerMs: 6_000 });
-        case "sms_booth":
-          return agent.smsBoothStage === "typing" ? null : buildRoutePlan(agent, mode, { kind: "sms_booth", lingerMs: 5_200 });
-        case "phone_booth":
-          return agent.phoneBoothStage === "receiver" ? null : buildRoutePlan(agent, mode, { kind: "phone_booth", lingerMs: 5_200 });
-        default:
-          return null;
-      }
-    },
-    [buildRoutePlan],
-  );
-
-  const ensurePlanMovesAgent = useCallback(
-    (agent: RenderAgent, plan: RoutePlan, mode: AgentMode): RoutePlan => {
-      const minimumDistance = mode === "autonomous" ? MIN_AUTONOMOUS_TRAVEL_DISTANCE : MIN_FORCED_TRAVEL_DISTANCE;
-      const distance = Math.hypot(plan.targetX - agent.x, plan.targetY - agent.y);
-      if (distance >= minimumDistance) {
-        return plan;
-      }
-      if (mode === "autonomous") {
-        return buildRoutePlan(agent, "autonomous", {
-          kind: "roam",
-          point: chooseDistinctRoamPoint(agent.id, agent.x, agent.y),
-          lingerMs: 1_400 + Math.random() * 1_000,
-        });
-      }
-      if (plan.interactionTarget === "desk" && deskLocations.length > 1) {
-        const alternativeDeskIndex =
-          ((deskByAgentRef.current.get(agent.id) ?? hashAgentId(agent.id) % deskLocations.length) + 1) %
-          deskLocations.length;
-        const anchor = toDeskAnchor(deskLocations, alternativeDeskIndex, agent.x, agent.y);
-        const fallbackRoute = buildRecoveredPath(agent.x, agent.y, anchor.x, anchor.y, getNavGrid());
-        return {
-          ...plan,
-          targetX: fallbackRoute.targetX,
-          targetY: fallbackRoute.targetY,
-          path: fallbackRoute.path,
-          facing: anchor.facing,
-        };
-      }
-      return plan;
-    },
-    [buildRoutePlan, deskLocations, getNavGrid],
+    [buildIntentPlan],
   );
 
   useEffect(() => {
     const now = Date.now();
+    const previousLookup = new Map(renderAgentsRef.current.map((agent) => [agent.id, agent]));
+    const nextAgents: RenderAgent[] = [];
     const activeIds = new Set(agents.map((agent) => agent.id));
+
     for (const [id] of brainByAgentRef.current) {
       if (!activeIds.has(id)) brainByAgentRef.current.delete(id);
-    }
-    for (const [id] of stickyUntilRef.current) {
-      if (!activeIds.has(id)) stickyUntilRef.current.delete(id);
     }
     for (const [id] of deskByAgentRef.current) {
       if (!activeIds.has(id)) deskByAgentRef.current.delete(id);
     }
-    for (const [id] of gymByAgentRef.current) {
-      if (!activeIds.has(id)) gymByAgentRef.current.delete(id);
-    }
-    for (const [id] of qaByAgentRef.current) {
-      if (!activeIds.has(id)) qaByAgentRef.current.delete(id);
-    }
-    for (const [id] of gymCycleRef.current) {
-      if (!activeIds.has(id)) gymCycleRef.current.delete(id);
-    }
-    for (const [id] of qaCycleRef.current) {
-      if (!activeIds.has(id)) qaCycleRef.current.delete(id);
-    }
-
-    const currentMap = new Map(renderAgentsRef.current.map((agent) => [agent.id, agent]));
-    const nextAgents: RenderAgent[] = [];
 
     for (const sceneAgent of agents) {
-      const existing = currentMap.get(sceneAgent.id);
-
-      if (isJanitorSceneActor(sceneAgent)) {
-        const route = sceneAgent.janitorRoute;
-        const spawn = route[0] ?? { x: 400, y: 400, facing: Math.PI / 2 };
-        const nextStop = route[1] ?? spawn;
-        nextAgents.push(
-          existing
-            ? ({ ...existing, ...sceneAgent } as RenderAgent)
-            : ({
-                ...sceneAgent,
-                x: spawn.x,
-                y: spawn.y,
-                targetX: nextStop.x,
-                targetY: nextStop.y,
-                path: planOfficePath(spawn.x, spawn.y, nextStop.x, nextStop.y, getNavGrid()),
-                facing: spawn.facing,
-                frame: 0,
-                walkSpeed: WALK_SPEED * 0.8,
-                phaseOffset: Math.random() * Math.PI * 2,
-                state: route.length > 1 ? "walking" : "standing",
-                janitorRouteIndex: route.length > 1 ? 1 : 0,
-              } as RenderAgent),
-        );
+      const existing = previousLookup.get(sceneAgent.id);
+      if (existing) {
+        nextAgents.push({ ...existing, ...sceneAgent });
         continue;
       }
 
-      const assignedDeskIndex = assignedDeskIndexByAgentId[sceneAgent.id];
-      if (typeof assignedDeskIndex === "number") deskByAgentRef.current.set(sceneAgent.id, assignedDeskIndex);
-      else deskByAgentRef.current.delete(sceneAgent.id);
-
-      if (!gymByAgentRef.current.has(sceneAgent.id)) {
-        gymByAgentRef.current.set(sceneAgent.id, nextGymRef.current % Math.max(gymWorkoutLocations.length, 1));
-        nextGymRef.current += 1;
-      }
-      if (!qaByAgentRef.current.has(sceneAgent.id)) {
-        qaByAgentRef.current.set(sceneAgent.id, nextQaRef.current % Math.max(qaLabStations.length, 1));
-        nextQaRef.current += 1;
-      }
-
-      const explicitMeetingHold =
-        (standupMeeting?.phase === "gathering" || standupMeeting?.phase === "in_progress") &&
-        (standupMeeting?.participantOrder ?? []).includes(sceneAgent.id);
-      const explicitGymHold = Boolean(gymHoldByAgentId[sceneAgent.id]);
-      const explicitSmsBoothHold = Boolean(smsBoothHoldByAgentId[sceneAgent.id]);
-      const explicitPhoneBoothHold = Boolean(phoneBoothHoldByAgentId[sceneAgent.id]);
-      const explicitQaHold = Boolean(qaHoldByAgentId[sceneAgent.id]);
-      const explicitGithubHold = Boolean(githubReviewByAgentId[sceneAgent.id]);
-      const explicitDeskHold = Boolean(deskHoldByAgentId[sceneAgent.id]);
-
-      if (sceneAgent.status === "working" || explicitDeskHold) {
-        stickyUntilRef.current.set(sceneAgent.id, now + DESK_STICKY_MS);
-      }
-      const stickyUntil = stickyUntilRef.current.get(sceneAgent.id) ?? 0;
-      const effectiveStatus: RenderAgent["status"] =
-        sceneAgent.status === "error"
-          ? "error"
-          : sceneAgent.status === "working" ||
-              explicitDeskHold ||
-              explicitMeetingHold ||
-              explicitGymHold ||
-              explicitSmsBoothHold ||
-              explicitPhoneBoothHold ||
-              explicitQaHold ||
-              explicitGithubHold ||
-              stickyUntil > now
-            ? "working"
-            : "idle";
-
-      const workingIntent = buildForcedIntent(
-        sceneAgent.id,
-        effectiveStatus,
-        explicitMeetingHold,
-        explicitGymHold,
-        explicitSmsBoothHold,
-        explicitPhoneBoothHold,
-        explicitQaHold,
-        explicitGithubHold,
-        explicitDeskHold,
-        deskByAgentRef.current.has(sceneAgent.id),
-      );
-
-      const spawnPoint = chooseSpawnPoint(sceneAgent.id);
-      if (typeof assignedDeskIndex !== "number" && deskLocations.length > 0) {
-        deskByAgentRef.current.set(
-          sceneAgent.id,
-          hashAgentId(sceneAgent.id) % deskLocations.length,
-        );
-      }
-
-      const baseAgent: RenderAgent = existing
-        ? ({ ...existing, ...sceneAgent, status: effectiveStatus } as RenderAgent)
-        : ({
-            ...sceneAgent,
-            x: spawnPoint.x,
-            y: spawnPoint.y,
-            targetX: 0,
-            targetY: 0,
-            path: [],
-            facing: Math.PI / 2,
-            frame: 0,
-            walkSpeed: WALK_SPEED * (0.88 + Math.random() * 0.4),
-            phaseOffset: Math.random() * Math.PI * 2,
-            state: "standing" as const,
-            status: effectiveStatus,
-          } as RenderAgent);
-
-      let brain = brainByAgentRef.current.get(sceneAgent.id);
-      if (!brain) {
-        brain = DEFAULT_BRAIN(baseAgent.x, baseAgent.y, now);
-        brainByAgentRef.current.set(sceneAgent.id, brain);
-      }
-
-      if (effectiveStatus === "error") {
-        brain.mode = "error";
-        brain.nextDecisionAt = Number.POSITIVE_INFINITY;
-        nextAgents.push({
-          ...baseAgent,
-          targetX: baseAgent.x,
-          targetY: baseAgent.y,
-          path: [],
-          state: "standing" as const,
-          interactionTarget: undefined,
-          smsBoothStage: undefined,
-          phoneBoothStage: undefined,
-          serverRoomStage: undefined,
-          gymStage: undefined,
-          qaLabStage: undefined,
-          qaLabStationType: undefined,
-          workoutStyle: undefined,
-        });
-        continue;
-      }
-
-      if (baseAgent.pingPongUntil !== undefined && baseAgent.pingPongUntil > now && !explicitMeetingHold) {
-        nextAgents.push(baseAgent);
-        continue;
-      }
-
-      const desiredMode: AgentMode = workingIntent ? "forced" : "autonomous";
-      let nextAgent: RenderAgent = baseAgent;
-      if (!existing || brain.mode !== desiredMode) {
-        const rawPlan = workingIntent
-          ? buildPlanForIntent(baseAgent, workingIntent, desiredMode)
-          : buildAutonomousPlan(baseAgent);
-        const plan = ensurePlanMovesAgent(baseAgent, rawPlan, desiredMode);
-        setBrainPlan(brain, plan, now, plan.path.length === 0);
-        if (desiredMode === "autonomous") {
-          brain.recentActions = nextRecentActions(brain.recentActions, plan.actionKey);
-        }
-        resetBrainProgress(brain, baseAgent.x, baseAgent.y, now);
-        nextAgent = applyPlanToAgent(baseAgent, plan);
-      } else if (desiredMode === "forced" && workingIntent) {
-        const rawPlan = buildPlanForIntent(baseAgent, workingIntent, desiredMode);
-        const plan = ensurePlanMovesAgent(baseAgent, rawPlan, desiredMode);
-        const changedTarget =
-          Math.hypot(plan.targetX - baseAgent.targetX, plan.targetY - baseAgent.targetY) > 18 ||
-          plan.interactionTarget !== baseAgent.interactionTarget ||
-          plan.gymStage !== baseAgent.gymStage ||
-          plan.qaLabStage !== baseAgent.qaLabStage ||
-          plan.serverRoomStage !== baseAgent.serverRoomStage ||
-          plan.smsBoothStage !== baseAgent.smsBoothStage ||
-          plan.phoneBoothStage !== baseAgent.phoneBoothStage;
-        if (changedTarget) {
-          setBrainPlan(brain, plan, now, plan.path.length === 0);
-          resetBrainProgress(brain, baseAgent.x, baseAgent.y, now);
-          nextAgent = applyPlanToAgent(baseAgent, plan);
-        }
-      }
-      nextAgents.push(nextAgent);
+      const spawn = isJanitorSceneActor(sceneAgent)
+        ? sceneAgent.janitorRoute[0] ?? chooseSpawnPoint(sceneAgent.id)
+        : chooseSpawnPoint(sceneAgent.id);
+      const projected = projectPointToNavigable(spawn.x, spawn.y, getNavGrid());
+      const clamped = clampAgentPointToMotionZone(sceneAgent.id, projected.x, projected.y);
+      const facing = spawn.facing ?? Math.PI / 2;
+      brainByAgentRef.current.set(sceneAgent.id, DEFAULT_BRAIN(clamped.x, clamped.y, now));
+      nextAgents.push({
+        ...sceneAgent,
+        x: clamped.x,
+        y: clamped.y,
+        targetX: clamped.x,
+        targetY: clamped.y,
+        path: [],
+        facing,
+        frame: Math.random() * 10,
+        walkSpeed: WALK_SPEED,
+        phaseOffset: Math.random() * Math.PI * 2,
+        state: "standing",
+        janitorRouteIndex: isJanitorSceneActor(sceneAgent) ? 0 : undefined,
+        janitorPauseUntil: undefined,
+      } as RenderAgent);
     }
 
     renderAgentsRef.current = nextAgents;
     const lookup = renderAgentLookupRef.current;
     lookup.clear();
-    for (const agent of nextAgents) lookup.set(agent.id, agent);
-  }, [
-    agents,
-    assignedDeskIndexByAgentId,
-    buildAutonomousPlan,
-    buildForcedIntent,
-    buildPlanForIntent,
-    ensurePlanMovesAgent,
-    deskHoldByAgentId,
-    getNavGrid,
-    githubReviewByAgentId,
-    gymHoldByAgentId,
-    gymWorkoutLocations.length,
-    phoneBoothHoldByAgentId,
-    qaHoldByAgentId,
-    qaLabStations.length,
-    smsBoothHoldByAgentId,
-    standupMeeting,
-  ]);
+    nextAgents.forEach((agent) => lookup.set(agent.id, agent));
+  }, [agents, getNavGrid]);
 
-  const tick = (delta = 1 / 60) => {
-    const grid = getNavGrid();
+  const tick = useCallback((delta = 1) => {
     const now = Date.now();
-    const frameAdvance = Math.min(2.2, Math.max(0.75, delta * 60));
+    const previousAgents = renderAgentsRef.current;
+    if (previousAgents.length === 0) return;
 
-    const moved: RenderAgent[] = renderAgentsRef.current.map((agent): RenderAgent => {
+    const nextAgents: RenderAgent[] = [];
+
+    for (const agent of previousAgents) {
+      const brain = brainByAgentRef.current.get(agent.id) ?? DEFAULT_BRAIN(agent.x, agent.y, now);
+      brainByAgentRef.current.set(agent.id, brain);
+
       if (isJanitorRenderAgent(agent)) {
-        if (agent.janitorPauseUntil && now < agent.janitorPauseUntil) {
-          return { ...agent, frame: agent.frame + frameAdvance, state: "standing" as const };
+        if (agent.janitorDespawnAt <= now) continue;
+        const route = agent.janitorRoute;
+        const currentIndex = Math.min(agent.janitorRouteIndex ?? 0, Math.max(0, route.length - 1));
+        const stop = route[currentIndex] ?? { x: agent.x, y: agent.y, facing: agent.facing };
+
+        if ((agent.janitorPauseUntil ?? 0) > now) {
+          nextAgents.push({ ...agent, state: "standing", path: [] });
+          continue;
         }
-        if (agent.janitorPauseUntil && now >= agent.janitorPauseUntil) {
-          const nextIndex = (agent.janitorRouteIndex ?? 0) + 1;
-          const nextStop = agent.janitorRoute[nextIndex];
-          if (!nextStop) {
-            return { ...agent, frame: agent.frame + frameAdvance, janitorPauseUntil: undefined, state: "standing" as const };
+
+        if (agent.path.length === 0) {
+          const target = buildPathToTarget(agent.id, agent.x, agent.y, stop.x, stop.y);
+          const walking = applyPlanToAgent(agent, {
+            actionKey: "janitor",
+            mode: "forced",
+            lingerMs: 0,
+            targetX: target.targetX,
+            targetY: target.targetY,
+            facing: stop.facing,
+            path: target.path,
+            state: "standing",
+          });
+          nextAgents.push({ ...walking, janitorRouteIndex: currentIndex });
+          continue;
+        }
+
+        const waypoint = agent.path[0] ?? { x: agent.targetX, y: agent.targetY };
+        const distance = Math.hypot(waypoint.x - agent.x, waypoint.y - agent.y);
+        const stepSize = Math.max(0.45, agent.walkSpeed) * 60 * delta;
+        if (distance <= stepSize) {
+          const remaining = agent.path.slice(1);
+          if (remaining.length === 0) {
+            const nextIndex = currentIndex < route.length - 1 ? currentIndex + 1 : currentIndex;
+            nextAgents.push({
+              ...agent,
+              x: waypoint.x,
+              y: waypoint.y,
+              targetX: waypoint.x,
+              targetY: waypoint.y,
+              path: [],
+              facing: stop.facing,
+              state: "standing",
+              janitorRouteIndex: nextIndex,
+              janitorPauseUntil: now + agent.janitorPauseMs,
+            });
+          } else {
+            nextAgents.push({
+              ...agent,
+              x: waypoint.x,
+              y: waypoint.y,
+              path: remaining,
+              facing: angleFrom(agent.x, agent.y, waypoint.x, waypoint.y),
+              state: "walking",
+            });
           }
-          return {
+        } else {
+          const nx = agent.x + ((waypoint.x - agent.x) / distance) * stepSize;
+          const ny = agent.y + ((waypoint.y - agent.y) / distance) * stepSize;
+          nextAgents.push({
             ...agent,
-            frame: agent.frame + frameAdvance,
-            janitorPauseUntil: undefined,
-            janitorRouteIndex: nextIndex,
-            targetX: nextStop.x,
-            targetY: nextStop.y,
-            path: planOfficePath(agent.x, agent.y, nextStop.x, nextStop.y, grid),
-            facing: nextStop.facing,
-            state: "walking" as const,
-          };
+            x: nx,
+            y: ny,
+            facing: angleFrom(agent.x, agent.y, waypoint.x, waypoint.y),
+            state: "walking",
+          });
         }
+        continue;
+      }
+
+      const seenAt = lastSeenByAgentId[agent.id] ?? now;
+      const shouldMarkAway = Number.isFinite(seenAt) && seenAt > 0 && now - seenAt > AWAY_THRESHOLD_MS;
+
+      if (agent.state === "away") {
+        brain.nextDecisionAt = Math.min(brain.nextDecisionAt, now);
+      }
+
+      if (shouldMarkAway) {
+        brain.nextDecisionAt = Math.min(brain.nextDecisionAt, now + 250);
       }
 
       if (agent.pingPongUntil !== undefined) {
         if (now >= agent.pingPongUntil) {
-          return {
+          nextAgents.push({
             ...agent,
-            frame: agent.frame + frameAdvance,
             pingPongUntil: undefined,
             pingPongTargetX: undefined,
             pingPongTargetY: undefined,
@@ -1243,321 +1127,161 @@ export function useRebuiltAgentTick(
             pingPongTableUid: undefined,
             pingPongSide: undefined,
             pingPongPreviousWalkSpeed: undefined,
-            targetX: agent.x,
-            targetY: agent.y,
+            walkSpeed: agent.pingPongPreviousWalkSpeed ?? WALK_SPEED,
+            state: "standing",
             path: [],
-            state: "standing" as const,
-          };
+          });
+          continue;
         }
-      }
-
-      if (agent.bumpedUntil !== undefined && now < agent.bumpedUntil) {
-        return { ...agent, frame: agent.frame + frameAdvance, state: "standing" as const };
-      }
-
-      if (agent.bumpedUntil !== undefined && now >= agent.bumpedUntil) {
-        agent = {
+        const tx = agent.pingPongTargetX ?? agent.x;
+        const ty = agent.pingPongTargetY ?? agent.y;
+        const targetDistance = Math.hypot(tx - agent.x, ty - agent.y);
+        if (targetDistance <= ARRIVAL_EPSILON) {
+          nextAgents.push({
+            ...agent,
+            x: tx,
+            y: ty,
+            targetX: tx,
+            targetY: ty,
+            path: [],
+            facing: agent.pingPongFacing ?? agent.facing,
+            state: "standing",
+          });
+          continue;
+        }
+        const stepSize = Math.max(WALK_SPEED * 1.6, agent.walkSpeed) * 60 * delta;
+        const nx = agent.x + ((tx - agent.x) / targetDistance) * Math.min(stepSize, targetDistance);
+        const ny = agent.y + ((ty - agent.y) / targetDistance) * Math.min(stepSize, targetDistance);
+        nextAgents.push({
           ...agent,
-          bumpedUntil: undefined,
-          bumpTalkUntil: undefined,
-          collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
-          path: planOfficePath(agent.x, agent.y, agent.targetX, agent.targetY, grid),
-          state: (agent.path?.length ?? 0) > 0 ? "walking" : agent.state,
-        } as RenderAgent;
-      }
-
-      const brain = brainByAgentRef.current.get(agent.id) ?? DEFAULT_BRAIN(agent.x, agent.y, now);
-      brainByAgentRef.current.set(agent.id, brain);
-
-      if (agent.status === "error") {
-        return {
-          ...agent,
-          frame: agent.frame + frameAdvance,
-          state: "standing" as const,
+          x: nx,
+          y: ny,
+          targetX: tx,
+          targetY: ty,
+          facing: angleFrom(agent.x, agent.y, tx, ty),
+          state: "walking",
           path: [],
-          targetX: agent.x,
-          targetY: agent.y,
-        };
+        });
+        continue;
       }
 
-      if ((danceUntilByAgentId[agent.id] ?? 0) > now && agent.state !== "away") {
+      let working = agent.state === "away" ? { ...agent, state: "standing", awayUntil: undefined } : agent;
+      const explicitIntent = determineForcedIntent(agent);
+      const peers = [...nextAgents, ...previousAgents.filter((other) => other.id !== agent.id && !nextAgents.some((entry) => entry.id === other.id))];
+
+      const movedSinceProgress = Math.hypot(agent.x - brain.progressX, agent.y - brain.progressY);
+      if (movedSinceProgress > STALL_EPSILON) {
         resetBrainProgress(brain, agent.x, agent.y, now);
-        return {
-          ...agent,
-          frame: agent.frame + frameAdvance,
-          state: "dancing" as const,
-          path: [],
-          targetX: agent.x,
-          targetY: agent.y,
-        };
       }
 
-      const lastSeen = lastSeenByAgentId[agent.id] ?? 0;
-      const shouldGoAway = agent.status === "idle" && lastSeen > 0 && now - lastSeen > AWAY_THRESHOLD_MS;
-      if (shouldGoAway && agent.path.length === 0 && agent.interactionTarget !== "kitchen") {
-        const furnitureItems = furnitureRef.current ?? [];
-        const kitchenPoint = buildKitchenPoints(furnitureItems)[0];
-        if (kitchenPoint) {
-          const awayPlan = ensurePlanMovesAgent(
-            agent,
-            buildRoutePlan(agent, "autonomous", {
-              kind: "kitchen",
-              point: kitchenPoint,
-              lingerMs: 45_000,
-            }),
-            "autonomous",
-          );
-          setBrainPlan(brain, awayPlan, now, awayPlan.path.length === 0);
-          brain.recentActions = nextRecentActions(brain.recentActions, awayPlan.actionKey);
-          return {
-            ...applyPlanToAgent(agent, awayPlan),
-            frame: agent.frame + frameAdvance,
-            state: awayPlan.path.length > 0 ? "walking" : "away",
-          };
-        }
-      }
+      const needsRecovery =
+        brain.sameTargetPlanCount > REPEAT_TARGET_RESET_THRESHOLD ||
+        (agent.path.length > 0 && now - brain.progressSince > STALL_RESET_MS);
 
-      let working: RenderAgent = agent;
-      let path = working.path ?? [];
-      const targetDistance = Math.hypot(working.targetX - working.x, working.targetY - working.y);
-      if (path.length === 0 && targetDistance > PATH_REPLAN_DISTANCE) {
-        const replanned = buildRecoveredPath(working.x, working.y, working.targetX, working.targetY, grid);
-        path = replanned.path;
-        working = {
-          ...working,
-          targetX: replanned.targetX,
-          targetY: replanned.targetY,
-          path,
-          state: path.length > 0 ? "walking" : working.state,
-        } as RenderAgent;
-      }
-
-      if (path.length > 0) {
-        const movedDistance = Math.hypot(working.x - brain.stallX, working.y - brain.stallY);
-        if (movedDistance > STALL_MOVE_EPSILON) {
-          resetBrainProgress(brain, working.x, working.y, now);
-        } else if (now - brain.stallSince >= STALL_SAMPLE_MS) {
-          brain.stallCount += 1;
-          brain.stallSince = now;
-          const rawRecoveryPlan =
-            brain.mode === "forced"
-              ? working.interactionTarget === "meeting_room"
-                ? buildPlanForIntent(working, { kind: "meeting_room" }, "forced")
-                : working.interactionTarget === "gym"
-                  ? buildPlanForIntent(working, { kind: "gym" }, "forced")
-                  : working.interactionTarget === "qa_lab"
-                    ? buildPlanForIntent(working, { kind: "qa_lab" }, "forced")
-                    : working.interactionTarget === "server_room"
-                      ? buildPlanForIntent(working, { kind: "server_room" }, "forced")
-                      : working.interactionTarget === "sms_booth"
-                        ? buildPlanForIntent(working, { kind: "sms_booth" }, "forced")
-                        : working.interactionTarget === "phone_booth"
-                          ? buildPlanForIntent(working, { kind: "phone_booth" }, "forced")
-                          : buildPlanForIntent(working, { kind: "desk" }, "forced")
-              : buildAutonomousPlan(working);
-          const recoveredPlan =
-            brain.stallCount > MAX_STALL_REPLANS && brain.mode === "autonomous"
-              ? buildRoutePlan(working, "autonomous", {
-                  kind: "roam",
-                  point: chooseDistinctRoamPoint(working.id, working.x, working.y),
-                  lingerMs: 1_800,
-                })
-              : ensurePlanMovesAgent(working, rawRecoveryPlan, brain.mode);
-          setBrainPlan(brain, recoveredPlan, now, recoveredPlan.path.length === 0);
-          if (brain.mode === "autonomous") {
-            brain.recentActions = nextRecentActions(brain.recentActions, recoveredPlan.actionKey);
-          }
-          resetBrainProgress(brain, working.x, working.y, now);
-          return { ...applyPlanToAgent(working, recoveredPlan), frame: working.frame + frameAdvance };
-        }
-      } else {
+      if (explicitIntent && (agent.interactionTarget !== explicitIntent || agent.path.length === 0)) {
+        const forcedPlan = buildIntentPlan(agent, explicitIntent, "forced", peers);
+        markPlanOnBrain(brain, forcedPlan, now, forcedPlan.path.length === 0);
+        working = applyPlanToAgent(agent, forcedPlan);
+      } else if (shouldContinueStage(agent) && agent.path.length === 0) {
+        const continuedPlan = buildIntentPlan(agent, agent.interactionTarget as AgentIntent, brain.mode, peers);
+        markPlanOnBrain(brain, continuedPlan, now, continuedPlan.path.length === 0);
+        working = applyPlanToAgent(agent, continuedPlan);
+      } else if (needsRecovery) {
+        const recoveryPlan = buildRecoveryPlan(agent, peers, brain);
+        markPlanOnBrain(brain, recoveryPlan, now, recoveryPlan.path.length === 0);
+        working = applyPlanToAgent(agent, recoveryPlan);
         resetBrainProgress(brain, working.x, working.y, now);
+      } else if (working.path.length === 0 && now >= brain.nextDecisionAt) {
+        const autonomousPlan = explicitIntent
+          ? buildIntentPlan(agent, explicitIntent, "forced", peers)
+          : buildAutonomousPlan(agent, peers, brain);
+        markPlanOnBrain(brain, autonomousPlan, now, autonomousPlan.path.length === 0);
+        working = applyPlanToAgent(agent, autonomousPlan);
       }
 
-      const baseSpeed =
-        (working.walkSpeed ?? WALK_SPEED) *
-        (working.status === "working" && working.state !== "sitting" ? WORKING_WALK_SPEED_MULTIPLIER : 1);
-      const speed = baseSpeed * frameAdvance;
-      const waypoint = path[0] ?? { x: working.targetX, y: working.targetY };
-      const dx = waypoint.x - working.x;
-      const dy = waypoint.y - working.y;
-      const distance = Math.hypot(dx, dy);
+      if (working.path.length === 0) {
+        const dancing = danceUntilByAgentId[working.id] && danceUntilByAgentId[working.id] > now;
+        nextAgents.push({
+          ...working,
+          state: dancing && working.interactionTarget === "jukebox" ? "dancing" : working.state,
+          frame: working.frame + delta,
+          walkSpeed: explicitIntent ? WALK_SPEED * WORKING_WALK_SPEED_MULTIPLIER : WALK_SPEED,
+        });
+        continue;
+      }
 
-      let nextX = working.x;
-      let nextY = working.y;
-      let nextFacing = working.facing;
-      let nextPath: RenderAgent["path"] = path;
-      let nextState: RenderAgent["state"] = working.state;
-
-      if (distance > speed && distance > 0.001) {
-        nextX = working.x + (dx / distance) * speed;
-        nextY = working.y + (dy / distance) * speed;
-        const safeStep = projectPointToNavigable(nextX, nextY, grid);
-        nextX = safeStep.x;
-        nextY = safeStep.y;
-        nextFacing = Math.atan2(dx, dy);
-        nextState = "walking";
-      } else {
-        nextX = waypoint.x;
-        nextY = waypoint.y;
-        if (path.length > 1) {
-          nextPath = path.slice(1);
-          nextState = "walking";
+      const waypoint = working.path[0] ?? { x: working.targetX, y: working.targetY };
+      const distance = Math.hypot(waypoint.x - working.x, waypoint.y - working.y);
+      const stepSize = Math.max(0.45, working.walkSpeed) * 60 * delta;
+      if (distance <= stepSize) {
+        const nextPath = working.path.slice(1);
+        const arrivedX = waypoint.x;
+        const arrivedY = waypoint.y;
+        if (nextPath.length === 0) {
+          const arrived = {
+            ...working,
+            x: arrivedX,
+            y: arrivedY,
+            path: [],
+            targetX: arrivedX,
+            targetY: arrivedY,
+            state: inferArrivalState({
+              actionKey: brain.currentActionKey,
+              mode: brain.mode,
+              lingerMs: brain.lingerMs,
+              targetX: arrivedX,
+              targetY: arrivedY,
+              facing: working.facing,
+              path: [],
+              state: working.state,
+            }),
+            facing: working.facing,
+            frame: working.frame + delta,
+          } as RenderAgent;
+          brain.nextDecisionAt = now + brain.lingerMs + Math.floor(Math.random() * DECISION_JITTER_MS);
+          resetBrainProgress(brain, arrivedX, arrivedY, now);
+          nextAgents.push(arrived);
         } else {
-          nextPath = [];
-          if (isJanitorRenderAgent(agent)) {
-            const stop = agent.janitorRoute[agent.janitorRouteIndex ?? 0] ?? agent.janitorRoute.at(-1);
-            return {
-              ...working,
-              x: nextX,
-              y: nextY,
-              frame: working.frame + frameAdvance,
-              path: [],
-              state: "standing" as const,
-              facing: stop?.facing ?? nextFacing,
-              janitorPauseUntil:
-                (agent.janitorRouteIndex ?? 0) < agent.janitorRoute.length - 1
-                  ? now + agent.janitorPauseMs
-                  : undefined,
-            };
-          }
-
-          if (working.pingPongUntil !== undefined) {
-            nextX = working.pingPongTargetX ?? nextX;
-            nextY = working.pingPongTargetY ?? nextY;
-            nextFacing = working.pingPongFacing ?? nextFacing;
-            nextState = "standing";
-          } else {
-            const arrivedAgent: RenderAgent = {
-              ...working,
-              x: nextX,
-              y: nextY,
-              path: [],
-            };
-            const continuedPlan = isInteractiveRoomTarget(working.interactionTarget)
-              ? maybeContinueStagedInteraction(arrivedAgent, brain.mode)
-              : null;
-            if (continuedPlan) {
-              const ensuredPlan = ensurePlanMovesAgent(arrivedAgent, continuedPlan, brain.mode);
-              setBrainPlan(brain, ensuredPlan, now, ensuredPlan.path.length === 0);
-              if (brain.mode === "autonomous") {
-                brain.recentActions = nextRecentActions(brain.recentActions, ensuredPlan.actionKey);
-              }
-              resetBrainProgress(brain, nextX, nextY, now);
-              return { ...applyPlanToAgent(arrivedAgent, ensuredPlan), frame: working.frame + frameAdvance };
-            }
-
-            nextFacing = working.facing;
-            nextState = inferArrivalState(working);
-            if (brain.mode === "autonomous") {
-              if (brain.nextDecisionAt === Number.POSITIVE_INFINITY) {
-                brain.nextDecisionAt = now + brain.currentLingerMs;
-              }
-              if (now >= brain.nextDecisionAt) {
-                const nextPlan = ensurePlanMovesAgent(
-                  arrivedAgent,
-                  buildAutonomousPlan(arrivedAgent),
-                  "autonomous",
-                );
-                setBrainPlan(brain, nextPlan, now, nextPlan.path.length === 0);
-                brain.recentActions = nextRecentActions(brain.recentActions, nextPlan.actionKey);
-                resetBrainProgress(brain, nextX, nextY, now);
-                return { ...applyPlanToAgent(arrivedAgent, nextPlan), frame: working.frame + frameAdvance };
-              }
-            }
-          }
+          resetBrainProgress(brain, arrivedX, arrivedY, now);
+          nextAgents.push({
+            ...working,
+            x: arrivedX,
+            y: arrivedY,
+            path: nextPath,
+            facing: angleFrom(working.x, working.y, waypoint.x, waypoint.y),
+            state: "walking",
+            frame: working.frame + delta,
+          });
         }
-      }
-
-      return {
-        ...working,
-        x: nextX,
-        y: nextY,
-        facing: nextFacing,
-        path: nextPath,
-        state: nextState,
-        frame: working.frame + frameAdvance,
-      } as RenderAgent;
-    });
-
-    const collisionBuckets = new Map<string, number[]>();
-    const bucketSize = AGENT_RADIUS * 4;
-    for (let index = 0; index < moved.length; index += 1) {
-      const agent = moved[index];
-      if ("role" in agent && agent.role === "janitor") continue;
-      const key = `${Math.floor(agent.x / bucketSize)}:${Math.floor(agent.y / bucketSize)}`;
-      const bucket = collisionBuckets.get(key);
-      if (bucket) bucket.push(index);
-      else collisionBuckets.set(key, [index]);
-    }
-
-    for (let i = 0; i < moved.length; i += 1) {
-      const left = moved[i];
-      if ("role" in left && left.role === "janitor") continue;
-      if (left.state === "sitting" || left.state === "working_out" || left.state === "dancing") continue;
-      const bucketX = Math.floor(left.x / bucketSize);
-      const bucketY = Math.floor(left.y / bucketSize);
-      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
-        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
-          const bucket = collisionBuckets.get(`${bucketX + offsetX}:${bucketY + offsetY}`);
-          if (!bucket) continue;
-          for (const j of bucket) {
-            if (j <= i) continue;
-            const right = moved[j];
-            if ("role" in right && right.role === "janitor") continue;
-            if (right.state === "sitting" || right.state === "working_out" || right.state === "dancing") continue;
-
-            let dx = left.x - right.x;
-            let dy = left.y - right.y;
-            let distance = Math.hypot(dx, dy);
-            const minDistance = AGENT_RADIUS * 2;
-            if (distance >= minDistance) continue;
-            if (distance < 0.0001) {
-              dx = Math.random() - 0.5;
-              dy = Math.random() - 0.5;
-              distance = Math.hypot(dx, dy) || 1;
-            }
-            const overlap = minDistance - distance;
-            const pushX = (dx / distance) * (overlap / 2);
-            const pushY = (dy / distance) * (overlap / 2);
-
-            const leftSafe = projectPointToNavigable(left.x + pushX, left.y + pushY, grid);
-            const rightSafe = projectPointToNavigable(right.x - pushX, right.y - pushY, grid);
-
-            moved[i] = {
-              ...left,
-              x: leftSafe.x,
-              y: leftSafe.y,
-              facing: Math.atan2(-dx, -dy),
-              bumpedUntil:
-                (left.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : left.bumpedUntil,
-              bumpTalkUntil:
-                (left.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : left.bumpTalkUntil,
-              collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
-              path: planOfficePath(leftSafe.x, leftSafe.y, left.targetX, left.targetY, grid),
-            } as RenderAgent;
-            moved[j] = {
-              ...right,
-              x: rightSafe.x,
-              y: rightSafe.y,
-              facing: Math.atan2(dx, dy),
-              bumpedUntil:
-                (right.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : right.bumpedUntil,
-              bumpTalkUntil:
-                (right.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : right.bumpTalkUntil,
-              collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
-              path: planOfficePath(rightSafe.x, rightSafe.y, right.targetX, right.targetY, grid),
-            } as RenderAgent;
-          }
-        }
+      } else {
+        const nx = working.x + ((waypoint.x - working.x) / distance) * stepSize;
+        const ny = working.y + ((waypoint.y - working.y) / distance) * stepSize;
+        const clamped = clampAgentPointToMotionZone(working.id, nx, ny);
+        nextAgents.push({
+          ...working,
+          x: clamped.x,
+          y: clamped.y,
+          facing: angleFrom(working.x, working.y, waypoint.x, waypoint.y),
+          state: "walking",
+          frame: working.frame + delta,
+        });
       }
     }
 
-    renderAgentsRef.current = moved;
+    renderAgentsRef.current = nextAgents;
     const lookup = renderAgentLookupRef.current;
     lookup.clear();
-    for (const agent of moved) lookup.set(agent.id, agent);
-  };
+    nextAgents.forEach((entry) => lookup.set(entry.id, entry));
+  }, [
+    applyPlanToAgent,
+    buildAutonomousPlan,
+    buildIntentPlan,
+    buildPathToTarget,
+    buildRecoveryPlan,
+    danceUntilByAgentId,
+    determineForcedIntent,
+    lastSeenByAgentId,
+  ]);
 
   return {
     renderAgentsRef,

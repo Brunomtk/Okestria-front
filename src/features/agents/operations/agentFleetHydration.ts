@@ -174,7 +174,7 @@ export async function hydrateAgentFleetFromGateway(params: {
       .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
       .filter((value) => value.length > 0)
   );
-  const hasAllowedAgentFilter = allowedAgentIds.size > 0 || allowedAgentSlugs.size > 0;
+  const hasAllowedAgentFilter = Array.isArray(params.allowedAgentIds) || Array.isArray(params.allowedAgentSlugs);
   const slugifyGatewayAgentName = (value: string) =>
     value
       .trim()

@@ -62,8 +62,10 @@ export const useRemoteOfficePresence = ({
     () => normalizeRemoteGatewayUrl(gatewayUrl),
     [gatewayUrl],
   );
+  const hasLoadedAllowedAgentScope = Array.isArray(allowedAgentIds);
   const active =
     enabled &&
+    hasLoadedAllowedAgentScope &&
     (sourceKind === "presence_endpoint"
       ? presenceUrl.trim().length > 0
       : normalizedGatewayUrl.length > 0);
@@ -117,15 +119,12 @@ export const useRemoteOfficePresence = ({
         }
         if (cancelled) return;
         const resolvedPayload = payload as OfficePresenceSnapshot;
-        const filteredPayload =
-          allowedAgentIds == null
-            ? resolvedPayload
-            : {
-                ...resolvedPayload,
-                agents: resolvedPayload.agents.filter((agent) =>
-                  allowedAgentIdSet.has(agent.agentId?.trim() ?? ""),
-                ),
-              };
+        const filteredPayload = {
+          ...resolvedPayload,
+          agents: resolvedPayload.agents.filter((agent) =>
+            allowedAgentIdSet.has(agent.agentId?.trim() ?? ""),
+          ),
+        };
         setSnapshot(filteredPayload);
         setError(null);
         if (!successLoggedRef.current) {
@@ -215,7 +214,7 @@ export const useRemoteOfficePresence = ({
               .map((agent) => (typeof agent.id === "string" ? agent.id.trim() : ""))
               .filter((agentId) =>
                 agentId.length > 0 &&
-                (allowedAgentIds == null || allowedAgentIdSet.has(agentId)),
+                allowedAgentIdSet.has(agentId),
               )
           : [];
         const sessionKeys = remoteAgentIds.map((agentId) =>
@@ -236,7 +235,7 @@ export const useRemoteOfficePresence = ({
               ? agentsResult.agents.filter((agent) => {
                   const agentId = typeof agent.id === "string" ? agent.id.trim() : "";
                   return agentId.length > 0 &&
-                    (allowedAgentIds == null || allowedAgentIdSet.has(agentId));
+                    allowedAgentIdSet.has(agentId);
                 })
               : [],
           },
