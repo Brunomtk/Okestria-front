@@ -59,6 +59,31 @@ const hasNonEmptyDeviceToken = (params) => {
   return typeof raw === "string" && raw.trim().length > 0;
 };
 
+const HEARTBEAT_INTERVAL_MS = 25_000;
+const HEARTBEAT_GRACE_MS = 10_000;
+
+const markSocketAlive = (state) => {
+  if (state) {
+    state.isAlive = true;
+    state.lastSeenAt = Date.now();
+  }
+};
+
+const pingSocket = (socket, state, onStale) => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  const now = Date.now();
+  if (!state.isAlive && now - state.lastSeenAt >= HEARTBEAT_INTERVAL_MS + HEARTBEAT_GRACE_MS) {
+    onStale?.();
+    return;
+  }
+  state.isAlive = false;
+  try {
+    socket.ping();
+  } catch {
+    onStale?.();
+  }
+};
+
 export function createGatewayProxy(options) {
   const {
     loadUpstreamSettings,
@@ -85,22 +110,58 @@ export function createGatewayProxy(options) {
     let pendingConnectFrame = null;
     let pendingUpstreamSetupError = null;
     let closed = false;
+    let heartbeatTimer = null;
+    const browserHeartbeat = { isAlive: true, lastSeenAt: Date.now() };
+    const upstreamHeartbeat = { isAlive: true, lastSeenAt: Date.now() };
+
+    const stopHeartbeat = () => {
+      if (heartbeatTimer !== null) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+    };
 
     const closeBoth = (code, reason) => {
       if (closed) return;
       closed = true;
+      stopHeartbeat();
       try {
-        browserWs.close(code, reason);
+        if (browserWs.readyState === WebSocket.OPEN || browserWs.readyState === WebSocket.CONNECTING) {
+          browserWs.close(code, reason);
+        }
       } catch {}
       try {
-        upstreamWs?.close(code, reason);
+        if (upstreamWs && (upstreamWs.readyState === WebSocket.OPEN || upstreamWs.readyState === WebSocket.CONNECTING)) {
+          upstreamWs.close(code, reason);
+        }
       } catch {}
+    };
+
+    const terminateBrowser = (reason = "browser heartbeat timeout") => {
+      try { browserWs.terminate(); } catch {}
+      closeBoth(1012, reason);
+    };
+
+    const terminateUpstream = (reason = "upstream heartbeat timeout") => {
+      try { upstreamWs?.terminate(); } catch {}
+      closeBoth(1012, reason);
+    };
+
+    const startHeartbeat = () => {
+      stopHeartbeat();
+      heartbeatTimer = setInterval(() => {
+        if (closed) return;
+        pingSocket(browserWs, browserHeartbeat, () => terminateBrowser());
+        pingSocket(upstreamWs, upstreamHeartbeat, () => terminateUpstream());
+      }, HEARTBEAT_INTERVAL_MS);
     };
 
     const sendToBrowser = (frame) => {
       if (browserWs.readyState !== WebSocket.OPEN) return;
       browserWs.send(JSON.stringify(frame));
     };
+
+    browserWs.on("pong", () => markSocketAlive(browserHeartbeat));
 
     const sendConnectError = (code, message) => {
       if (connectRequestId && !connectResponseSent) {
@@ -186,10 +247,15 @@ export function createGatewayProxy(options) {
 
       upstreamWs.on("open", () => {
         upstreamReady = true;
+        markSocketAlive(upstreamHeartbeat);
+        startHeartbeat();
         maybeForwardPendingConnect();
       });
 
+      upstreamWs.on("pong", () => markSocketAlive(upstreamHeartbeat));
+
       upstreamWs.on("message", (upRaw) => {
+        markSocketAlive(upstreamHeartbeat);
         const upParsed = safeJsonParse(String(upRaw ?? ""));
         if (upParsed && isObject(upParsed) && upParsed.type === "res") {
           const resId = typeof upParsed.id === "string" ? upParsed.id : "";
@@ -231,6 +297,7 @@ export function createGatewayProxy(options) {
     void startUpstream();
 
     browserWs.on("message", async (raw) => {
+      markSocketAlive(browserHeartbeat);
       const parsed = safeJsonParse(String(raw ?? ""));
       if (!parsed || !isObject(parsed)) {
         closeBoth(1003, "invalid json");
