@@ -1658,8 +1658,7 @@ export function OfficeScreen({
         {
           enqueueConfigMutation,
           createAgent: async (name) => {
-            const isFirstAgent = stateRef.current.agents.length === 0;
-            const created = await createGatewayAgent({ client, name, isDefault: isFirstAgent });
+            const created = await createGatewayAgent({ client, name });
             try {
               const files = buildIdentityFileDraft(identity);
               await writeGatewayAgentFiles({

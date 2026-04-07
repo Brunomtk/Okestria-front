@@ -964,8 +964,7 @@ const AgentsPageScreen = () => {
         {
           enqueueConfigMutation,
           createAgent: async (name, avatarSeed) => {
-            const isFirstAgent = state.agents.length === 0;
-            const created = await createGatewayAgent({ client, name, isDefault: isFirstAgent });
+            const created = await createGatewayAgent({ client, name });
             if (avatarSeed) {
               persistAvatarProfile(
                 created.id,

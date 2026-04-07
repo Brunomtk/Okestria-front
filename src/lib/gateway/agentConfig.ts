@@ -376,7 +376,6 @@ const joinPathLike = (dir: string, leaf: string): string => {
 export const createGatewayAgent = async (params: {
   client: GatewayClient;
   name: string;
-  isDefault?: boolean;
 }): Promise<ConfigAgentEntry> => {
   const trimmed = params.name.trim();
   if (!trimmed) {
@@ -403,10 +402,6 @@ export const createGatewayAgent = async (params: {
     name: trimmed,
     workspace,
   };
-  if (params.isDefault === true) {
-    createPayload.isDefault = true;
-    createPayload.default = true;
-  }
 
   const result = (await params.client.call("agents.create", createPayload)) as {
     ok?: boolean;
