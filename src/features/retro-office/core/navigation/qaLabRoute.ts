@@ -1,4 +1,4 @@
-import type { FacingPoint, QaLabRoute } from "@/features/retro-office/core/types";
+import type { FacingPoint, QaLabRoute, QaLabStationLocation } from "@/features/retro-office/core/types";
 import {
   QA_LAB_BOTTOM_Y,
   QA_LAB_END_X,
@@ -10,10 +10,11 @@ import {
 // QA Lab door position (calculated)
 const QA_LAB_DOOR_Y = QA_LAB_TOP_Y + 140;
 
-export const QA_LAB_DEFAULT_TARGET = {
+export const QA_LAB_DEFAULT_TARGET: QaLabStationLocation = {
   x: QA_LAB_X + QA_LAB_WIDTH / 2,
   y: (QA_LAB_TOP_Y + QA_LAB_BOTTOM_Y) / 2,
   facing: -Math.PI / 2,
+  stationType: "console",
 };
 
 // Door is on the left side (QA_LAB_X) - entrance from gym area
@@ -37,7 +38,7 @@ const DOOR_INNER_SNAP_RADIUS = 18;
 export const resolveQaLabRoute = (
   x: number,
   y: number,
-  stationTarget: FacingPoint = QA_LAB_DEFAULT_TARGET,
+  stationTarget: QaLabStationLocation = QA_LAB_DEFAULT_TARGET,
 ): QaLabRoute => {
   const insideLab =
     (x >= QA_LAB_X && x <= QA_LAB_END_X &&

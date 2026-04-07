@@ -37,6 +37,7 @@ import {
 } from "@/features/retro-office/core/navigation";
 import type {
   FurnitureItem,
+  GymWorkoutLocation,
   QaLabStationLocation,
   RenderAgent,
   SceneActor,
@@ -496,7 +497,7 @@ export function useRebuiltAgentTick(
   );
 
   const reserveDeskIndex = useCallback(
-    (agent: RenderAgent, others: RenderAgent[]) => {
+    (agent: RenderAgent, others: RenderAgent[]): number | null => {
       if (deskLocations.length === 0) return null;
       const explicit = assignedDeskIndexByAgentId[agent.id];
       if (typeof explicit === "number" && explicit >= 0 && explicit < deskLocations.length) {
@@ -533,7 +534,7 @@ export function useRebuiltAgentTick(
   );
 
   const chooseGymTarget = useCallback(
-    (agent: RenderAgent, others: RenderAgent[]) => {
+    (agent: RenderAgent, others: RenderAgent[]): GymWorkoutLocation => {
       if (gymWorkoutLocations.length === 0) return GYM_DEFAULT_TARGET;
       const start = gymCycleByAgentRef.current.get(agent.id) ?? (hashAgentId(agent.id) % gymWorkoutLocations.length);
       for (let offset = 0; offset < gymWorkoutLocations.length; offset += 1) {
@@ -550,7 +551,7 @@ export function useRebuiltAgentTick(
   );
 
   const chooseQaTarget = useCallback(
-    (agent: RenderAgent, others: RenderAgent[]) => {
+    (agent: RenderAgent, others: RenderAgent[]): QaLabStationLocation => {
       if (qaLabStations.length === 0) return QA_LAB_DEFAULT_TARGET;
       const start = qaCycleByAgentRef.current.get(agent.id) ?? (hashAgentId(agent.id) % qaLabStations.length);
       for (let offset = 0; offset < qaLabStations.length; offset += 1) {
@@ -1165,7 +1166,9 @@ export function useRebuiltAgentTick(
         continue;
       }
 
-      let working = agent.state === "away" ? { ...agent, state: "standing", awayUntil: undefined } : agent;
+      let working: RenderAgent = agent.state === "away"
+        ? { ...agent, state: "standing", awayUntil: undefined }
+        : agent;
       const explicitIntent = determineForcedIntent(agent);
       const peers = [...nextAgents, ...previousAgents.filter((other) => other.id !== agent.id && !nextAgents.some((entry) => entry.id === other.id))];
 
@@ -1201,9 +1204,11 @@ export function useRebuiltAgentTick(
 
       if (working.path.length === 0) {
         const dancing = danceUntilByAgentId[working.id] && danceUntilByAgentId[working.id] > now;
+        const stationaryState: RenderAgent["state"] =
+          dancing && working.interactionTarget === "jukebox" ? "dancing" : working.state;
         nextAgents.push({
           ...working,
-          state: dancing && working.interactionTarget === "jukebox" ? "dancing" : working.state,
+          state: stationaryState,
           frame: working.frame + delta,
           walkSpeed: explicitIntent ? WALK_SPEED * WORKING_WALK_SPEED_MULTIPLIER : WALK_SPEED,
         });

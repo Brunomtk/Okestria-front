@@ -1,4 +1,4 @@
-import type { FacingPoint, GymRoute } from "@/features/retro-office/core/types";
+import type { FacingPoint, GymRoute, GymWorkoutLocation } from "@/features/retro-office/core/types";
 import {
   EAST_WING_DOOR_Y,
   EAST_WING_ROOM_HEIGHT,
@@ -8,10 +8,11 @@ import {
   GYM_ROOM_X,
 } from "@/features/retro-office/core/constants";
 
-export const GYM_DEFAULT_TARGET = {
+export const GYM_DEFAULT_TARGET: GymWorkoutLocation = {
   x: GYM_ROOM_X + GYM_ROOM_WIDTH / 2,
   y: EAST_WING_ROOM_TOP_Y + EAST_WING_ROOM_HEIGHT / 2,
   facing: Math.PI / 2,
+  workoutStyle: "stretch",
 };
 
 // Door is on the left side (GYM_ROOM_X) - entrance from main office
@@ -35,7 +36,7 @@ const DOOR_INNER_SNAP_RADIUS = 18;
 export const resolveGymRoute = (
   x: number,
   y: number,
-  workoutTarget: FacingPoint = GYM_DEFAULT_TARGET,
+  workoutTarget: GymWorkoutLocation = GYM_DEFAULT_TARGET,
 ): GymRoute => {
   const insideGym =
     (x >= GYM_ROOM_X && x <= GYM_ROOM_END_X &&
