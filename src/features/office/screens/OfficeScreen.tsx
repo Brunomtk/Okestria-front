@@ -1834,7 +1834,7 @@ export function OfficeScreen({
         await loadCompanySquads(true);
         setCreateSquadModalOpen(false);
         setSelectedChatAgentId(`squad:${createdSquad.id}`);
-        setChatRosterMode("focused");
+        setChatRosterMode("company");
         setChatOpen(true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to create the squad right now.";
@@ -2542,7 +2542,7 @@ export function OfficeScreen({
     }
     if (companySquads.length > 0) {
       setSelectedChatAgentId(`squad:${companySquads[0]?.id}`);
-      setChatRosterMode("focused");
+      setChatRosterMode("company");
     }
   }, [chatOpen, companySquads, selectedChatAgentId]);
 
@@ -3166,7 +3166,7 @@ export function OfficeScreen({
   const handleOpenAgentChat = useCallback(
     (agentId: string) => {
       setSelectedChatAgentId(agentId);
-      setChatRosterMode("focused");
+      setChatRosterMode("company");
       setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
       setChatOpen(true);
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId)) {
