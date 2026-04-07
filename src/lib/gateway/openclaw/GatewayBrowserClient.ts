@@ -690,7 +690,7 @@ export class GatewayBrowserClient {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     this.keepAliveTimer = window.setTimeout(() => {
       void this.runKeepAlive();
-    }, 20_000);
+    }, 45_000);
   }
 
   private async runKeepAlive() {
@@ -701,12 +701,14 @@ export class GatewayBrowserClient {
       this.startKeepAlive();
       return;
     }
+
+    const silentForMs = Date.now() - this.lastInboundAt;
+    if (silentForMs < 30_000) {
+      this.startKeepAlive();
+      return;
+    }
+
     if (this.keepAliveInFlight) {
-      const silentForMs = Date.now() - this.lastInboundAt;
-      if (silentForMs >= 12_000) {
-        this.ws.close(1012, "keepalive timeout");
-        return;
-      }
       this.startKeepAlive();
       return;
     }
@@ -716,10 +718,8 @@ export class GatewayBrowserClient {
       await this.request("status", {});
       this.lastInboundAt = Date.now();
     } catch {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close(1012, "keepalive failed");
-        return;
-      }
+      // Best-effort keepalive only. Do not force-close the socket here;
+      // let the normal close/reconnect path handle real disconnects.
     } finally {
       this.keepAliveInFlight = false;
       this.startKeepAlive();
