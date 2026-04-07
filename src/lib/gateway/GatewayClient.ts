@@ -17,6 +17,8 @@ import type {
   StudioSettingsResponse,
 } from "@/lib/studio/coordinator";
 import { resolveStudioProxyGatewayUrl } from "@/lib/gateway/proxy-url";
+import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
+import { getOkestriaAuthToken } from "@/lib/auth/session-client";
 import { ensureGatewayReloadModeHotForLocalStudio } from "@/lib/gateway/gatewayReloadMode";
 import { GatewayResponseError } from "@/lib/gateway/errors";
 
@@ -543,7 +545,46 @@ export const useGatewayConnection = (
     let cancelled = false;
     const loadSettings = async () => {
       try {
-        // First try to fetch from local API route (which proxies to backend)
+        // First try to fetch gateway settings directly from the backend so the
+        // browser can connect to the gateway proxy hosted on api.ptxgrowth.us.
+        try {
+          const accessToken = getOkestriaAuthToken();
+          if (accessToken) {
+            const response = await fetch(`${getOkestriaApiBaseUrl()}/api/Runtime/gateway-settings`, {
+              cache: "no-store",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+              },
+            });
+            if (response.ok) {
+              const data = (await response.json()) as {
+                configured?: boolean;
+                baseUrl?: string;
+                upstreamToken?: string;
+              };
+              if (cancelled) return;
+              if (data.configured && data.baseUrl) {
+                const nextGatewayUrl = data.baseUrl.trim();
+                const nextToken = typeof data.upstreamToken === "string" ? data.upstreamToken : "";
+                loadedGatewaySettings.current = {
+                  gatewayUrl: nextGatewayUrl,
+                  token: nextToken,
+                };
+                setGatewayUrl(nextGatewayUrl);
+                setToken(nextToken);
+                if (nextToken) {
+                  setLocalGatewayDefaults({ url: nextGatewayUrl, token: nextToken });
+                }
+                setSettingsLoaded(true);
+                return;
+              }
+            }
+          }
+        } catch {
+          // Fall back to the local route if direct backend bootstrap is unavailable.
+        }
+
         try {
           const response = await fetch("/api/gateway/settings", { cache: "no-store" });
           if (response.ok) {
