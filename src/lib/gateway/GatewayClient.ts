@@ -647,8 +647,9 @@ export const useGatewayConnection = (
     wasManualDisconnectRef.current = false;
     try {
       await settingsCoordinator.flushPending();
-      // Always use the local proxy to avoid CORS/origin issues
-      // The server proxy fetches settings from backend and connects to upstream gateway
+      // In local/server deployments this can stay same-origin.
+      // In Vercel deployments it should point at a persistent external proxy,
+      // typically configured via NEXT_PUBLIC_GATEWAY_WS_PROXY_URL.
       const proxyUrl = resolveStudioProxyGatewayUrl();
       await client.connect({
         gatewayUrl: proxyUrl,
