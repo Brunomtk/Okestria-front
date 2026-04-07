@@ -123,7 +123,7 @@ export const useRemoteOfficePresence = ({
             : {
                 ...resolvedPayload,
                 agents: resolvedPayload.agents.filter((agent) =>
-                  allowedAgentIdSet.has(agent.id?.trim() ?? ""),
+                  allowedAgentIdSet.has(agent.agentId?.trim() ?? ""),
                 ),
               };
         setSnapshot(filteredPayload);

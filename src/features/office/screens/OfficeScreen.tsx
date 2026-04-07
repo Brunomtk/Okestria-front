@@ -3179,7 +3179,7 @@ export function OfficeScreen({
         });
         const agentsResult = (await remoteClient.call("agents.list", {})) as {
           mainKey?: string;
-          agents?: Array<{ id?: string; name?: string }>;
+          agents?: Array<{ id?: string; name?: string; slug?: string }>;
         };
         const remoteAgents = Array.isArray(agentsResult.agents)
           ? agentsResult.agents.filter((entry) => {
@@ -3378,10 +3378,11 @@ export function OfficeScreen({
   );
 
   const handleChatSend = useCallback(
-    async (agentId: string, sessionKey: string, payload: ChatSendPayload) => {
+    async (agentId: string, sessionKey: string, payload: string | ChatSendPayload) => {
       stopVoiceReplyPlayback();
-      const trimmed = payload.text.trim();
-      const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+      const resolvedPayload = typeof payload === "string" ? { text: payload } : payload;
+      const trimmed = resolvedPayload.text.trim();
+      const attachments = Array.isArray(resolvedPayload.attachments) ? resolvedPayload.attachments : [];
       if (!trimmed && attachments.length === 0) return;
       if (isRemoteOfficeAgentId(agentId)) {
         if (attachments.length > 0) {
@@ -3517,7 +3518,7 @@ export function OfficeScreen({
         return;
       }
 
-      await chatController.handleSend(agentId, sessionKey, payload);
+      await chatController.handleSend(agentId, sessionKey, resolvedPayload);
     },
     [
       chatController,
@@ -4824,7 +4825,7 @@ export function OfficeScreen({
                         }));
                       }}
                       onSend={(message) => {
-                        void handleChatSend(focusedRemoteChatTarget.id, "", message);
+                        void handleChatSend(focusedRemoteChatTarget.id, "", { text: message });
                       }}
                     />
                   ) : (

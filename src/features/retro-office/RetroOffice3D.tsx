@@ -23,6 +23,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type MutableRefObject,
+  type RefObject,
 } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
@@ -1218,7 +1220,7 @@ function useAgentTick(
   }[],
   qaLabStations: QaLabStationLocation[],
   meetingSeatLocations: { x: number; y: number; facing: number }[],
-  furnitureRef: React.RefObject<FurnitureItem[]>,
+  furnitureRef: RefObject<FurnitureItem[]>,
   lastSeenByAgentId: Record<string, number> = {},
   deskHoldByAgentId: Record<string, boolean> = {},
   danceUntilByAgentId: Record<string, number> = {},
@@ -3529,7 +3531,7 @@ export function RetroOffice3D({
             targetY: target.y,
             path: planPath(agent.x, agent.y, target.x, target.y),
             facing: target.facing,
-            state: "walking",
+            state: "walking" as const,
             walkSpeed: Math.max(agent.walkSpeed, PING_PONG_APPROACH_SPEED),
             pingPongUntil: now + PING_PONG_SESSION_MS,
             pingPongTargetX: target.x,
@@ -3669,7 +3671,7 @@ export function RetroOffice3D({
         targetX: tx,
         targetY: ty,
         path,
-        state: "walking",
+        state: "walking" as const,
       });
     },
     [

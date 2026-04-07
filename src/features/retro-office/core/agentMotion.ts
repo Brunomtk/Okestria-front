@@ -107,6 +107,16 @@ type FunPoint = {
   facing: number;
 };
 
+
+type JanitorSceneActor = Extract<SceneActor, { role: "janitor" }>;
+type JanitorRenderAgent = Extract<RenderAgent, { role: "janitor" }>;
+
+const isJanitorSceneActor = (agent: SceneActor): agent is JanitorSceneActor =>
+  "role" in agent && agent.role === "janitor";
+
+const isJanitorRenderAgent = (agent: RenderAgent): agent is JanitorRenderAgent =>
+  "role" in agent && agent.role === "janitor";
+
 const DEFAULT_BRAIN = (x: number, y: number, now: number): AgentBrain => ({
   mode: "autonomous",
   currentActionKey: "spawn",
@@ -995,10 +1005,9 @@ export function useRebuiltAgentTick(
     const nextAgents: RenderAgent[] = [];
 
     for (const sceneAgent of agents) {
-      const isJanitor = "role" in sceneAgent && sceneAgent.role === "janitor";
       const existing = currentMap.get(sceneAgent.id);
 
-      if (isJanitor) {
+      if (isJanitorSceneActor(sceneAgent)) {
         const route = sceneAgent.janitorRoute;
         const spawn = route[0] ?? { x: 400, y: 400, facing: Math.PI / 2 };
         const nextStop = route[1] ?? spawn;
@@ -1099,7 +1108,7 @@ export function useRebuiltAgentTick(
             frame: 0,
             walkSpeed: WALK_SPEED * (0.88 + Math.random() * 0.4),
             phaseOffset: Math.random() * Math.PI * 2,
-            state: "standing",
+            state: "standing" as const,
             status: effectiveStatus,
           } as RenderAgent);
 
@@ -1117,7 +1126,7 @@ export function useRebuiltAgentTick(
           targetX: baseAgent.x,
           targetY: baseAgent.y,
           path: [],
-          state: "standing",
+          state: "standing" as const,
           interactionTarget: undefined,
           smsBoothStage: undefined,
           phoneBoothStage: undefined,
@@ -1136,7 +1145,7 @@ export function useRebuiltAgentTick(
       }
 
       const desiredMode: AgentMode = workingIntent ? "forced" : "autonomous";
-      let nextAgent = baseAgent;
+      let nextAgent: RenderAgent = baseAgent;
       if (!existing || brain.mode !== desiredMode) {
         const rawPlan = workingIntent
           ? buildPlanForIntent(baseAgent, workingIntent, desiredMode)
@@ -1196,9 +1205,8 @@ export function useRebuiltAgentTick(
     const now = Date.now();
     const frameAdvance = Math.min(2.2, Math.max(0.75, delta * 60));
 
-    const moved = renderAgentsRef.current.map((agent) => {
-      const isJanitor = "role" in agent && agent.role === "janitor";
-      if (isJanitor) {
+    const moved: RenderAgent[] = renderAgentsRef.current.map((agent): RenderAgent => {
+      if (isJanitorRenderAgent(agent)) {
         if (agent.janitorPauseUntil && now < agent.janitorPauseUntil) {
           return { ...agent, frame: agent.frame + frameAdvance, state: "standing" as const };
         }
@@ -1255,7 +1263,7 @@ export function useRebuiltAgentTick(
           collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
           path: planOfficePath(agent.x, agent.y, agent.targetX, agent.targetY, grid),
           state: (agent.path?.length ?? 0) > 0 ? "walking" : agent.state,
-        };
+        } as RenderAgent;
       }
 
       const brain = brainByAgentRef.current.get(agent.id) ?? DEFAULT_BRAIN(agent.x, agent.y, now);
@@ -1309,7 +1317,7 @@ export function useRebuiltAgentTick(
         }
       }
 
-      let working = agent;
+      let working: RenderAgent = agent;
       let path = working.path ?? [];
       const targetDistance = Math.hypot(working.targetX - working.x, working.targetY - working.y);
       if (path.length === 0 && targetDistance > PATH_REPLAN_DISTANCE) {
@@ -1321,7 +1329,7 @@ export function useRebuiltAgentTick(
           targetY: replanned.targetY,
           path,
           state: path.length > 0 ? "walking" : working.state,
-        };
+        } as RenderAgent;
       }
 
       if (path.length > 0) {
@@ -1378,8 +1386,8 @@ export function useRebuiltAgentTick(
       let nextX = working.x;
       let nextY = working.y;
       let nextFacing = working.facing;
-      let nextPath = path;
-      let nextState = working.state;
+      let nextPath: RenderAgent["path"] = path;
+      let nextState: RenderAgent["state"] = working.state;
 
       if (distance > speed && distance > 0.001) {
         nextX = working.x + (dx / distance) * speed;
@@ -1397,7 +1405,7 @@ export function useRebuiltAgentTick(
           nextState = "walking";
         } else {
           nextPath = [];
-          if (isJanitor) {
+          if (isJanitorRenderAgent(agent)) {
             const stop = agent.janitorRoute[agent.janitorRouteIndex ?? 0] ?? agent.janitorRoute.at(-1);
             return {
               ...working,
@@ -1420,12 +1428,12 @@ export function useRebuiltAgentTick(
             nextFacing = working.pingPongFacing ?? nextFacing;
             nextState = "standing";
           } else {
-            const arrivedAgent = {
+            const arrivedAgent: RenderAgent = {
               ...working,
               x: nextX,
               y: nextY,
               path: [],
-            } as RenderAgent;
+            };
             const continuedPlan = isInteractiveRoomTarget(working.interactionTarget)
               ? maybeContinueStagedInteraction(arrivedAgent, brain.mode)
               : null;
@@ -1469,7 +1477,7 @@ export function useRebuiltAgentTick(
         path: nextPath,
         state: nextState,
         frame: working.frame + frameAdvance,
-      };
+      } as RenderAgent;
     });
 
     const collisionBuckets = new Map<string, number[]>();
@@ -1527,7 +1535,7 @@ export function useRebuiltAgentTick(
                 (left.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : left.bumpTalkUntil,
               collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
               path: planOfficePath(leftSafe.x, leftSafe.y, left.targetX, left.targetY, grid),
-            };
+            } as RenderAgent;
             moved[j] = {
               ...right,
               x: rightSafe.x,
@@ -1539,7 +1547,7 @@ export function useRebuiltAgentTick(
                 (right.collisionCooldownUntil ?? 0) <= now ? now + COLLISION_FREEZE_MS : right.bumpTalkUntil,
               collisionCooldownUntil: now + COLLISION_RECOVERY_MS,
               path: planOfficePath(rightSafe.x, rightSafe.y, right.targetX, right.targetY, grid),
-            };
+            } as RenderAgent;
           }
         }
       }

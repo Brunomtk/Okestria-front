@@ -112,6 +112,7 @@ import {
 import { useAgentSettingsMutationController } from "@/features/agents/operations/useAgentSettingsMutationController";
 import { useRuntimeSyncController } from "@/features/agents/operations/useRuntimeSyncController";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
+import type { ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import {
   SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM,
   parseSettingsRouteAgentIdFromQueryParam,
@@ -863,9 +864,13 @@ const AgentsPageScreen = () => {
     });
   });
   const handleChatSend = useCallback(
-    async (agentId: string, sessionKey: string, message: string) => {
+    async (agentId: string, sessionKey: string, payload: string | ChatSendPayload) => {
       stopVoiceReplyPlayback();
-      await handleSend(agentId, sessionKey, message);
+      await handleSend(
+        agentId,
+        sessionKey,
+        typeof payload === "string" ? { text: payload } : payload
+      );
     },
     [handleSend, stopVoiceReplyPlayback]
   );

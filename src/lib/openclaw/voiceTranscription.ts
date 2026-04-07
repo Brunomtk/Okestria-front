@@ -3,10 +3,8 @@ import * as fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 
-const require = createRequire(import.meta.url);
 const CONFIGURED_OPENCLAW_PACKAGE_ROOT = process.env.OPENCLAW_PACKAGE_ROOT?.trim() ?? "";
 
 const OPENCLAW_DIST_INDEX_RELATIVE_PATH = path.join("dist", "index.js");
@@ -187,14 +185,8 @@ const resolveOpenClawPackageRoot = (): string => {
     throw new Error("OPENCLAW_PACKAGE_ROOT does not point to a valid OpenClaw installation.");
   }
 
-  const installedCandidate = resolveInstalledOpenClawPackageRoot();
-  if (installedCandidate) {
-    const indexPath = path.join(installedCandidate, OPENCLAW_DIST_INDEX_RELATIVE_PATH);
-    if (fs.existsSync(indexPath)) return installedCandidate;
-  }
-
   throw new Error(
-    "OpenClaw could not be resolved from the current Node runtime. Install the `openclaw` package or set OPENCLAW_PACKAGE_ROOT.",
+    "OpenClaw could not be resolved from the current Node runtime. Set OPENCLAW_PACKAGE_ROOT to a valid OpenClaw installation.",
   );
 };
 
