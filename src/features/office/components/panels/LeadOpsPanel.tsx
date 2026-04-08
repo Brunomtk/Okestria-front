@@ -23,8 +23,10 @@ import {
   extractGatewayAgentId,
   fetchCompanyAgentDetails,
   fetchCompanyAgents,
+  getBrowserAccessToken,
   getBrowserCompanyId,
 } from "@/lib/agents/backend-api";
+import { fetchCompanyById } from "@/lib/auth/api";
 
 const DEFAULT_PROMPT =
   "Find high-intent businesses, enrich contact data, deduplicate results, generate PTX fit, and prepare outreach-ready leads.";
@@ -114,11 +116,63 @@ export function LeadOpsPanel({
   const [emailBatchModalOpen, setEmailBatchModalOpen] = useState(false);
   const [emailBatchJobs, setEmailBatchJobs] = useState<LeadEmailBatchJob[]>([]);
   const [sendingBatch, setSendingBatch] = useState(false);
-  const [emailSenderName, setEmailSenderName] = useState(companyName?.trim() || "Growth Team");
+  const [companyBrandName, setCompanyBrandName] = useState(companyName?.trim() || "");
+  const [companyBrandEmail, setCompanyBrandEmail] = useState("");
+  const [emailSenderName, setEmailSenderName] = useState(companyName?.trim() || "");
   const [emailSenderAddress, setEmailSenderAddress] = useState("");
   const [emailReplyTo, setEmailReplyTo] = useState("");
-  const [emailSubjectTemplate, setEmailSubjectTemplate] = useState("{{businessName}} · quick idea to win more qualified demand");
-  const [emailIntroText, setEmailIntroText] = useState("I asked our team to prepare a tailored idea based on your business profile.");
+  const [emailSubjectTemplate, setEmailSubjectTemplate] = useState("{{businessName}} · a tailored growth idea from {{companyName}}");
+  const [emailIntroText, setEmailIntroText] = useState("I asked our team at {{companyName}} to prepare a tailored outreach idea based on your business profile.");
+
+  useEffect(() => {
+    const trimmedCompanyName = companyName?.trim() || "";
+    if (trimmedCompanyName) {
+      setCompanyBrandName(trimmedCompanyName);
+      setEmailSenderName((current) => current.trim() ? current : trimmedCompanyName);
+    }
+  }, [companyName]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const hydrateCompanyBrand = async () => {
+      if (!companyId) return;
+      const token = getBrowserAccessToken();
+      if (!token) return;
+
+      try {
+        const company = await fetchCompanyById(companyId, token);
+        if (cancelled) return;
+
+        const resolvedName = company.name?.trim() || companyName?.trim() || "";
+        const resolvedEmail = company.email?.trim() || "";
+
+        if (resolvedName) {
+          setCompanyBrandName(resolvedName);
+          setEmailSenderName((current) => current.trim() ? current : resolvedName);
+        }
+
+        if (resolvedEmail) {
+          setCompanyBrandEmail(resolvedEmail);
+          setEmailSenderAddress((current) => current.trim() ? current : resolvedEmail);
+          setEmailReplyTo((current) => current.trim() ? current : resolvedEmail);
+        }
+      } catch {
+        if (cancelled) return;
+        const fallbackName = companyName?.trim() || "";
+        if (fallbackName) {
+          setCompanyBrandName(fallbackName);
+          setEmailSenderName((current) => current.trim() ? current : fallbackName);
+        }
+      }
+    };
+
+    void hydrateCompanyBrand();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, companyName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -453,9 +507,12 @@ export function LeadOpsPanel({
   const detailTalkTrack = useMemo(() => buildTalkTrack(selectedLeadDetail), [selectedLeadDetail]);
   const detailPersonalizationCues = useMemo(() => buildPersonalizationCues(selectedLeadDetail), [selectedLeadDetail]);
   const detailRecommendedSequence = useMemo(() => buildSequence(selectedLeadDetail), [selectedLeadDetail]);
-  const outreachEmailSubject = useMemo(() => buildEmailSubject(selectedLeadDetail), [selectedLeadDetail]);
-  const outreachEmailBody = useMemo(() => buildEmailBody(selectedLeadDetail), [selectedLeadDetail]);
-  const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail), [selectedLeadDetail]);
+  const effectiveCompanyName = companyBrandName.trim() || companyName?.trim() || "Your Company";
+  const effectiveCompanyEmail = companyBrandEmail.trim() || emailSenderAddress.trim() || emailReplyTo.trim();
+
+  const outreachEmailSubject = useMemo(() => buildEmailSubject(selectedLeadDetail, effectiveCompanyName), [effectiveCompanyName, selectedLeadDetail]);
+  const outreachEmailBody = useMemo(() => buildEmailBody(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail), [effectiveCompanyEmail, effectiveCompanyName, selectedLeadDetail]);
+  const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail), [effectiveCompanyEmail, effectiveCompanyName, selectedLeadDetail]);
 
   const handleCopyText = useCallback(async (value: string | null | undefined, successMessage: string) => {
     if (!value || !navigator?.clipboard) return;
@@ -484,13 +541,16 @@ export function LeadOpsPanel({
     if (!companyId || !selectedJob) return;
     setSendingBatch(true);
     try {
+      const resolvedSenderName = emailSenderName.trim() || effectiveCompanyName;
+      const resolvedSenderEmail = emailSenderAddress.trim() || effectiveCompanyEmail;
+      const resolvedReplyTo = emailReplyTo.trim() || effectiveCompanyEmail || undefined;
       const created = await createLeadEmailBatchJob({
         companyId,
         sourceLeadJobId: selectedJob.id,
         title: `Outreach batch · ${selectedJob.title}`,
-        senderName: emailSenderName.trim(),
-        senderEmail: emailSenderAddress.trim(),
-        replyTo: emailReplyTo.trim() || undefined,
+        senderName: resolvedSenderName,
+        senderEmail: resolvedSenderEmail,
+        replyTo: resolvedReplyTo,
         subjectTemplate: emailSubjectTemplate.trim(),
         introText: emailIntroText.trim() || undefined,
       });
@@ -503,7 +563,7 @@ export function LeadOpsPanel({
     } finally {
       setSendingBatch(false);
     }
-  }, [companyId, emailIntroText, emailReplyTo, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
+  }, [companyId, effectiveCompanyEmail, effectiveCompanyName, emailIntroText, emailReplyTo, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
 
   const handleCancelEmailBatch = useCallback(async (jobId: number) => {
     try {
@@ -794,7 +854,7 @@ export function LeadOpsPanel({
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-emerald-100">Send batch email</div>
-                <div className="mt-2 text-sm text-white/70">Queue a background outreach batch for the leads from <span className="text-white">{selectedJob.title}</span>. Tokens supported in the subject and intro: <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{businessName}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{city}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{state}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{category}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{ownerName}}"}</code>.</div>
+                <div className="mt-2 text-sm text-white/70">Queue a background outreach batch for the leads from <span className="text-white">{selectedJob.title}</span>. Tokens supported in the subject and intro: <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{businessName}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{city}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{state}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{category}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{ownerName}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{companyName}}"}</code>, <code className="rounded bg-white/5 px-1 py-0.5 text-[12px] text-emerald-100">{"{{companyEmail}}"}</code>.</div>
               </div>
               <button type="button" onClick={() => setEmailBatchModalOpen(false)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-white/60 hover:text-white">
                 <X className="h-4 w-4" />
@@ -803,15 +863,15 @@ export function LeadOpsPanel({
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               <label className="space-y-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Sender name</span>
-                <input value={emailSenderName} onChange={(event) => setEmailSenderName(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder="Growth Team" />
+                <input value={emailSenderName} onChange={(event) => setEmailSenderName(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder={effectiveCompanyName} />
               </label>
               <label className="space-y-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Sender email</span>
-                <input value={emailSenderAddress} onChange={(event) => setEmailSenderAddress(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder="sales@yourdomain.com" />
+                <input value={emailSenderAddress} onChange={(event) => setEmailSenderAddress(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder={effectiveCompanyEmail || "company@yourdomain.com"} />
               </label>
               <label className="space-y-2 sm:col-span-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Reply-to</span>
-                <input value={emailReplyTo} onChange={(event) => setEmailReplyTo(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder="optional@yourdomain.com" />
+                <input value={emailReplyTo} onChange={(event) => setEmailReplyTo(event.target.value)} className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none" placeholder={effectiveCompanyEmail || "reply@yourdomain.com"} />
               </label>
               <label className="space-y-2 sm:col-span-2">
                 <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Subject template</span>
@@ -1572,34 +1632,71 @@ function buildSequence(lead?: LeadSummary | null) {
   ];
 }
 
-function buildEmailSubject(lead?: LeadSummary | null) {
-  if (!lead) return "Quick growth idea";
-  return `${lead.businessName}: quick idea to improve ${lead.category?.toLowerCase() || "local service"} performance`;
+function buildEmailSubject(lead?: LeadSummary | null, companyName?: string) {
+  if (!lead) return `Quick idea from ${companyName || "your team"}`;
+  return `${lead.businessName}: a tailored growth idea from ${companyName || "your team"}`;
 }
 
-function buildEmailBody(lead?: LeadSummary | null) {
+function buildEmailBody(lead?: LeadSummary | null, companyName?: string, companyEmail?: string) {
   if (!lead) return "";
   const owner = deriveOwnerName(lead.businessName);
+  const senderName = companyName?.trim() || "Your Company";
+  const senderEmail = companyEmail?.trim();
   return `Hi ${owner},
 
 I came across ${lead.businessName} and was impressed by ${lead.rating ? `your ${lead.rating}-star rating` : "your market presence"}${lead.reviewCount ? ` from ${lead.reviewCount} reviews` : ""}${lead.city ? `. It clearly stands out in ${lead.city}` : ""}.
 
-We help businesses like yours turn strong reputation and local credibility into focused marketing and outreach that attracts more qualified clients. I would love to share a quick idea tailored for ${lead.businessName}.
+At ${senderName}, we help businesses like yours turn strong reputation and local credibility into focused outreach that attracts more qualified opportunities. We put together a quick idea tailored for ${lead.businessName} and I would love to share it with you.
 
-Looking forward to connecting!
+Would you be open to a short conversation this week?
 
 Best regards,
-[Your Name]
-PTX Growth Team`;
+${senderName}${senderEmail ? `
+${senderEmail}` : ""}`;
 }
 
-function buildEmailHtml(lead?: LeadSummary | null) {
+function buildEmailHtml(lead?: LeadSummary | null, companyName?: string, companyEmail?: string) {
   const fromBackend = lead?.outreachEmailHtml?.trim();
   if (fromBackend) return fromBackend;
-  return `<div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.7;color:#e5eef8;background:#081323;border:1px solid rgba(103,232,249,0.15);border-radius:18px;padding:24px;">
-<p style="margin:0 0 12px 0;font-weight:600;">AI outreach email not generated yet.</p>
-<p style="margin:0;">Use <strong>Generate AI Outreach</strong> in the Outreach tab to request the email from the backend.</p>
+  const senderName = companyName?.trim() || "Your Company";
+  const senderEmail = companyEmail?.trim();
+  const owner = deriveOwnerName(lead?.businessName);
+  const businessName = lead?.businessName || "your business";
+  const categoryLabel = lead?.category?.toLowerCase() || "local service";
+  const cityLabel = lead?.city?.trim();
+  return `<div style="background:#07111f;padding:32px;border-radius:24px;border:1px solid rgba(45,212,191,0.18);font-family:Inter,Arial,sans-serif;color:#e8f2ff;line-height:1.7;box-shadow:0 24px 80px rgba(0,0,0,0.35);">
+  <div style="max-width:680px;margin:0 auto;overflow:hidden;border-radius:20px;border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg,#0b1728 0%,#09111e 100%);">
+    <div style="padding:28px 32px;background:radial-gradient(circle at top right, rgba(20,184,166,0.22), transparent 42%),linear-gradient(135deg,#0f1d33 0%,#0a1323 100%);border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#8ce7d6;font-weight:700;">Tailored outreach</div>
+      <h1 style="margin:14px 0 0 0;font-size:28px;line-height:1.2;color:#ffffff;">A sharp growth idea for ${escapeHtml(businessName)}</h1>
+      <p style="margin:12px 0 0 0;font-size:15px;color:#b8c7da;">Built by ${escapeHtml(senderName)} to start a relevant conversation and stand out in ${escapeHtml(cityLabel || "your market")}.</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px 0;font-size:16px;color:#e8f2ff;">Hi ${escapeHtml(owner)},</p>
+      <p style="margin:0 0 16px 0;font-size:16px;color:#d8e4f4;">I came across <strong style="color:#ffffff;">${escapeHtml(businessName)}</strong>${cityLabel ? ` in <strong style="color:#ffffff;">${escapeHtml(cityLabel)}</strong>` : ""} and noticed a strong opportunity to turn your current reputation into more qualified conversations.</p>
+      <p style="margin:0 0 16px 0;font-size:16px;color:#d8e4f4;">At <strong style="color:#ffffff;">${escapeHtml(senderName)}</strong>, we help ${escapeHtml(categoryLabel)} businesses create focused outreach that feels personal, looks premium, and drives more replies from the right prospects.</p>
+      <div style="margin:22px 0;padding:18px 20px;border-radius:18px;background:rgba(20,184,166,0.08);border:1px solid rgba(45,212,191,0.16);">
+        <div style="font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#8ce7d6;font-weight:700;">Why this can work</div>
+        <p style="margin:10px 0 0 0;font-size:15px;color:#dff7f1;">Your market already trusts the brand. The missing piece is a stronger outreach system that translates that trust into more conversations, more appointments, and more pipeline.</p>
+      </div>
+      <p style="margin:0 0 24px 0;font-size:16px;color:#d8e4f4;">If that sounds interesting, I can share the idea we prepared for ${escapeHtml(businessName)} and walk you through it in a quick conversation.</p>
+      <a href="mailto:${escapeHtml(lead?.email || senderEmail || "")}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:linear-gradient(135deg,#2dd4bf 0%,#22c55e 100%);color:#04111d;text-decoration:none;font-weight:800;">Reply to this email</a>
+    </div>
+    <div style="padding:24px 32px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);font-size:14px;color:#9db0c8;">
+      <div style="font-weight:700;color:#ffffff;">${escapeHtml(senderName)}</div>
+      ${senderEmail ? `<div style="margin-top:4px;">${escapeHtml(senderEmail)}</div>` : ""}
+    </div>
+  </div>
 </div>`;
+}
+
+function escapeHtml(value?: string | null) {
+  return (value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function ContactCard({ icon, label, value, href }: { icon: ReactNode; label: string; value: string; href?: string }) {
