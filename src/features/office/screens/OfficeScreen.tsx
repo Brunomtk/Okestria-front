@@ -2555,6 +2555,49 @@ export function OfficeScreen({
     [remoteOfficeSnapshot],
   );
 
+  const loadAgentHistory = useCallback(
+    async (agentId: string, options?: { limit?: number }) => {
+      if (status !== "connected") return;
+      const commands = await runHistorySyncOperation({
+        client,
+        agentId,
+        requestedLimit: options?.limit,
+        getAgent: (targetAgentId) =>
+          stateRef.current.agents.find((entry) => entry.agentId === targetAgentId) ?? null,
+        inFlightSessionKeys: historyInFlightRef.current,
+        requestId: randomUUID(),
+        loadedAt: Date.now(),
+        defaultLimit: RUNTIME_SYNC_DEFAULT_HISTORY_LIMIT,
+        maxLimit: RUNTIME_SYNC_MAX_HISTORY_LIMIT,
+        transcriptV2Enabled: TRANSCRIPT_V2_ENABLED,
+      });
+      executeHistorySyncCommands({
+        commands,
+        dispatch,
+        logMetric: (metric, meta) => logTranscriptDebugMetric(metric, meta),
+        isDisconnectLikeError: isGatewayDisconnectLikeError,
+        logError: (message, error) => console.error(message, error),
+      });
+    },
+    [client, dispatch, status],
+  );
+
+  const loadMoreAgentHistory = useCallback(
+    (agentId: string) => {
+      const agent = stateRef.current.agents.find((entry) => entry.agentId === agentId) ?? null;
+      const currentLimit = agent?.historyFetchLimit ?? null;
+      const nextLimit = Math.min(
+        RUNTIME_SYNC_MAX_HISTORY_LIMIT,
+        Math.max(
+          RUNTIME_SYNC_DEFAULT_HISTORY_LIMIT,
+          currentLimit ? currentLimit + RUNTIME_SYNC_DEFAULT_HISTORY_LIMIT : RUNTIME_SYNC_DEFAULT_HISTORY_LIMIT * 2,
+        ),
+      );
+      void loadAgentHistory(agentId, { limit: nextLimit });
+    },
+    [loadAgentHistory],
+  );
+
   const chatController = useChatInteractionController({
     client,
     status,
@@ -2578,8 +2621,27 @@ export function OfficeScreen({
   const agentEditorAgent = agentEditorAgentId
     ? (state.agents.find((agent) => agent.agentId === agentEditorAgentId) ?? null)
     : null;
-  const mainAgent =
-    state.agents.find((agent) => agent.agentId === MAIN_AGENT_ID) ?? null;
+  const autoLoadedHistorySessionRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!chatOpen || status !== "connected" || !focusedChatAgent) return;
+    const sessionKey = focusedChatAgent.sessionKey?.trim() ?? "";
+    if (!sessionKey) return;
+    const historyIdentity = `${sessionKey}:${focusedChatAgent.historyLoadedAt ?? 0}:${focusedChatAgent.outputLines.length}`;
+    if (autoLoadedHistorySessionRef.current[focusedChatAgent.agentId] === historyIdentity) {
+      return;
+    }
+    const shouldLoadHistory =
+      focusedChatAgent.historyLoadedAt == null ||
+      focusedChatAgent.outputLines.length === 0 ||
+      Boolean(focusedChatAgent.historyMaybeTruncated);
+    if (!shouldLoadHistory) {
+      autoLoadedHistorySessionRef.current[focusedChatAgent.agentId] = historyIdentity;
+      return;
+    }
+    autoLoadedHistorySessionRef.current[focusedChatAgent.agentId] = historyIdentity;
+    void loadAgentHistory(focusedChatAgent.agentId);
+  }, [chatOpen, focusedChatAgent, loadAgentHistory, status]);
 
   useEffect(() => {
     if (!selectedChatAgentId) return;
@@ -4801,7 +4863,9 @@ export function OfficeScreen({
                       stopBusy={
                         chatController.stopBusyAgentId === focusedChatAgent.agentId
                       }
-                      onLoadMoreHistory={() => {}}
+                      onLoadMoreHistory={() =>
+                        loadMoreAgentHistory(focusedChatAgent.agentId)
+                      }
                       onOpenSettings={() => {
                         router.push("/office");
                       }}
