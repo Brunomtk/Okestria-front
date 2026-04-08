@@ -66,6 +66,7 @@ import {
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
+import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
 import type { ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
@@ -813,6 +814,9 @@ type OfficeScreenProps = {
   workspaceId?: number | null;
   companyName?: string | null;
   workspaceName?: string | null;
+  userFullName?: string | null;
+  userEmail?: string | null;
+  userRole?: string | null;
   initialOfficeFurniture?: FurnitureItem[] | null;
 };
 
@@ -824,6 +828,9 @@ export function OfficeScreen({
   workspaceId = null,
   companyName = null,
   workspaceName = null,
+  userFullName = null,
+  userEmail = null,
+  userRole = null,
   initialOfficeFurniture = null,
 }: OfficeScreenProps) {
   const searchParams = useSearchParams();
@@ -967,6 +974,7 @@ export function OfficeScreen({
   const [hqModalOpen, setHqModalOpen] = useState(false);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [leadOpsModalOpen, setLeadOpsModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
   const initJukeboxStore = useJukeboxStore((state) => state.init);
@@ -4336,6 +4344,13 @@ export function OfficeScreen({
           onJukeboxInteract={() => {
             setJukeboxOpen(true);
           }}
+          profileButtonActive={profileModalOpen}
+          onOpenProfile={() => {
+            setProfileModalOpen(true);
+          }}
+          onLogout={() => {
+            router.push("/logout");
+          }}
         />
 
         {leadOpsModalOpen ? (
@@ -4984,6 +4999,21 @@ export function OfficeScreen({
           </div>
         </div>
       ) : null}
+
+
+      <CompanyProfileModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        onLogout={() => {
+          setProfileModalOpen(false);
+          router.push("/logout");
+        }}
+        fullName={userFullName}
+        email={userEmail}
+        role={userRole}
+        companyName={companyName}
+        workspaceName={workspaceName}
+      />
 
       {debugEnabled ? (
         <section className="fixed bottom-3 right-3 z-50 max-h-[45vh] w-[560px] overflow-auto rounded border border-slate-700 bg-black/90 p-3 font-mono text-[11px] text-slate-100">

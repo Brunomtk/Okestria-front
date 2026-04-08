@@ -10,6 +10,8 @@ import {
   Settings2,
   Camera,
   UserPlus,
+  UserRound,
+  LogOut,
   Trash2,
   Users,
   X,
@@ -1351,6 +1353,9 @@ export function RetroOffice3D({
   onMonitorSelect,
   onAgentChatSelect,
   onAddAgent,
+  profileButtonActive = false,
+  onOpenProfile,
+  onLogout,
   onAgentEdit,
   onAgentDelete,
   onDeskAssignmentChange,
@@ -1439,6 +1444,9 @@ export function RetroOffice3D({
   onMonitorSelect?: (agentId: string | null) => void;
   onAgentChatSelect?: (agentId: string) => void;
   onAddAgent?: () => void;
+  profileButtonActive?: boolean;
+  onOpenProfile?: () => void;
+  onLogout?: () => void;
   onAgentEdit?: (agentId: string) => void;
   onAgentDelete?: (agentId: string) => void;
   onDeskAssignmentChange?: (deskUid: string, agentId: string | null) => void;
@@ -5896,6 +5904,15 @@ export function RetroOffice3D({
               <span>Add</span>
             </button>
           ) : null}
+          {onOpenProfile ? (
+            <button
+              onClick={onOpenProfile}
+              title="Open profile"
+              className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${profileButtonActive ? "bg-cyan-500/24 text-cyan-100 border-cyan-400/45" : "bg-[#1c1610]/80 text-amber-500/52 border-amber-900/20 hover:text-cyan-100 hover:border-cyan-400/40"}`}
+            >
+              <UserRound size={12} />
+            </button>
+          ) : null}
           {/* New Idea 7: Heatmap toggle. */}
           <button
             onClick={() => setHeatmapMode((p) => !p)}
@@ -5933,6 +5950,15 @@ export function RetroOffice3D({
           >
             <Settings2 size={12} />
           </button>
+          {onLogout ? (
+            <button
+              onClick={onLogout}
+              title="Logout"
+              className="w-7 h-7 flex items-center justify-center rounded-md border border-red-400/20 bg-[#1b0a0a]/86 text-red-200/80 transition-all backdrop-blur-sm hover:border-red-300/40 hover:text-red-100"
+            >
+              <LogOut size={12} />
+            </button>
+          ) : null}
           {editMode && (
             <>
               {drag.kind === "placing" && (
