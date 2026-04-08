@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Sparkles, Star, UserRound, X } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Sparkles, Star, UserRound, X } from "lucide-react";
 
 import type { AgentState } from "@/features/agents/state/store";
 import {
@@ -60,61 +60,10 @@ const formatDateTime = (value?: string | null) => {
   });
 };
 
-type LeadInsightsStatusBadge = {
-  tone: string;
-  label: string;
-  message: string | null;
-};
-
-const getLeadInsightsStatusBadge = (lead?: LeadSummary | null): LeadInsightsStatusBadge | null => {
-  if (!lead) return null;
-
-  const warningMessage = lead.insightsWarningMessage?.trim() || null;
-  const warningCode = lead.insightsWarningCode?.trim() || null;
-  const generationStatus = lead.insightsGenerationStatus?.trim() || null;
-
-  if (lead.insightsGeneratedWithAi) {
-    return {
-      tone: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100",
-      label: "Generated with ChatGPT",
-      message: warningMessage,
-    };
-  }
-
-  if (lead.insightsUsedFallback) {
-    return {
-      tone: "border-amber-400/25 bg-amber-500/10 text-amber-100",
-      label: "Fallback content used",
-      message: warningMessage ?? "The API returned fallback outreach. Review the email and script before sending the batch.",
-    };
-  }
-
-  if (warningCode || warningMessage || generationStatus) {
-    return {
-      tone: "border-rose-400/25 bg-rose-500/10 text-rose-100",
-      label: "ChatGPT generation needs attention",
-      message:
-        warningMessage ??
-        generationStatus ??
-        "ChatGPT did not return a valid outreach payload. Review the lead before using it in email batch delivery.",
-    };
-  }
-
-  if (leadNeedsInsights(lead)) {
-    return {
-      tone: "border-white/10 bg-white/[0.04] text-white/75",
-      label: "Outreach still incomplete",
-      message: "Generate the outreach package before sending this lead to an email batch.",
-    };
-  }
-
-  return null;
-};
-
 
 type LeadAgentOption = {
   backendAgentId: number;
-  gatewayAgentId: string;
+  gatewayAgentId?: string | null;
   name: string;
 };
 
@@ -161,7 +110,6 @@ export function LeadOpsPanel({
   const [autoGeneratingLeadInsights, setAutoGeneratingLeadInsights] = useState(false);
   const [leadDetailTab, setLeadDetailTab] = useState<"overview" | "outreach">("overview");
   const [emailPreviewMode, setEmailPreviewMode] = useState<"preview" | "html">("preview");
-  const [leadDetailNotice, setLeadDetailNotice] = useState<{ type: "success" | "info" | "error"; message: string } | null>(null);
 
   const [emailBatchModalOpen, setEmailBatchModalOpen] = useState(false);
   const [emailBatchJobs, setEmailBatchJobs] = useState<LeadEmailBatchJob[]>([]);
@@ -196,18 +144,17 @@ export function LeadOpsPanel({
 
         if (cancelled) return;
 
-        const options = details
-          .map((detail) => {
-            if (!detail) return null;
-            const gatewayAgentId = extractGatewayAgentId(detail);
-            if (!gatewayAgentId) return null;
+        const options = summaries
+          .map((summary, index) => {
+            const detail = details[index];
+            const gatewayAgentId = detail ? extractGatewayAgentId(detail) : null;
             return {
-              backendAgentId: detail.id,
-              gatewayAgentId,
-              name: detail.name?.trim() || detail.slug?.trim() || `Agent ${detail.id}`,
+              backendAgentId: detail?.id ?? summary.id,
+              gatewayAgentId: gatewayAgentId || null,
+              name: detail?.name?.trim() || detail?.slug?.trim() || summary.name?.trim() || summary.slug?.trim() || `Agent ${summary.id}`,
             } satisfies LeadAgentOption;
           })
-          .filter((entry): entry is LeadAgentOption => Boolean(entry));
+          .filter((entry, index, array) => array.findIndex((candidate) => candidate.backendAgentId === entry.backendAgentId) === index);
 
         setLeadAgentOptions(options);
         setSelectedBackendAgentId((current) =>
@@ -401,17 +348,14 @@ export function LeadOpsPanel({
     setSelectedLeadDetail(null);
     setLoadingLeadDetail(false);
     setLeadDetailTab("overview");
-    setLeadDetailNotice(null);
   }, []);
 
   useEffect(() => {
     if (!selectedBrowserLead) {
       setSelectedLeadDetail(null);
-      setLeadDetailNotice(null);
       return;
     }
     setLeadDetailTab("overview");
-    setLeadDetailNotice(null);
 
     let cancelled = false;
     setLoadingLeadDetail(true);
@@ -443,92 +387,23 @@ export function LeadOpsPanel({
     setJobLeads((current) => current.map((lead) => (lead.id === updated.id ? { ...lead, ...updated } : lead)));
   }, []);
 
-  const refreshLeadDetail = useCallback(async (leadId: number, options?: { attempts?: number; delayMs?: number; stopWhenComplete?: boolean }) => {
-    const attempts = Math.max(1, options?.attempts ?? 1);
-    const delayMs = Math.max(0, options?.delayMs ?? 0);
-
-    let latest: LeadSummary | null = null;
-    for (let attempt = 0; attempt < attempts; attempt += 1) {
-      try {
-        latest = await getLeadById(leadId);
-      } catch {
-        latest = null;
-      }
-
-      if (latest) {
-        applyUpdatedLead(latest);
-        if (!options?.stopWhenComplete || !leadNeedsInsights(latest)) {
-          return latest;
-        }
-      }
-
-      if (attempt < attempts - 1 && delayMs > 0) {
-        await new Promise((resolve) => window.setTimeout(resolve, delayMs));
-      }
-    }
-
-    return latest;
-  }, [applyUpdatedLead]);
-
   const handleGenerateLeadInsights = useCallback(async (options?: { silent?: boolean; forceRegenerate?: boolean }) => {
     if (!selectedBrowserLeadId) return;
-
-    if (!options?.silent) {
-      setLeadDetailNotice({
-        type: "info",
-        message: "Generating outreach, refreshing the lead details, and saving the latest fields for email batch delivery.",
-      });
-    }
-
     if (options?.silent) {
       setAutoGeneratingLeadInsights(true);
     } else {
       setGeneratingLeadInsights(true);
     }
     try {
-      const updated = await generateLeadInsights(selectedBrowserLeadId, selectedBackendAgentId || null, {
+      const updated = await generateLeadInsights(selectedBrowserLeadId, null, {
         forceRegenerate: options?.forceRegenerate ?? true,
         preferredModel: "gpt-4.1-mini",
       });
       applyUpdatedLead(updated);
-      const refreshed = await refreshLeadDetail(selectedBrowserLeadId, {
-        attempts: options?.silent ? 2 : 5,
-        delayMs: options?.silent ? 600 : 1200,
-        stopWhenComplete: true,
-      });
-      const finalLead = refreshed ?? updated;
       setError(null);
-      if (!options?.silent) {
-        const aiWarningMessage = finalLead?.insightsWarningMessage?.trim();
-        if (finalLead?.insightsGeneratedWithAi) {
-          setLeadDetailNotice({
-            type: "success",
-            message: aiWarningMessage || "Outreach generated with ChatGPT and synced. The email, script, fit, and product fields are ready for your batch email flow.",
-          });
-        } else if (finalLead?.insightsUsedFallback) {
-          setLeadDetailNotice({
-            type: "info",
-            message: aiWarningMessage || "ChatGPT was unavailable, so fallback outreach was saved. Review the email and script before sending the batch.",
-          });
-        } else {
-          setLeadDetailNotice(
-            finalLead && !leadNeedsInsights(finalLead)
-              ? {
-                  type: "success",
-                  message: "Outreach generated and synced. The email, script, fit, and product fields are ready for your batch email flow.",
-                }
-              : {
-                  type: "info",
-                  message: aiWarningMessage || "Generation finished, but some outreach fields are still partial. Review the lead before sending the batch.",
-                },
-          );
-        }
-      }
     } catch (insightError) {
-      const message = insightError instanceof Error ? insightError.message : "Failed to generate insights for this lead.";
       if (!options?.silent) {
-        setError(message);
-        setLeadDetailNotice({ type: "error", message });
+        setError(insightError instanceof Error ? insightError.message : "Failed to generate insights for this lead.");
       }
     } finally {
       if (options?.silent) {
@@ -537,7 +412,7 @@ export function LeadOpsPanel({
         setGeneratingLeadInsights(false);
       }
     }
-  }, [applyUpdatedLead, refreshLeadDetail, selectedBrowserLeadId, selectedBackendAgentId]);
+  }, [applyUpdatedLead, selectedBrowserLeadId]);
 
   useEffect(() => {
     if (!selectedLeadDetail || !selectedBrowserLeadId || loadingLeadDetail || generatingLeadInsights || autoGeneratingLeadInsights) {
@@ -566,7 +441,6 @@ export function LeadOpsPanel({
   const outreachEmailSubject = useMemo(() => buildEmailSubject(selectedLeadDetail), [selectedLeadDetail]);
   const outreachEmailBody = useMemo(() => buildEmailBody(selectedLeadDetail), [selectedLeadDetail]);
   const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail), [selectedLeadDetail]);
-  const leadInsightsStatusBadge = useMemo(() => getLeadInsightsStatusBadge(selectedLeadDetail), [selectedLeadDetail]);
 
   const handleCopyText = useCallback(async (value: string | null | undefined, successMessage: string) => {
     if (!value || !navigator?.clipboard) return;
@@ -1260,21 +1134,8 @@ export function LeadOpsPanel({
                   <div className="flex items-center justify-between gap-3 border-b border-cyan-500/10 px-5 py-4">
                     <div>
                       <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-200">Lead detail</div>
-                      <div className="mt-1 font-mono text-[11px] text-white/45">AI overview and outreach plan generated for this lead.</div>
+                      <div className="mt-1 font-mono text-[11px] text-white/45">AI overview and outreach plan generated directly for this lead.</div>
                     </div>
-                    {leadDetailNotice ? (
-                      <div
-                        className={`rounded-2xl border px-4 py-3 text-sm ${
-                          leadDetailNotice.type === "success"
-                            ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
-                            : leadDetailNotice.type === "error"
-                              ? "border-rose-400/25 bg-rose-500/10 text-rose-100"
-                              : "border-cyan-400/25 bg-cyan-500/10 text-cyan-100"
-                        }`}
-                      >
-                        {leadDetailNotice.message}
-                      </div>
-                    ) : null}
                     <button
                       type="button"
                       onClick={handleCloseLeadDetailModal}
@@ -1378,8 +1239,8 @@ export function LeadOpsPanel({
                               <button
                                 type="button"
                                 onClick={() => void handleGenerateLeadInsights()}
-                                disabled={generatingLeadInsights || !selectedBackendAgentId}
-                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                disabled={generatingLeadInsights}
+                                                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {generatingLeadInsights ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
                                 Regenerate AI
@@ -1388,7 +1249,7 @@ export function LeadOpsPanel({
                             {autoGeneratingLeadInsights ? (
                               <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100">
                                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                Completing missing AI fields for this lead
+                                Completing missing AI fields for this lead without requiring an agent
                               </div>
                             ) : null}
                             <div className="grid gap-3 md:grid-cols-2">
@@ -1433,22 +1294,6 @@ export function LeadOpsPanel({
                           </div>
                         </div>
 
-                        {leadInsightsStatusBadge ? (
-                          <div className={`rounded-[22px] border px-4 py-4 ${leadInsightsStatusBadge.tone}`}>
-                            <div className="flex items-start gap-3">
-                              <div className="mt-0.5 rounded-full border border-current/20 p-2 text-current">
-                                <AlertTriangle className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-sm font-semibold tracking-[0.02em]">{leadInsightsStatusBadge.label}</div>
-                                {leadInsightsStatusBadge.message ? (
-                                  <div className="mt-1 text-sm leading-7 text-current/90">{leadInsightsStatusBadge.message}</div>
-                                ) : null}
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-
                         <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
                           <div className="space-y-4">
                             <div className="rounded-[24px] border border-cyan-500/15 bg-[#081323] p-4">
@@ -1490,7 +1335,7 @@ export function LeadOpsPanel({
                                   onClick={() => void handleGenerateLeadInsights()}
                                   className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-left text-sm font-semibold text-white/78 transition-colors hover:border-cyan-400/25 hover:text-white"
                                 >
-                                  <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />Refresh insights</span>
+                                  <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />{generatingLeadInsights ? "Generating AI" : "Refresh insights"}</span>
                                   <ChevronRight className="h-4 w-4" />
                                 </button>
                               </div>
@@ -1515,12 +1360,6 @@ export function LeadOpsPanel({
                           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <div className="text-xl font-semibold text-white">Outreach Email</div>
-                              {leadInsightsStatusBadge ? (
-                                <div className={`mt-3 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${leadInsightsStatusBadge.tone}`}>
-                                  <AlertTriangle className="h-3.5 w-3.5" />
-                                  {leadInsightsStatusBadge.label}
-                                </div>
-                              ) : null}
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="inline-flex items-center rounded-xl border border-white/10 bg-black/30 p-1">
