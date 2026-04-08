@@ -110,6 +110,7 @@ export function LeadOpsPanel({
   const [autoGeneratingLeadInsights, setAutoGeneratingLeadInsights] = useState(false);
   const [leadDetailTab, setLeadDetailTab] = useState<"overview" | "outreach">("overview");
   const [emailPreviewMode, setEmailPreviewMode] = useState<"preview" | "html">("preview");
+  const [leadDetailNotice, setLeadDetailNotice] = useState<{ type: "success" | "info" | "error"; message: string } | null>(null);
 
   const [emailBatchModalOpen, setEmailBatchModalOpen] = useState(false);
   const [emailBatchJobs, setEmailBatchJobs] = useState<LeadEmailBatchJob[]>([]);
@@ -349,14 +350,17 @@ export function LeadOpsPanel({
     setSelectedLeadDetail(null);
     setLoadingLeadDetail(false);
     setLeadDetailTab("overview");
+    setLeadDetailNotice(null);
   }, []);
 
   useEffect(() => {
     if (!selectedBrowserLead) {
       setSelectedLeadDetail(null);
+      setLeadDetailNotice(null);
       return;
     }
     setLeadDetailTab("overview");
+    setLeadDetailNotice(null);
 
     let cancelled = false;
     setLoadingLeadDetail(true);
@@ -388,8 +392,43 @@ export function LeadOpsPanel({
     setJobLeads((current) => current.map((lead) => (lead.id === updated.id ? { ...lead, ...updated } : lead)));
   }, []);
 
+  const refreshLeadDetail = useCallback(async (leadId: number, options?: { attempts?: number; delayMs?: number; stopWhenComplete?: boolean }) => {
+    const attempts = Math.max(1, options?.attempts ?? 1);
+    const delayMs = Math.max(0, options?.delayMs ?? 0);
+
+    let latest: LeadSummary | null = null;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        latest = await getLeadById(leadId);
+      } catch {
+        latest = null;
+      }
+
+      if (latest) {
+        applyUpdatedLead(latest);
+        if (!options?.stopWhenComplete || !leadNeedsInsights(latest)) {
+          return latest;
+        }
+      }
+
+      if (attempt < attempts - 1 && delayMs > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, delayMs));
+      }
+    }
+
+    return latest;
+  }, [applyUpdatedLead]);
+
   const handleGenerateLeadInsights = useCallback(async (options?: { silent?: boolean; forceRegenerate?: boolean }) => {
     if (!selectedBrowserLeadId) return;
+
+    if (!options?.silent) {
+      setLeadDetailNotice({
+        type: "info",
+        message: "Generating outreach, refreshing the lead details, and saving the latest fields for email batch delivery.",
+      });
+    }
+
     if (options?.silent) {
       setAutoGeneratingLeadInsights(true);
     } else {
@@ -401,10 +440,31 @@ export function LeadOpsPanel({
         preferredModel: "gpt-4.1-mini",
       });
       applyUpdatedLead(updated);
+      const refreshed = await refreshLeadDetail(selectedBrowserLeadId, {
+        attempts: options?.silent ? 2 : 5,
+        delayMs: options?.silent ? 600 : 1200,
+        stopWhenComplete: true,
+      });
+      const finalLead = refreshed ?? updated;
       setError(null);
-    } catch (insightError) {
       if (!options?.silent) {
-        setError(insightError instanceof Error ? insightError.message : "Failed to generate insights for this lead.");
+        setLeadDetailNotice(
+          finalLead && !leadNeedsInsights(finalLead)
+            ? {
+                type: "success",
+                message: "Outreach generated and synced. The email, script, fit, and product fields are ready for your batch email flow.",
+              }
+            : {
+                type: "info",
+                message: "Generation finished, but some outreach fields are still partial. Review the lead before sending the batch.",
+              },
+        );
+      }
+    } catch (insightError) {
+      const message = insightError instanceof Error ? insightError.message : "Failed to generate insights for this lead.";
+      if (!options?.silent) {
+        setError(message);
+        setLeadDetailNotice({ type: "error", message });
       }
     } finally {
       if (options?.silent) {
@@ -413,7 +473,7 @@ export function LeadOpsPanel({
         setGeneratingLeadInsights(false);
       }
     }
-  }, [applyUpdatedLead, selectedBrowserLeadId, selectedBackendAgentId]);
+  }, [applyUpdatedLead, refreshLeadDetail, selectedBrowserLeadId, selectedBackendAgentId]);
 
   useEffect(() => {
     if (!selectedLeadDetail || !selectedBrowserLeadId || loadingLeadDetail || generatingLeadInsights || autoGeneratingLeadInsights) {
@@ -1137,6 +1197,19 @@ export function LeadOpsPanel({
                       <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-200">Lead detail</div>
                       <div className="mt-1 font-mono text-[11px] text-white/45">AI overview and outreach plan generated for this lead.</div>
                     </div>
+                    {leadDetailNotice ? (
+                      <div
+                        className={`rounded-2xl border px-4 py-3 text-sm ${
+                          leadDetailNotice.type === "success"
+                            ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                            : leadDetailNotice.type === "error"
+                              ? "border-rose-400/25 bg-rose-500/10 text-rose-100"
+                              : "border-cyan-400/25 bg-cyan-500/10 text-cyan-100"
+                        }`}
+                      >
+                        {leadDetailNotice.message}
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       onClick={handleCloseLeadDetailModal}
