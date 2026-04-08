@@ -685,7 +685,6 @@ const AgentChatTranscript = memo(function AgentChatTranscript({
   pendingExecApprovals: PendingExecApproval[];
   onResolveExecApproval?: (id: string, decision: ExecApprovalDecision) => void;
   emptyStateTitle: string;
-  sessionKey: string;
 }) {
   const chatRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
