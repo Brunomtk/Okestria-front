@@ -661,8 +661,10 @@ const AgentChatTranscript = memo(function AgentChatTranscript({
   pendingExecApprovals,
   onResolveExecApproval,
   emptyStateTitle,
+  sessionKey,
 }: {
   agentId: string;
+  sessionKey: string;
   name: string;
   avatarSeed: string;
   avatarUrl: string | null;
@@ -683,6 +685,7 @@ const AgentChatTranscript = memo(function AgentChatTranscript({
   pendingExecApprovals: PendingExecApproval[];
   onResolveExecApproval?: (id: string, decision: ExecApprovalDecision) => void;
   emptyStateTitle: string;
+  sessionKey: string;
 }) {
   const chatRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -735,6 +738,26 @@ const AgentChatTranscript = memo(function AgentChatTranscript({
   useEffect(() => {
     updatePinnedFromScroll();
   }, [updatePinnedFromScroll]);
+
+  useEffect(() => {
+    setPinned(true);
+    setIsAtTop(false);
+
+    let frameOne: number | null = requestAnimationFrame(() => {
+      scrollChatToBottom();
+      frameOne = null;
+      const frameTwo = requestAnimationFrame(() => {
+        scrollChatToBottom();
+      });
+      scrollFrameRef.current = frameTwo;
+    });
+
+    return () => {
+      if (frameOne !== null) {
+        cancelAnimationFrame(frameOne);
+      }
+    };
+  }, [agentId, scrollChatToBottom, sessionKey, setPinned]);
 
   const showJumpToLatest =
     !isPinned && (outputLineCount > 0 || liveAssistantCharCount > 0 || liveThinkingCharCount > 0);
@@ -1830,6 +1853,7 @@ export const AgentChatPanel = ({
         <AgentChatTranscript
           agentId={agent.agentId}
           name={agent.name}
+          sessionKey={agent.sessionKey}
           avatarSeed={avatarSeed}
           avatarUrl={agent.avatarUrl ?? null}
           status={agent.status}
