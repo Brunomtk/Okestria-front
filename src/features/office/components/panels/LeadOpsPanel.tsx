@@ -415,14 +415,29 @@ export function LeadOpsPanel({
   }, [applyUpdatedLead, selectedBrowserLeadId]);
 
   useEffect(() => {
-    if (!selectedLeadDetail || !selectedBrowserLeadId || loadingLeadDetail || generatingLeadInsights || autoGeneratingLeadInsights) {
+    if (
+      leadDetailTab !== "outreach" ||
+      !selectedLeadDetail ||
+      !selectedBrowserLeadId ||
+      loadingLeadDetail ||
+      generatingLeadInsights ||
+      autoGeneratingLeadInsights
+    ) {
       return;
     }
     if (!leadNeedsInsights(selectedLeadDetail)) {
       return;
     }
     void handleGenerateLeadInsights({ silent: true, forceRegenerate: false });
-  }, [autoGeneratingLeadInsights, generatingLeadInsights, handleGenerateLeadInsights, loadingLeadDetail, selectedBrowserLeadId, selectedLeadDetail]);
+  }, [
+    autoGeneratingLeadInsights,
+    generatingLeadInsights,
+    handleGenerateLeadInsights,
+    leadDetailTab,
+    loadingLeadDetail,
+    selectedBrowserLeadId,
+    selectedLeadDetail,
+  ]);
 
 
 
@@ -1171,7 +1186,7 @@ export function LeadOpsPanel({
                         <div className="flex flex-wrap items-center gap-3">
                           <button
                             type="button"
-                            onClick={() => handleCopyText(detailCoreScript, "Outreach script copied.")}
+                            onClick={() => handleCopyText(selectedLeadDetail?.outreachScript, "Outreach script copied.")}
                             className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-50 transition-colors hover:border-cyan-300/40 hover:bg-cyan-500/15"
                           >
                             <Copy className="h-4 w-4" />
@@ -1236,15 +1251,9 @@ export function LeadOpsPanel({
                                 <div className="rounded-xl border border-amber-400/15 bg-amber-500/10 p-2 text-amber-200"><Sparkles className="h-4 w-4" /></div>
                                 <div className="font-semibold">PTX Insights</div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => void handleGenerateLeadInsights()}
-                                disabled={generatingLeadInsights}
-                                                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {generatingLeadInsights ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                                Regenerate AI
-                              </button>
+                              <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-right text-[11px] font-semibold text-white/55">
+                                AI generation lives in Outreach
+                              </div>
                             </div>
                             {autoGeneratingLeadInsights ? (
                               <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100">
@@ -1280,12 +1289,36 @@ export function LeadOpsPanel({
                               <div className="mt-4 text-4xl font-semibold leading-tight text-white">Personalized outreach plan for {selectedLeadDetail.businessName}</div>
                               <div className="mt-4 max-w-3xl text-lg leading-8 text-white/86">{detailInsightSummary}</div>
                             </div>
-                            <div className="grid gap-3 md:grid-cols-3">
-                              <MiniKpiCard label="Fit" value={detailFitLabel} tone={fitBadgeClass(selectedLeadDetail.ptxFit)} />
-                              <MiniKpiCard label="Product" value={detailRecommendedProduct} tone="border-cyan-400/20 bg-cyan-500/10 text-cyan-50" />
-                              <MiniKpiCard label="Primary CTA" value={detailPrimaryCta} tone="border-amber-400/20 bg-amber-500/10 text-amber-100" />
+                            <div className="space-y-3">
+                              <button
+                                type="button"
+                                onClick={() => void handleGenerateLeadInsights()}
+                                disabled={generatingLeadInsights || autoGeneratingLeadInsights}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {generatingLeadInsights || autoGeneratingLeadInsights ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                {selectedLeadDetail.outreachScript || selectedLeadDetail.outreachEmailHtml ? "Regenerate AI Outreach" : "Generate AI Outreach"}
+                              </button>
+                              <div className="grid gap-3 md:grid-cols-3">
+                                <MiniKpiCard label="Fit" value={detailFitLabel} tone={fitBadgeClass(selectedLeadDetail.ptxFit)} />
+                                <MiniKpiCard label="Product" value={detailRecommendedProduct} tone="border-cyan-400/20 bg-cyan-500/10 text-cyan-50" />
+                                <MiniKpiCard label="Primary CTA" value={detailPrimaryCta} tone="border-amber-400/20 bg-amber-500/10 text-amber-100" />
+                              </div>
                             </div>
                           </div>
+
+                          {autoGeneratingLeadInsights ? (
+                            <div className="mt-5 inline-flex items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-sm font-semibold text-cyan-100">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Generating AI outreach for this lead
+                            </div>
+                          ) : null}
+
+                          {leadNeedsInsights(selectedLeadDetail) && !autoGeneratingLeadInsights && !generatingLeadInsights ? (
+                            <div className="mt-5 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-4 text-sm leading-7 text-amber-100">
+                              This lead still does not have complete AI outreach. OpenAI generation happens from this tab and the content will appear here as soon as the backend returns the script and email.
+                            </div>
+                          ) : null}
 
                           <div className="mt-6 grid gap-4 xl:grid-cols-3">
                             <PlanCard title="Best angle" content={detailCoreScript} />
@@ -1304,8 +1337,9 @@ export function LeadOpsPanel({
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => handleCopyText(detailCoreScript, "Outreach script copied.")}
-                                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/75 transition-colors hover:border-cyan-400/25 hover:text-white"
+                                  onClick={() => handleCopyText(selectedLeadDetail?.outreachScript, "Outreach script copied.")}
+                                  disabled={!selectedLeadDetail?.outreachScript?.trim()}
+                                  className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white/75 transition-colors hover:border-cyan-400/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                                 >
                                   <Copy className="h-4 w-4" />
                                   Copy script
@@ -1333,9 +1367,10 @@ export function LeadOpsPanel({
                                 <button
                                   type="button"
                                   onClick={() => void handleGenerateLeadInsights()}
-                                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-left text-sm font-semibold text-white/78 transition-colors hover:border-cyan-400/25 hover:text-white"
+                                  disabled={generatingLeadInsights || autoGeneratingLeadInsights}
+                                  className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4 text-left text-sm font-semibold text-white/78 transition-colors hover:border-cyan-400/25 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                                 >
-                                  <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />{generatingLeadInsights ? "Generating AI" : "Refresh insights"}</span>
+                                  <span className="inline-flex items-center gap-2"><RefreshCw className="h-4 w-4" />{generatingLeadInsights || autoGeneratingLeadInsights ? "Generating AI outreach" : "Regenerate AI outreach"}</span>
                                   <ChevronRight className="h-4 w-4" />
                                 </button>
                               </div>
@@ -1378,8 +1413,9 @@ export function LeadOpsPanel({
                               </div>
                               <button
                                 type="button"
-                                onClick={() => handleCopyText(outreachEmailHtml, emailPreviewMode === "html" ? "HTML copied." : "Email HTML copied.")}
-                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15"
+                                onClick={() => handleCopyText(selectedLeadDetail?.outreachEmailHtml, emailPreviewMode === "html" ? "HTML copied." : "Email HTML copied.")}
+                                disabled={!selectedLeadDetail?.outreachEmailHtml?.trim()}
+                                className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-300/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                               >
                                 <Copy className="h-4 w-4" />
                                 Copy HTML
@@ -1495,8 +1531,8 @@ function deriveOwnerName(businessName?: string | null) {
 }
 
 function buildCoreScript(lead?: LeadSummary | null) {
-  if (!lead) return "No script available.";
-  return lead.outreachScript?.trim() || `Hi ${deriveOwnerName(lead.businessName)}, I noticed ${lead.businessName} has strong visibility${lead.rating ? ` with a ${lead.rating}-star rating` : ""}${lead.reviewCount ? ` from ${lead.reviewCount} reviews` : ""}. We help ${lead.category?.toLowerCase() || "local service"} teams turn that credibility into more demand and steady revenue growth without adding complexity.`;
+  if (!lead) return "No AI outreach script available.";
+  return lead.outreachScript?.trim() || "No AI outreach script generated yet. Use Generate AI Outreach in this tab.";
 }
 
 function buildSuggestedOpener(lead?: LeadSummary | null) {
@@ -1560,12 +1596,9 @@ PTX Growth Team`;
 function buildEmailHtml(lead?: LeadSummary | null) {
   const fromBackend = lead?.outreachEmailHtml?.trim();
   if (fromBackend) return fromBackend;
-  const body = buildEmailBody(lead)
-    .split("\n")
-    .map((line) => (line ? `<p>${line}</p>` : `<br />`))
-    .join("\n");
-  return `<div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.7;color:#111827">
-${body}
+  return `<div style="font-family:Arial,sans-serif;font-size:16px;line-height:1.7;color:#e5eef8;background:#081323;border:1px solid rgba(103,232,249,0.15);border-radius:18px;padding:24px;">
+<p style="margin:0 0 12px 0;font-weight:600;">AI outreach email not generated yet.</p>
+<p style="margin:0;">Use <strong>Generate AI Outreach</strong> in the Outreach tab to request the email from the backend.</p>
 </div>`;
 }
 
