@@ -108,6 +108,11 @@ export type LeadSummary = {
   outreachEmailHtml?: string | null;
   notes?: string | null;
   description?: string | null;
+  insightsGeneratedWithAi?: boolean | null;
+  insightsUsedFallback?: boolean | null;
+  insightsGenerationStatus?: string | null;
+  insightsWarningCode?: string | null;
+  insightsWarningMessage?: string | null;
 };
 
 const STORAGE_KEY = "okestria.leadOps.jobs";
@@ -155,6 +160,9 @@ const parseNumber = (value: unknown, fallback = 0) =>
 
 const parseString = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const parseBoolean = (value: unknown) =>
+  typeof value === "boolean" ? value : null;
 
 const pick = (entry: Record<string, unknown>, ...keys: string[]) => {
   for (const key of keys) {
@@ -227,6 +235,11 @@ const normalizeLead = (value: unknown): LeadSummary | null => {
     outreachEmailHtml: parseString(pick(entry, "outreachEmailHtml", "OutreachEmailHtml")),
     notes: parseString(pick(entry, "notes", "Notes")),
     description: parseString(pick(entry, "description", "Description")),
+    insightsGeneratedWithAi: parseBoolean(pick(entry, "insightsGeneratedWithAi", "InsightsGeneratedWithAi")),
+    insightsUsedFallback: parseBoolean(pick(entry, "insightsUsedFallback", "InsightsUsedFallback")),
+    insightsGenerationStatus: parseString(pick(entry, "insightsGenerationStatus", "InsightsGenerationStatus")),
+    insightsWarningCode: parseString(pick(entry, "insightsWarningCode", "InsightsWarningCode")),
+    insightsWarningMessage: parseString(pick(entry, "insightsWarningMessage", "InsightsWarningMessage")),
   };
 };
 

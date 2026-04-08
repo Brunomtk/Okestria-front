@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Sparkles, Star, UserRound, X } from "lucide-react";
+import { AlertTriangle, Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Sparkles, Star, UserRound, X } from "lucide-react";
 
 import type { AgentState } from "@/features/agents/state/store";
 import {
@@ -58,6 +58,57 @@ const formatDateTime = (value?: string | null) => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+type LeadInsightsStatusBadge = {
+  tone: string;
+  label: string;
+  message: string | null;
+};
+
+const getLeadInsightsStatusBadge = (lead?: LeadSummary | null): LeadInsightsStatusBadge | null => {
+  if (!lead) return null;
+
+  const warningMessage = lead.insightsWarningMessage?.trim() || null;
+  const warningCode = lead.insightsWarningCode?.trim() || null;
+  const generationStatus = lead.insightsGenerationStatus?.trim() || null;
+
+  if (lead.insightsGeneratedWithAi) {
+    return {
+      tone: "border-emerald-400/25 bg-emerald-500/10 text-emerald-100",
+      label: "Generated with ChatGPT",
+      message: warningMessage,
+    };
+  }
+
+  if (lead.insightsUsedFallback) {
+    return {
+      tone: "border-amber-400/25 bg-amber-500/10 text-amber-100",
+      label: "Fallback content used",
+      message: warningMessage ?? "The API returned fallback outreach. Review the email and script before sending the batch.",
+    };
+  }
+
+  if (warningCode || warningMessage || generationStatus) {
+    return {
+      tone: "border-rose-400/25 bg-rose-500/10 text-rose-100",
+      label: "ChatGPT generation needs attention",
+      message:
+        warningMessage ??
+        generationStatus ??
+        "ChatGPT did not return a valid outreach payload. Review the lead before using it in email batch delivery.",
+    };
+  }
+
+  if (leadNeedsInsights(lead)) {
+    return {
+      tone: "border-white/10 bg-white/[0.04] text-white/75",
+      label: "Outreach still incomplete",
+      message: "Generate the outreach package before sending this lead to an email batch.",
+    };
+  }
+
+  return null;
 };
 
 
@@ -448,17 +499,30 @@ export function LeadOpsPanel({
       const finalLead = refreshed ?? updated;
       setError(null);
       if (!options?.silent) {
-        setLeadDetailNotice(
-          finalLead && !leadNeedsInsights(finalLead)
-            ? {
-                type: "success",
-                message: "Outreach generated and synced. The email, script, fit, and product fields are ready for your batch email flow.",
-              }
-            : {
-                type: "info",
-                message: "Generation finished, but some outreach fields are still partial. Review the lead before sending the batch.",
-              },
-        );
+        const aiWarningMessage = finalLead?.insightsWarningMessage?.trim();
+        if (finalLead?.insightsGeneratedWithAi) {
+          setLeadDetailNotice({
+            type: "success",
+            message: aiWarningMessage || "Outreach generated with ChatGPT and synced. The email, script, fit, and product fields are ready for your batch email flow.",
+          });
+        } else if (finalLead?.insightsUsedFallback) {
+          setLeadDetailNotice({
+            type: "info",
+            message: aiWarningMessage || "ChatGPT was unavailable, so fallback outreach was saved. Review the email and script before sending the batch.",
+          });
+        } else {
+          setLeadDetailNotice(
+            finalLead && !leadNeedsInsights(finalLead)
+              ? {
+                  type: "success",
+                  message: "Outreach generated and synced. The email, script, fit, and product fields are ready for your batch email flow.",
+                }
+              : {
+                  type: "info",
+                  message: aiWarningMessage || "Generation finished, but some outreach fields are still partial. Review the lead before sending the batch.",
+                },
+          );
+        }
       }
     } catch (insightError) {
       const message = insightError instanceof Error ? insightError.message : "Failed to generate insights for this lead.";
@@ -502,6 +566,7 @@ export function LeadOpsPanel({
   const outreachEmailSubject = useMemo(() => buildEmailSubject(selectedLeadDetail), [selectedLeadDetail]);
   const outreachEmailBody = useMemo(() => buildEmailBody(selectedLeadDetail), [selectedLeadDetail]);
   const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail), [selectedLeadDetail]);
+  const leadInsightsStatusBadge = useMemo(() => getLeadInsightsStatusBadge(selectedLeadDetail), [selectedLeadDetail]);
 
   const handleCopyText = useCallback(async (value: string | null | undefined, successMessage: string) => {
     if (!value || !navigator?.clipboard) return;
@@ -1368,6 +1433,22 @@ export function LeadOpsPanel({
                           </div>
                         </div>
 
+                        {leadInsightsStatusBadge ? (
+                          <div className={`rounded-[22px] border px-4 py-4 ${leadInsightsStatusBadge.tone}`}>
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 rounded-full border border-current/20 p-2 text-current">
+                                <AlertTriangle className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-sm font-semibold tracking-[0.02em]">{leadInsightsStatusBadge.label}</div>
+                                {leadInsightsStatusBadge.message ? (
+                                  <div className="mt-1 text-sm leading-7 text-current/90">{leadInsightsStatusBadge.message}</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
                         <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
                           <div className="space-y-4">
                             <div className="rounded-[24px] border border-cyan-500/15 bg-[#081323] p-4">
@@ -1434,6 +1515,12 @@ export function LeadOpsPanel({
                           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <div className="text-xl font-semibold text-white">Outreach Email</div>
+                              {leadInsightsStatusBadge ? (
+                                <div className={`mt-3 inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${leadInsightsStatusBadge.tone}`}>
+                                  <AlertTriangle className="h-3.5 w-3.5" />
+                                  {leadInsightsStatusBadge.label}
+                                </div>
+                              ) : null}
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="inline-flex items-center rounded-xl border border-white/10 bg-black/30 p-1">
