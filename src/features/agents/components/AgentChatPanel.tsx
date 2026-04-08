@@ -1535,10 +1535,7 @@ export const AgentChatPanel = ({
     [models]
   );
   const modelValue = agent.model ?? "";
-  const modelOptionsWithFallback =
-    modelValue && !modelOptions.some((option) => option.value === modelValue)
-      ? [{ value: modelValue, label: modelValue, reasoning: undefined }, ...modelOptions]
-      : modelOptions;
+  const modelOptionsWithFallback = modelOptions;
   const selectedModel = modelOptionsWithFallback.find((option) => option.value === modelValue);
   const allowThinking = selectedModel?.reasoning !== false;
 

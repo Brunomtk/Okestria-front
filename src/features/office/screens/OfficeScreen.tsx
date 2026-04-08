@@ -2523,7 +2523,7 @@ export function OfficeScreen({
           setGatewayModels(
             buildGatewayModelChoices(
               Array.isArray(result.models) ? result.models : [],
-              null,
+              gatewayConfigSnapshot.current,
             ),
           );
         }

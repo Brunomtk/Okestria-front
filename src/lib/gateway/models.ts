@@ -79,14 +79,11 @@ export const buildGatewayModelChoices = (
 ) => {
   const allowedKeys = buildAllowedModelKeys(snapshot);
   if (allowedKeys.length === 0) return catalog;
-  const filtered = catalog.filter((entry) => allowedKeys.includes(`${entry.provider}/${entry.id}`));
-  const filteredKeys = new Set(filtered.map((entry) => `${entry.provider}/${entry.id}`));
-  const extras: GatewayModelChoice[] = [];
-  for (const key of allowedKeys) {
-    if (filteredKeys.has(key)) continue;
-    const [provider, id] = key.split("/");
-    if (!provider || !id) continue;
-    extras.push({ provider, id, name: key });
-  }
-  return [...filtered, ...extras];
+
+  // Only show models that are both allowed by config and currently returned
+  // by the live gateway catalog. This keeps the chat picker limited to models
+  // that are actually available right now instead of surfacing stale aliases
+  // or configured fallbacks with missing auth/provider support.
+  const allowedSet = new Set(allowedKeys);
+  return catalog.filter((entry) => allowedSet.has(`${entry.provider}/${entry.id}`));
 };
