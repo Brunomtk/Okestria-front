@@ -922,7 +922,7 @@ export function OfficeScreen({
   const historyInFlightRef = useRef<Set<string>>(new Set());
   const lastTransportHistoryRefreshKeyRef = useRef<Record<string, string>>({});
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatRosterMode, setChatRosterMode] = useState<"company" | "focused">("company");
+  const chatRosterMode = "company"; // Always show all agents
   const [chatTargetView, setChatTargetView] = useState<"all" | "agents" | "squads">("all");
   const [companySquads, setCompanySquads] = useState<SquadSummary[]>([]);
   const [squadChatById, setSquadChatById] = useState<Record<string, RemoteChatSessionState>>({});
@@ -1831,10 +1831,9 @@ export function OfficeScreen({
       try {
         const createdSquad = await createCompanySquad(payload);
         await loadCompanySquads(true);
-        setCreateSquadModalOpen(false);
-        setSelectedChatAgentId(`squad:${createdSquad.id}`);
-        setChatRosterMode("company");
-        setChatOpen(true);
+  setCreateSquadModalOpen(false);
+  setSelectedChatAgentId(`squad:${createdSquad.id}`);
+  setChatOpen(true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to create the squad right now.";
         setCreateSquadError(message);
@@ -2534,15 +2533,13 @@ export function OfficeScreen({
     const agents = stateRef.current?.agents ?? [];
     const selectedAgentId = stateRef.current?.selectedAgentId ?? null;
     const preferredAgentId = selectedAgentId ?? agents[0]?.agentId ?? null;
-    if (preferredAgentId) {
-      setSelectedChatAgentId(preferredAgentId);
-      setChatRosterMode(preferredAgentId ? "focused" : "company");
-      return;
-    }
-    if (companySquads.length > 0) {
-      setSelectedChatAgentId(`squad:${companySquads[0]?.id}`);
-      setChatRosterMode("company");
-    }
+  if (preferredAgentId) {
+  setSelectedChatAgentId(preferredAgentId);
+  return;
+  }
+  if (companySquads.length > 0) {
+  setSelectedChatAgentId(`squad:${companySquads[0]?.id}`);
+  }
   }, [chatOpen, companySquads, selectedChatAgentId]);
 
   const remoteChatAgentIds = useMemo(
@@ -3163,11 +3160,10 @@ export function OfficeScreen({
   ]);
 
   const handleOpenAgentChat = useCallback(
-    (agentId: string) => {
-      setSelectedChatAgentId(agentId);
-      setChatRosterMode("company");
-      setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
-      setChatOpen(true);
+  (agentId: string) => {
+  setSelectedChatAgentId(agentId);
+  setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
+  setChatOpen(true);
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId)) {
         dispatch({ type: "selectAgent", agentId });
       }
@@ -4179,8 +4175,13 @@ export function OfficeScreen({
         (!didAttemptGatewayConnect || status === "connecting")))
   ) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black font-mono text-[#4FC3F7]">
-        CONNECTING TO GATEWAY...
+      <div className="flex min-h-screen items-center justify-center bg-black">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500/20 border-t-cyan-500" />
+          <div className="h-1 w-32 overflow-hidden rounded-full bg-white/5">
+            <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-cyan-500/50 to-cyan-500" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -4675,22 +4676,13 @@ export function OfficeScreen({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setChatRosterMode((current) => (current === "company" ? "focused" : "company"))}
-                        className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white/60 transition hover:bg-white/10 hover:text-white"
-                      >
-                        {chatRosterMode === "company" ? "Focus" : "Show all"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setChatOpen(false)}
-                        className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white/60 transition hover:bg-white/10 hover:text-white"
-                      >
-                        Close
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setChatOpen(false)}
+                      className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-white/60 transition hover:bg-white/10 hover:text-white"
+                    >
+                      Close
+                    </button>
                   </div>
 
                   <div className="mt-3 flex items-center gap-2">
@@ -4932,10 +4924,9 @@ export function OfficeScreen({
             if (preferredTargetId && !selectedChatAgentId) {
               setSelectedChatAgentId(preferredTargetId);
             }
-            if (!selectedChatAgentId) {
-              setChatRosterMode(preferredTargetId ? "focused" : "company");
-              setChatTargetView(isSquadChatTargetId(preferredTargetId) ? "squads" : "agents");
-            }
+  if (!selectedChatAgentId) {
+  setChatTargetView(isSquadChatTargetId(preferredTargetId) ? "squads" : "agents");
+  }
             setChatOpen(true);
           }}
           className="flex items-center gap-1.5 rounded border border-amber-700/50 bg-[#0e0a04]/90 px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider text-amber-500/80 shadow-lg backdrop-blur transition-colors hover:border-amber-600/70 hover:text-amber-400"

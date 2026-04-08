@@ -125,7 +125,7 @@ export function LeadOpsPanel({
   // UI state
   const [modalView, setModalView] = useState<ModalView>("none");
   const [leadBrowserSearch, setLeadBrowserSearch] = useState("");
-  const [leadBrowserView, setLeadBrowserView] = useState<"list" | "cards">("list");
+  const [leadBrowserView, setLeadBrowserView] = useState<"list" | "cards">("cards");
   const [emailPreviewMode, setEmailPreviewMode] = useState<"preview" | "html">("preview");
 
   // Loading states
@@ -402,7 +402,7 @@ export function LeadOpsPanel({
   const handleOpenLeadVault = useCallback((jobId: number) => {
     setSelectedJobId(jobId);
     setLeadBrowserSearch("");
-    setLeadBrowserView("list");
+    setLeadBrowserView("cards");
     setSelectedLeadId(null);
     setSelectedLeadDetail(null);
     setModalView("lead-vault");
@@ -923,53 +923,59 @@ export function LeadOpsPanel({
           {/* Lead List */}
           <div className="max-h-[50vh] overflow-y-auto rounded-xl ring-1 ring-white/5">
             {leadBrowserView === "list" ? (
-              <table className="w-full text-left text-sm">
-                <thead className="sticky top-0 bg-slate-900 text-xs uppercase text-white/40">
-                  <tr>
-                    <th className="px-4 py-3">Business</th>
-                    <th className="px-4 py-3">Location</th>
-                    <th className="px-4 py-3">Category</th>
-                    <th className="px-4 py-3">Fit</th>
-                    <th className="px-4 py-3">Contact</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {filteredLeads.map((lead) => (
-                    <tr key={lead.id} className="hover:bg-white/[0.02]">
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-white">{lead.businessName}</div>
-                        {lead.website && (
-                          <div className="mt-0.5 truncate text-xs text-white/35">{lead.website.replace(/^https?:\/\//, "")}</div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-white/60">
-                        {[lead.city, lead.state].filter(Boolean).join(", ") || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-white/60">{lead.category || "-"}</td>
-                      <td className="px-4 py-3">
+              <div className="divide-y divide-white/5">
+                {filteredLeads.map((lead) => (
+                  <div
+                    key={lead.id}
+                    onClick={() => handleSelectLead(lead.id)}
+                    className="flex cursor-pointer items-center gap-4 px-4 py-3 transition hover:bg-white/[0.03]"
+                  >
+                    {/* Business Info */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate font-medium text-white">{lead.businessName}</span>
                         <FitBadge fit={lead.ptxFit} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {lead.email && <Mail className="h-3.5 w-3.5 text-cyan-400" />}
-                          {lead.phone && <Phone className="h-3.5 w-3.5 text-emerald-400" />}
-                          {!lead.email && !lead.phone && <span className="text-white/30">-</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleSelectLead(lead.id)}
-                          className="text-xs text-cyan-400 hover:text-cyan-300"
-                        >
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/40">
+                        {(lead.city || lead.state) && (
+                          <span className="flex items-center gap-1">
+                            <MapPin className="h-3 w-3" />
+                            {[lead.city, lead.state].filter(Boolean).join(", ")}
+                          </span>
+                        )}
+                        {lead.category && (
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {lead.category}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Contact Icons */}
+                    <div className="flex shrink-0 items-center gap-2">
+                      {lead.email && (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10">
+                          <Mail className="h-3.5 w-3.5 text-cyan-400" />
+                        </span>
+                      )}
+                      {lead.phone && (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10">
+                          <Phone className="h-3.5 w-3.5 text-emerald-400" />
+                        </span>
+                      )}
+                      {lead.website && (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/5">
+                          <Globe className="h-3.5 w-3.5 text-white/50" />
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Action */}
+                    <ChevronRight className="h-4 w-4 shrink-0 text-white/20" />
+                  </div>
+                ))}
+              </div>
             ) : (
               <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredLeads.map((lead) => (
