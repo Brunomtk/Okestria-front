@@ -448,6 +448,7 @@ export type GatewayConnectionState = {
   setGatewayUrl: (value: string) => void;
   setToken: (value: string) => void;
   clearError: () => void;
+  reconnect: () => Promise<void>;
 };
 
 type StudioSettingsCoordinatorLike = {
@@ -478,6 +479,7 @@ const isAuthError = (errorMessage: string | null): boolean => {
 const MAX_AUTO_RETRY_ATTEMPTS = 20;
 const INITIAL_RETRY_DELAY_MS = 2_000;
 const MAX_RETRY_DELAY_MS = 30_000;
+const GATEWAY_PROACTIVE_RENEW_MS = 8 * 60 * 1000;
 
 const NON_RETRYABLE_CONNECT_ERROR_CODES = new Set([
   "studio.gateway_url_missing",
@@ -668,6 +670,19 @@ export const useGatewayConnection = (
     }
   }, [client, gatewayUrl, settingsCoordinator, token]);
 
+  const reconnect = useCallback(async () => {
+    if (!gatewayUrl.trim()) return;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    setError(null);
+    setConnectErrorCode(null);
+    wasManualDisconnectRef.current = false;
+    client.disconnect();
+    await connect();
+  }, [client, connect, gatewayUrl]);
+
   useEffect(() => {
     if (didAutoConnect.current) return;
     if (!settingsLoaded) return;
@@ -710,6 +725,26 @@ export const useGatewayConnection = (
       retryAttemptRef.current = 0;
     }
   }, [status]);
+
+  // Proactively renew the gateway session while the user stays logged in.
+  // This avoids long-idle upstream sessions being dropped silently by the gateway or network path.
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    if (!gatewayUrl.trim()) return;
+    if (!token.trim()) return;
+    if (status !== "connected") return;
+
+    const renewTimer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+      void reconnect();
+    }, GATEWAY_PROACTIVE_RENEW_MS);
+
+    return () => {
+      window.clearInterval(renewTimer);
+    };
+  }, [gatewayUrl, reconnect, settingsLoaded, status, token]);
 
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -774,5 +809,6 @@ export const useGatewayConnection = (
     setGatewayUrl,
     setToken,
     clearError,
+    reconnect,
   };
 };
