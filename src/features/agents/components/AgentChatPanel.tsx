@@ -1379,6 +1379,7 @@ export const AgentChatPanel = ({
 }: AgentChatPanelProps) => {
   const [draftValue, setDraftValue] = useState(agent.draft);
   const [newSessionBusy, setNewSessionBusy] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [renameEditing, setRenameEditing] = useState(false);
   const [renameSaving, setRenameSaving] = useState(false);
   const [renameDraft, setRenameDraft] = useState(agent.name);
@@ -1716,10 +1717,42 @@ export const AgentChatPanel = ({
     setNewSessionBusy(true);
     try {
       await onNewSession();
+      setConfirmClearOpen(false);
     } finally {
       setNewSessionBusy(false);
     }
   }, [canSend, newSessionBusy, onNewSession]);
+
+  const openClearConfirmation = useCallback(() => {
+    if (!onNewSession || newSessionBusy || !canSend) return;
+    setConfirmClearOpen(true);
+  }, [canSend, newSessionBusy, onNewSession]);
+
+  const closeClearConfirmation = useCallback(() => {
+    if (newSessionBusy) return;
+    setConfirmClearOpen(false);
+  }, [newSessionBusy]);
+
+  useEffect(() => {
+    if (!confirmClearOpen) return;
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeClearConfirmation();
+        return;
+      }
+      if (event.key === "Enter") {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && active.tagName === "TEXTAREA") return;
+        event.preventDefault();
+        void handleNewSession();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeClearConfirmation, confirmClearOpen, handleNewSession]);
 
   const newSessionDisabled = newSessionBusy || !canSend || !onNewSession;
 
@@ -1824,14 +1857,12 @@ export const AgentChatPanel = ({
               className="nodrag inline-flex items-center whitespace-nowrap rounded border border-[color:var(--status-approval-border)] bg-[color:var(--status-approval-bg)] px-2 py-0.5 font-mono text-[9px] font-medium tracking-[0.02em] text-[color:var(--status-approval-fg)] transition hover:bg-[color:var(--status-approval-bg)] hover:text-[color:var(--status-approval-fg)] disabled:cursor-not-allowed disabled:opacity-40"
               type="button"
               data-testid="agent-new-session-toggle"
-              aria-label="Start new session"
-              title="Start new session"
-              onClick={() => {
-                void handleNewSession();
-              }}
+              aria-label="Clear chat"
+              title="Clear chat"
+              onClick={openClearConfirmation}
               disabled={newSessionDisabled}
             >
-              {newSessionBusy ? "Starting..." : "New session"}
+              {newSessionBusy ? "Clearing..." : "Clear chat"}
             </button>
             <button
               className="nodrag ui-btn-icon"
@@ -1847,6 +1878,62 @@ export const AgentChatPanel = ({
           </div>
         </div>
       </div>
+
+      {confirmClearOpen ? (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm clear chat"
+          onClick={closeClearConfirmation}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-amber-500/20 bg-[#06080d]/95 p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-400/25 bg-amber-500/10 text-amber-300">
+                <Trash2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-amber-300/80">
+                  Confirm clear chat
+                </div>
+                <h3 className="mt-1 text-sm font-semibold text-white">
+                  Clear this conversation?
+                </h3>
+                <p className="mt-2 text-[12px] leading-5 text-white/70">
+                  Clearing the chat removes the visible conversation and may cause the agent to lose chat learning and context from this thread.
+                </p>
+                <p className="mt-2 text-[11px] leading-5 text-cyan-200/75">
+                  Token usage will continue counting for the current session.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={closeClearConfirmation}
+                disabled={newSessionBusy}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center rounded-lg border border-amber-500/30 bg-amber-500/12 px-3 py-2 text-[11px] font-semibold text-amber-200 transition hover:bg-amber-500/18 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => {
+                  void handleNewSession();
+                }}
+                disabled={newSessionBusy}
+              >
+                {newSessionBusy ? "Clearing..." : "Yes, clear chat"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-3 flex min-h-0 flex-1 flex-col px-3 pb-3 sm:px-4 sm:pb-4">
         <AgentChatTranscript

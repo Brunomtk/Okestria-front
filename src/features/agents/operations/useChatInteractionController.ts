@@ -12,7 +12,7 @@ import {
   type ChatSendPayload,
 } from "@/features/agents/operations/chatSendOperation";
 import { mergePendingLivePatch } from "@/features/agents/state/livePatchQueue";
-import { buildNewSessionAgentPatch, type AgentState } from "@/features/agents/state/store";
+import { buildClearChatOnlyAgentPatch, type AgentState } from "@/features/agents/state/store";
 import type { GatewayStatus } from "@/lib/gateway/GatewayClient";
 
 type ChatInteractionDispatchAction =
@@ -24,6 +24,32 @@ type ChatInteractionDispatchAction =
 
 type GatewayClientLike = {
   call: (method: string, params: unknown) => Promise<unknown>;
+};
+
+const normalizeErrorMessage = (error: unknown, fallback: string): string => {
+  if (error instanceof Error) {
+    const message = error.message.trim();
+    return message || fallback;
+  }
+  if (typeof error === "string") {
+    const message = error.trim();
+    return message || fallback;
+  }
+  return fallback;
+};
+
+const isContextWindowError = (message: string): boolean => {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("context window") ||
+    normalized.includes("maximum context") ||
+    normalized.includes("context length") ||
+    normalized.includes("too many tokens") ||
+    normalized.includes("token limit") ||
+    normalized.includes("prompt is too long") ||
+    normalized.includes("exceed") && normalized.includes("token")
+  );
 };
 
 export type UseChatInteractionControllerParams = {
@@ -317,30 +343,67 @@ export function useChatInteractionController(
         return;
       }
 
+      const agentSnapshot = params.getAgents().find((entry) => entry.agentId === agentId) ?? null;
+      const activeRunId = agentSnapshot?.runId ?? null;
+
       setStopBusyAgentId(agentId);
       stopBusyAgentIdRef.current = agentId;
+
+      clearPendingLivePatch(agentId);
+      if (activeRunId) {
+        params.clearRunTracking(activeRunId);
+      }
+      params.dispatch({
+        type: "updateAgent",
+        agentId,
+        patch: {
+          status: "idle",
+          runId: null,
+          runStartedAt: null,
+          streamText: null,
+          thinkingTrace: null,
+          awaitingUserInput: false,
+          queuedMessages: [],
+        },
+      });
+
+      let abortError: unknown = null;
       try {
         await params.client.call("chat.abort", {
           sessionKey: stopIntent.sessionKey,
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to stop run.";
-        params.setError(message);
-        console.error(message);
+        abortError = err;
+      }
+
+      if (abortError) {
+        try {
+          await params.client.call("chat.send", {
+            sessionKey: stopIntent.sessionKey,
+            message: "stop",
+            deliver: false,
+          });
+          abortError = null;
+        } catch (fallbackErr) {
+          abortError = fallbackErr;
+        }
+      }
+
+      if (abortError) {
+        const message = normalizeErrorMessage(abortError, "Failed to stop run.");
+        const contextHint = isContextWindowError(message)
+          ? " The model hit the session token limit. Clear chat or compact the session before sending again."
+          : "";
+        params.setError(`${message}${contextHint}`.trim());
+        console.error("Failed to stop run.", abortError);
         params.dispatch({
           type: "appendOutput",
           agentId,
-          line: `Stop failed: ${message}`,
-        });
-      } finally {
-        setStopBusyAgentId((current) => {
-          const next = current === agentId ? null : current;
-          stopBusyAgentIdRef.current = next;
-          return next;
+          line: `Stop failed: ${message}${contextHint}`.trim(),
         });
       }
     },
-    [params]
+    [clearPendingLivePatch, params]
   );
 
   const handleNewSession = useCallback(
@@ -360,8 +423,7 @@ export function useChatInteractionController(
         if (newSessionIntent.kind === "deny") {
           throw new Error(newSessionIntent.message);
         }
-        await params.client.call("sessions.reset", { key: newSessionIntent.sessionKey });
-        const patch = buildNewSessionAgentPatch(agent);
+        const patch = buildClearChatOnlyAgentPatch(agent);
         params.clearRunTracking(agent.runId);
         params.clearHistoryInFlight(newSessionIntent.sessionKey);
         params.clearSpecialUpdateMarker(agentId);
@@ -374,12 +436,12 @@ export function useChatInteractionController(
         params.setInspectSidebarNull();
         params.setMobilePaneChat();
       } catch (err) {
-        const message = err instanceof Error ? err.message : "Failed to start new session.";
+        const message = err instanceof Error ? err.message : "Failed to clear chat.";
         params.setError(message);
         params.dispatch({
           type: "appendOutput",
           agentId,
-          line: `New session failed: ${message}`,
+          line: `Clear chat failed: ${message}`,
         });
       }
     },

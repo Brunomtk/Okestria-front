@@ -110,6 +110,36 @@ export const buildNewSessionAgentPatch = (agent: AgentState): Partial<AgentState
   };
 };
 
+export const buildClearChatOnlyAgentPatch = (agent: AgentState): Partial<AgentState> => {
+  return {
+    status: "idle",
+    runId: null,
+    runStartedAt: null,
+    streamText: null,
+    thinkingTrace: null,
+    outputLines: [],
+    lastResult: null,
+    lastDiff: null,
+    latestOverride: null,
+    latestOverrideKind: null,
+    lastAssistantMessageAt: null,
+    lastActivityAt: null,
+    latestPreview: null,
+    lastUserMessage: null,
+    draft: "",
+    queuedMessages: [],
+    historyLoadedAt: Date.now(),
+    historyFetchedCount: 0,
+    historyMaybeTruncated: false,
+    awaitingUserInput: false,
+    hasUnseenActivity: false,
+    sessionCreated: true,
+    transcriptEntries: [],
+    transcriptRevision: (agent.transcriptRevision ?? 0) + 1,
+    transcriptSequenceCounter: 0,
+  };
+};
+
 export type AgentStoreState = {
   agents: AgentState[];
   selectedAgentId: string | null;
