@@ -502,8 +502,6 @@ export function LeadOpsPanel({
   const detailPrimaryCta = useMemo(() => selectedLeadDetail?.phone ? "Start a quick call" : selectedLeadDetail?.email ? "Send quick email" : "Open website", [selectedLeadDetail?.phone, selectedLeadDetail?.email]);
   const detailHasAiInsights = useMemo(() => Boolean(selectedLeadDetail?.insightsGeneratedWithAi && !selectedLeadDetail?.insightsUsedFallback), [selectedLeadDetail?.insightsGeneratedWithAi, selectedLeadDetail?.insightsUsedFallback]);
   const detailUsedFallback = useMemo(() => Boolean(selectedLeadDetail?.insightsUsedFallback), [selectedLeadDetail?.insightsUsedFallback]);
-  const previewEmailHtml = useMemo(() => selectedLeadDetail?.outreachEmailHtml?.trim() || outreachEmailHtml, [outreachEmailHtml, selectedLeadDetail?.outreachEmailHtml]);
-  const previewEmailBody = useMemo(() => selectedLeadDetail?.outreachScript?.trim() || outreachEmailBody, [outreachEmailBody, selectedLeadDetail?.outreachScript]);
   const detailInsightSummary = useMemo(() => selectedLeadDetail?.outreachInsight?.trim() || selectedLeadDetail?.description?.trim() || `Strong local presence for ${selectedLeadDetail?.businessName || "this lead"}. Use a concise outreach angle tied to visible reputation, category, and location context.`, [selectedLeadDetail?.outreachInsight, selectedLeadDetail?.description, selectedLeadDetail?.businessName]);
   const detailCoreScript = useMemo(() => buildCoreScript(selectedLeadDetail), [selectedLeadDetail]);
   const detailSuggestedOpener = useMemo(() => buildSuggestedOpener(selectedLeadDetail), [selectedLeadDetail]);
@@ -517,6 +515,8 @@ export function LeadOpsPanel({
   const outreachEmailSubject = useMemo(() => buildEmailSubject(selectedLeadDetail, effectiveCompanyName), [effectiveCompanyName, selectedLeadDetail]);
   const outreachEmailBody = useMemo(() => buildEmailBody(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail), [effectiveCompanyEmail, effectiveCompanyName, selectedLeadDetail]);
   const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail), [effectiveCompanyEmail, effectiveCompanyName, selectedLeadDetail]);
+  const previewEmailHtml = useMemo(() => selectedLeadDetail?.outreachEmailHtml?.trim() || outreachEmailHtml, [outreachEmailHtml, selectedLeadDetail?.outreachEmailHtml]);
+  const previewEmailBody = useMemo(() => selectedLeadDetail?.outreachScript?.trim() || outreachEmailBody, [outreachEmailBody, selectedLeadDetail?.outreachScript]);
 
   const handleCopyText = useCallback(async (value: string | null | undefined, successMessage: string) => {
     if (!value || !navigator?.clipboard) return;
