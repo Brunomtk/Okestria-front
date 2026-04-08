@@ -478,6 +478,7 @@ const isAuthError = (errorMessage: string | null): boolean => {
 const MAX_AUTO_RETRY_ATTEMPTS = 20;
 const INITIAL_RETRY_DELAY_MS = 2_000;
 const MAX_RETRY_DELAY_MS = 30_000;
+const PERIODIC_CONNECTION_REFRESH_MS = 5 * 60_000;
 
 const NON_RETRYABLE_CONNECT_ERROR_CODES = new Set([
   "studio.gateway_url_missing",
@@ -527,6 +528,8 @@ export const useGatewayConnection = (
   const loadedGatewaySettings = useRef<{ gatewayUrl: string; token: string } | null>(null);
   const retryAttemptRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const periodicRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshInFlightRef = useRef(false);
   const wasManualDisconnectRef = useRef(false);
 
   const [gatewayUrl, setGatewayUrl] = useState(DEFAULT_UPSTREAM_GATEWAY_URL);
@@ -637,6 +640,10 @@ export const useGatewayConnection = (
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
+      if (periodicRefreshTimerRef.current) {
+        clearTimeout(periodicRefreshTimerRef.current);
+        periodicRefreshTimerRef.current = null;
+      }
       client.disconnect();
     };
   }, [client]);
@@ -710,6 +717,64 @@ export const useGatewayConnection = (
       retryAttemptRef.current = 0;
     }
   }, [status]);
+
+  useEffect(() => {
+    if (periodicRefreshTimerRef.current) {
+      clearTimeout(periodicRefreshTimerRef.current);
+      periodicRefreshTimerRef.current = null;
+    }
+
+    if (status !== "connected") return;
+    if (wasManualDisconnectRef.current) return;
+
+    periodicRefreshTimerRef.current = setTimeout(() => {
+      if (refreshInFlightRef.current) return;
+      if (typeof document !== "undefined" && document.hidden) return;
+      refreshInFlightRef.current = true;
+      Promise.resolve()
+        .then(async () => {
+          client.disconnect();
+          await connect();
+        })
+        .finally(() => {
+          refreshInFlightRef.current = false;
+        });
+    }, PERIODIC_CONNECTION_REFRESH_MS);
+
+    return () => {
+      if (periodicRefreshTimerRef.current) {
+        clearTimeout(periodicRefreshTimerRef.current);
+        periodicRefreshTimerRef.current = null;
+      }
+    };
+  }, [client, connect, status]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) return;
+      if (status === "connected" || status === "connecting") return;
+      if (!didAutoConnect.current) return;
+      if (!gatewayUrl.trim()) return;
+      if (wasManualDisconnectRef.current) return;
+      if (refreshInFlightRef.current) return;
+
+      refreshInFlightRef.current = true;
+      void Promise.resolve()
+        .then(async () => {
+          await connect();
+        })
+        .finally(() => {
+          refreshInFlightRef.current = false;
+        });
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [connect, gatewayUrl, status]);
 
   useEffect(() => {
     if (!settingsLoaded) return;

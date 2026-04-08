@@ -6077,7 +6077,7 @@ export function RetroOffice3D({
       ) : null}
 
       {/* Ideas 3 + 6 + 8: Mini status bar — bottom left. */}
-      <div className="absolute bottom-3 left-3 flex flex-col items-start gap-1.5 z-10 pointer-events-none select-none">
+      <div className="absolute bottom-16 left-3 flex flex-col items-start gap-1.5 z-10 pointer-events-none select-none sm:bottom-14">
         {/* Idea 3: Activity feed entries — newest on bottom. */}
         {statusFeedEvents
           .slice(0, 4)
