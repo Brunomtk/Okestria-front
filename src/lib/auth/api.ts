@@ -365,7 +365,7 @@ export async function deleteSquad(squadId: number, token: string) {
 export async function generateLeadInsights(leadId: number, token: string) {
   return requestJson<unknown>(`/api/Leads/${leadId}/generate-ptx-insights`, {
     method: 'POST',
-    body: JSON.stringify({ persist: true, forceRegenerate: true, preferredModel: 'gpt-4.1-mini' }),
+    body: JSON.stringify({ persist: true, forceRegenerate: true, preferredModel: 'gpt-5.4-nano' }),
   }, token);
 }
 

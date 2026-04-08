@@ -490,7 +490,7 @@ export const generateLeadInsights = async (
   const body = {
     persist: true,
     forceRegenerate: options?.forceRegenerate ?? true,
-    preferredModel: options?.preferredModel ?? "gpt-4.1-mini",
+    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
     ...(agentId ? { agentId } : {}),
   };
 
