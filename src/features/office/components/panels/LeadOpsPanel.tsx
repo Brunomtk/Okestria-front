@@ -531,7 +531,7 @@ export function LeadOpsPanel({
             {selectedLeadAgent?.gatewayAgentId ? (
               <button
                 type="button"
-                onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId)}
+                onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId!)}
                 className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-white/70 transition-colors hover:border-cyan-400/25 hover:text-white"
               >
                 <Bot className="h-4 w-4" />
