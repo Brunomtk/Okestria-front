@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Sparkles, Star, UserRound, X } from "lucide-react";
+import { Bot, BrainCircuit, ChevronRight, Copy, ExternalLink, Eye, Globe, LayoutGrid, List, Loader2, Mail, MapPin, Phone, Plus, Radar, RefreshCw, Search, Send, Sparkles, Star, UserRound, X } from "lucide-react";
 
 import type { AgentState } from "@/features/agents/state/store";
 import {
@@ -15,6 +15,7 @@ import {
   listLeadsByJob,
   getLeadById,
   generateLeadInsights,
+  sendSingleLeadEmail,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
   type LeadSummary,
@@ -112,6 +113,10 @@ export function LeadOpsPanel({
   const [autoGeneratingLeadInsights, setAutoGeneratingLeadInsights] = useState(false);
   const [leadDetailTab, setLeadDetailTab] = useState<"overview" | "outreach">("overview");
   const [emailPreviewMode, setEmailPreviewMode] = useState<"preview" | "html">("preview");
+  const [singleEmailModalOpen, setSingleEmailModalOpen] = useState(false);
+  const [sendingSingleLeadEmail, setSendingSingleLeadEmail] = useState(false);
+  const [singleLeadRecipient, setSingleLeadRecipient] = useState("");
+  const [singleLeadSubject, setSingleLeadSubject] = useState("");
 
   const [emailBatchModalOpen, setEmailBatchModalOpen] = useState(false);
   const [emailBatchJobs, setEmailBatchJobs] = useState<LeadEmailBatchJob[]>([]);
@@ -173,6 +178,16 @@ export function LeadOpsPanel({
       cancelled = true;
     };
   }, [companyId, companyName]);
+
+  useEffect(() => {
+    if (!selectedLeadDetail) return;
+    setSingleLeadRecipient(selectedLeadDetail.email?.trim() || "");
+  }, [selectedLeadDetail?.id, selectedLeadDetail?.email]);
+
+  useEffect(() => {
+    if (!selectedLeadDetail) return;
+    setSingleLeadSubject(buildEmailSubject(selectedLeadDetail, companyBrandName.trim() || companyName?.trim() || undefined));
+  }, [selectedLeadDetail?.id, selectedLeadDetail?.businessName, companyBrandName, companyName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -517,6 +532,33 @@ export function LeadOpsPanel({
   const outreachEmailHtml = useMemo(() => buildEmailHtml(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail), [effectiveCompanyEmail, effectiveCompanyName, selectedLeadDetail]);
   const previewEmailHtml = useMemo(() => selectedLeadDetail?.outreachEmailHtml?.trim() || outreachEmailHtml, [outreachEmailHtml, selectedLeadDetail?.outreachEmailHtml]);
   const previewEmailBody = useMemo(() => selectedLeadDetail?.outreachScript?.trim() || outreachEmailBody, [outreachEmailBody, selectedLeadDetail?.outreachScript]);
+
+  const handleSendSingleLeadEmail = useCallback(async () => {
+    if (!selectedLeadDetail) return;
+
+    setSendingSingleLeadEmail(true);
+    try {
+      const result = await sendSingleLeadEmail(selectedLeadDetail.id, {
+        toEmail: singleLeadRecipient.trim() || undefined,
+        subject: singleLeadSubject.trim() || outreachEmailSubject,
+        introText: emailIntroText.trim() || undefined,
+        replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
+        generateInsightsIfMissing: true,
+        forceRegenerateInsights: false,
+        preferredModel: "gpt-5.4-nano",
+      });
+
+      setError(`Email sent to ${result.toEmail}.`);
+      setSingleEmailModalOpen(false);
+      const refreshedLead = await getLeadById(selectedLeadDetail.id);
+      if (refreshedLead) setSelectedLeadDetail(refreshedLead);
+      window.setTimeout(() => setError((current) => (current === `Email sent to ${result.toEmail}.` ? null : current)), 2400);
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : "Failed to send email for this lead.");
+    } finally {
+      setSendingSingleLeadEmail(false);
+    }
+  }, [effectiveCompanyEmail, emailIntroText, emailReplyTo, outreachEmailSubject, selectedLeadDetail, singleLeadRecipient, singleLeadSubject]);
 
   const handleCopyText = useCallback(async (value: string | null | undefined, successMessage: string) => {
     if (!value || !navigator?.clipboard) return;
@@ -1427,7 +1469,14 @@ export function LeadOpsPanel({
                               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                 <QuickActionButton icon={<Phone className="h-4 w-4" />} label="Call lead" href={selectedLeadDetail.phone ? `tel:${selectedLeadDetail.phone}` : undefined} />
                                 <QuickActionButton icon={<Globe className="h-4 w-4" />} label="Visit website" href={selectedLeadDetail.website || undefined} />
-                                <QuickActionButton icon={<Mail className="h-4 w-4" />} label="Email lead" href={selectedLeadDetail.email ? `mailto:${selectedLeadDetail.email}?subject=${encodeURIComponent(outreachEmailSubject)}` : undefined} />
+                                <button
+                                  type="button"
+                                  onClick={() => setSingleEmailModalOpen(true)}
+                                  className="flex items-center justify-between rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-4 text-left text-sm font-semibold text-emerald-100 transition-colors hover:border-emerald-300/40 hover:bg-emerald-500/15"
+                                >
+                                  <span className="inline-flex items-center gap-2"><Send className="h-4 w-4" />Send email now</span>
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => void handleGenerateLeadInsights()}
@@ -1475,6 +1524,14 @@ export function LeadOpsPanel({
                                   className={`rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${emailPreviewMode === "html" ? "bg-white/[0.08] text-white" : "text-white/55 hover:text-white"}`}
                                 >HTML</button>
                               </div>
+                              <button
+                                type="button"
+                                onClick={() => setSingleEmailModalOpen(true)}
+                                className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/25 bg-cyan-500/10 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition-colors hover:border-cyan-300/45 hover:bg-cyan-500/15"
+                              >
+                                <Send className="h-4 w-4" />
+                                Send email
+                              </button>
                               <button
                                 type="button"
                                 onClick={() => handleCopyText(selectedLeadDetail?.outreachEmailHtml, emailPreviewMode === "html" ? "HTML copied." : "Email HTML copied.")}
@@ -1739,6 +1796,15 @@ function ContactCard({ icon, label, value, href }: { icon: ReactNode; label: str
         <div className="text-sm text-white/45">{label}</div>
         <div className="mt-1 truncate text-base">{content}</div>
       </div>
+    </div>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">{label}</div>
+      <div className="mt-2 text-sm font-semibold text-white/85">{value}</div>
     </div>
   );
 }

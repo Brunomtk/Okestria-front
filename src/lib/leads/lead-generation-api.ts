@@ -86,6 +86,32 @@ export type CreateLeadEmailBatchPayload = {
   introText?: string;
 };
 
+
+export type SendSingleLeadEmailPayload = {
+  toEmail?: string;
+  subject?: string;
+  introText?: string;
+  replyTo?: string;
+  generateInsightsIfMissing?: boolean;
+  forceRegenerateInsights?: boolean;
+  preferredModel?: string | null;
+};
+
+export type SendSingleLeadEmailResult = {
+  leadId: number;
+  companyId: number;
+  toEmail: string;
+  senderName: string;
+  senderEmail: string;
+  replyTo?: string | null;
+  subject: string;
+  html: string;
+  providerMessageId?: string | null;
+  insightsGeneratedWithAi?: boolean;
+  insightsUsedFallback?: boolean;
+  insightsGenerationStatus?: string | null;
+};
+
 export type LeadSummary = {
   id: number;
   businessName: string;
@@ -232,6 +258,11 @@ const normalizeLead = (value: unknown): LeadSummary | null => {
     outreachEmailHtml: parseString(pick(entry, "outreachEmailHtml", "OutreachEmailHtml")),
     notes: parseString(pick(entry, "notes", "Notes")),
     description: parseString(pick(entry, "description", "Description")),
+    insightsGeneratedWithAi: typeof pick(entry, "insightsGeneratedWithAi", "InsightsGeneratedWithAi") === "boolean" ? (pick(entry, "insightsGeneratedWithAi", "InsightsGeneratedWithAi") as boolean) : null,
+    insightsUsedFallback: typeof pick(entry, "insightsUsedFallback", "InsightsUsedFallback") === "boolean" ? (pick(entry, "insightsUsedFallback", "InsightsUsedFallback") as boolean) : null,
+    insightsGenerationStatus: parseString(pick(entry, "insightsGenerationStatus", "InsightsGenerationStatus")),
+    insightsWarningCode: parseString(pick(entry, "insightsWarningCode", "InsightsWarningCode")),
+    insightsWarningMessage: parseString(pick(entry, "insightsWarningMessage", "InsightsWarningMessage")),
   };
 };
 
@@ -519,4 +550,44 @@ export const createLeadEmailBatchJob = async (payload: CreateLeadEmailBatchPaylo
 
 export const cancelLeadEmailBatchJob = async (jobId: number) => {
   await requestBackend(`/api/LeadEmailBatchJobs/${jobId}/cancel`, { method: "POST" });
+};
+
+
+const normalizeSingleLeadEmailResult = (value: unknown): SendSingleLeadEmailResult | null => {
+  if (!value || typeof value !== "object") return null;
+  const entry = value as Record<string, unknown>;
+  const leadId = parseNumber(pick(entry, "leadId", "LeadId"), Number.NaN);
+  if (!Number.isFinite(leadId)) return null;
+  return {
+    leadId,
+    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
+    toEmail: parseString(pick(entry, "toEmail", "ToEmail")) ?? "",
+    senderName: parseString(pick(entry, "senderName", "SenderName")) ?? "",
+    senderEmail: parseString(pick(entry, "senderEmail", "SenderEmail")) ?? "",
+    replyTo: parseString(pick(entry, "replyTo", "ReplyTo")),
+    subject: parseString(pick(entry, "subject", "Subject")) ?? "",
+    html: parseString(pick(entry, "html", "Html")) ?? "",
+    providerMessageId: parseString(pick(entry, "providerMessageId", "ProviderMessageId")),
+    insightsGeneratedWithAi: typeof pick(entry, "insightsGeneratedWithAi", "InsightsGeneratedWithAi") === "boolean" ? (pick(entry, "insightsGeneratedWithAi", "InsightsGeneratedWithAi") as boolean) : false,
+    insightsUsedFallback: typeof pick(entry, "insightsUsedFallback", "InsightsUsedFallback") === "boolean" ? (pick(entry, "insightsUsedFallback", "InsightsUsedFallback") as boolean) : false,
+    insightsGenerationStatus: parseString(pick(entry, "insightsGenerationStatus", "InsightsGenerationStatus")),
+  };
+};
+
+export const sendSingleLeadEmail = async (leadId: number, payload: SendSingleLeadEmailPayload): Promise<SendSingleLeadEmailResult> => {
+  const response = await requestBackend<unknown>(`/api/Leads/${leadId}/send-email`, {
+    method: "POST",
+    body: JSON.stringify({
+      toEmail: payload.toEmail,
+      subject: payload.subject,
+      introText: payload.introText,
+      replyTo: payload.replyTo,
+      generateInsightsIfMissing: payload.generateInsightsIfMissing ?? true,
+      forceRegenerateInsights: payload.forceRegenerateInsights ?? false,
+      preferredModel: payload.preferredModel ?? "gpt-5.4-nano",
+    }),
+  });
+  const normalized = normalizeSingleLeadEmailResult(response);
+  if (!normalized) throw new Error("Failed to send email for this lead.");
+  return normalized;
 };
