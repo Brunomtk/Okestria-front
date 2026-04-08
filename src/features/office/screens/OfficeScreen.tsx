@@ -3741,12 +3741,12 @@ export function OfficeScreen({
     stop: stopMainVoiceRecording,
     clearError: clearMainVoiceError,
   } = useVoiceRecorder({
-    enabled: status === "connected" && Boolean(mainAgent),
+    enabled: status === "connected" && Boolean(focusedChatAgent),
     onVoiceSend: async (payload) => {
-      if (!mainAgent) {
+      if (!focusedChatAgent) {
         throw new Error("Main agent not found.");
       }
-      await sendVoicePayloadToAgent(mainAgent, payload);
+      await sendVoicePayloadToAgent(focusedChatAgent, payload);
     },
   });
 
