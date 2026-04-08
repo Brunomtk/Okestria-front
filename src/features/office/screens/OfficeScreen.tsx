@@ -3883,23 +3883,17 @@ export function OfficeScreen({
       isRunning: agent.status === "working",
     }));
     const allEntries = [...squadEntries, ...localEntries, ...remoteEntries];
-    const scopedEntries = !selectedChatAgentId
-      ? allEntries
-      : (() => {
-          const focusedEntry = allEntries.find((entry) => entry.id === selectedChatAgentId);
-          return focusedEntry ? [focusedEntry] : allEntries;
-        })();
 
     if (chatTargetView === "agents") {
-      return scopedEntries.filter((entry) => entry.kind === "local" || entry.kind === "remote");
+      return allEntries.filter((entry) => entry.kind === "local" || entry.kind === "remote");
     }
 
     if (chatTargetView === "squads") {
-      return scopedEntries.filter((entry) => entry.kind === "squad");
+      return allEntries.filter((entry) => entry.kind === "squad");
     }
 
-    return scopedEntries;
-  }, [chatRosterMode, chatTargetView, companySquads, remoteOfficeAgents, selectedChatAgentId, state.agents]);
+    return allEntries;
+  }, [chatRosterMode, chatTargetView, companySquads, remoteOfficeAgents, state.agents]);
   const focusedSquadChatTarget = selectedChatAgentId && isSquadChatTargetId(selectedChatAgentId)
     ? (companySquads.find((squad) => `squad:${squad.id}` === selectedChatAgentId) ?? null)
     : null;
