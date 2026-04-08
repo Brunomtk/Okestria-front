@@ -3883,13 +3883,12 @@ export function OfficeScreen({
       isRunning: agent.status === "working",
     }));
     const allEntries = [...squadEntries, ...localEntries, ...remoteEntries];
-    const scopedEntries =
-      chatRosterMode !== "focused" || !selectedChatAgentId
-        ? allEntries
-        : (() => {
-            const focusedEntry = allEntries.find((entry) => entry.id === selectedChatAgentId);
-            return focusedEntry ? [focusedEntry] : allEntries;
-          })();
+    const scopedEntries = !selectedChatAgentId
+      ? allEntries
+      : (() => {
+          const focusedEntry = allEntries.find((entry) => entry.id === selectedChatAgentId);
+          return focusedEntry ? [focusedEntry] : allEntries;
+        })();
 
     if (chatTargetView === "agents") {
       return scopedEntries.filter((entry) => entry.kind === "local" || entry.kind === "remote");
