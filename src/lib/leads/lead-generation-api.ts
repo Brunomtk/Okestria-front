@@ -108,6 +108,11 @@ export type LeadSummary = {
   outreachEmailHtml?: string | null;
   notes?: string | null;
   description?: string | null;
+  insightsGeneratedWithAi?: boolean | null;
+  insightsUsedFallback?: boolean | null;
+  insightsGenerationStatus?: string | null;
+  insightsWarningCode?: string | null;
+  insightsWarningMessage?: string | null;
 };
 
 const STORAGE_KEY = "okestria.leadOps.jobs";
