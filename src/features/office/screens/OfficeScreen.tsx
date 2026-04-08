@@ -35,6 +35,7 @@ import {
 import {
   runStudioBootstrapLoadOperation,
   executeStudioBootstrapLoadCommands,
+  type StudioBootstrapLoadCommand,
 } from "@/features/agents/operations/studioBootstrapOperation";
 import { isGatewayDisconnectLikeError } from "@/lib/gateway/GatewayClient";
 import { createGatewayRuntimeEventHandler } from "@/features/agents/state/gatewayRuntimeEventHandler";
@@ -1469,8 +1470,27 @@ export function OfficeScreen({
         if (connectionEpochAtStart !== connectionEpochRef.current) {
           return;
         }
+        const previousAgents = stateRef.current.agents;
+        let commandsToExecute: StudioBootstrapLoadCommand[] = commands;
+        const hydrateCommand = commands.find(
+          (command): command is Extract<StudioBootstrapLoadCommand, { kind: "hydrate-agents" }> =>
+            command.kind === "hydrate-agents",
+        );
+        if (previousAgents.length > 0 && hydrateCommand && hydrateCommand.seeds.length === 0) {
+          console.warn(
+            "Gateway hydration returned an empty fleet after reconnect/standby. Preserving the previous office roster and scheduling a silent retry.",
+          );
+          commandsToExecute = commands.filter((command) => command.kind !== "hydrate-agents");
+          window.setTimeout(() => {
+            void loadAgents({
+              forceSettings: true,
+              silent: true,
+              minIntervalMs: 3_000,
+            });
+          }, 3_000);
+        }
         executeStudioBootstrapLoadCommands({
-          commands,
+          commands: commandsToExecute,
           setGatewayConfigSnapshot: (val: GatewayModelPolicySnapshot) => {
             gatewayConfigSnapshot.current = val;
           },
@@ -2225,7 +2245,6 @@ export function OfficeScreen({
       loadAgentsInFlightRef.current = null;
       gatewayConfigSnapshot.current = null;
       lastLoadAgentsStartedAtRef.current = 0;
-      hydrateAgents([]);
       setFeedEvents([]);
       setDebugRows([]);
       setRunCountByAgentId({});

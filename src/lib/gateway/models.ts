@@ -49,33 +49,27 @@ export const buildAllowedModelKeys = (snapshot: GatewayModelPolicySnapshot | nul
   const defaults = snapshot?.config?.agents?.defaults;
   const modelDefaults = defaults?.model;
   const modelAliases = defaults?.models;
-  const configuredAgents = Array.isArray(snapshot?.config?.agents?.list)
-    ? snapshot.config?.agents?.list ?? []
-    : [];
-
-  const pushModelRef = (value?: string | { primary?: string; fallbacks?: string[] } | null) => {
-    if (!value) return;
-    if (typeof value === "string") {
-      const resolved = resolveConfiguredModelKey(value, modelAliases);
-      if (!resolved || allowedSet.has(resolved)) return;
-      allowedSet.add(resolved);
-      allowedList.push(resolved);
-      return;
-    }
-
-    const primary = typeof value.primary === "string" ? value.primary : null;
-    if (primary) pushModelRef(primary);
-    for (const fallback of Array.isArray(value.fallbacks) ? value.fallbacks : []) {
-      pushModelRef(fallback);
-    }
+  const pushKey = (raw?: string | null) => {
+    if (!raw) return;
+    const resolved = resolveConfiguredModelKey(raw, modelAliases);
+    if (!resolved) return;
+    if (allowedSet.has(resolved)) return;
+    allowedSet.add(resolved);
+    allowedList.push(resolved);
   };
-
-  pushModelRef(modelDefaults);
-
-  for (const entry of configuredAgents) {
-    pushModelRef(entry?.model ?? null);
+  if (typeof modelDefaults === "string") {
+    pushKey(modelDefaults);
+  } else if (modelDefaults && typeof modelDefaults === "object") {
+    pushKey(modelDefaults.primary ?? null);
+    for (const fallback of modelDefaults.fallbacks ?? []) {
+      pushKey(fallback);
+    }
   }
-
+  if (modelAliases) {
+    for (const key of Object.keys(modelAliases)) {
+      pushKey(key);
+    }
+  }
   return allowedList;
 };
 
