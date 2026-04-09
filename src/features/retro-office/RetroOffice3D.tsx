@@ -4850,9 +4850,10 @@ export function RetroOffice3D({
       </div>
 
       {!readOnly && editMode && drawerOpen && !immersiveOverlayActive ? (
-        <div className="absolute left-3 top-24 z-20 w-[min(92vw,380px)] max-w-full">
-          <div className="overflow-hidden rounded-[22px] border border-amber-700/20 bg-[#120e08]/94 shadow-2xl backdrop-blur-md">
-            <div className="border-b border-amber-700/15 px-4 py-3">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[3px]">
+          <div className="flex h-[min(82vh,760px)] w-[min(1120px,96vw)] overflow-hidden rounded-[26px] border border-amber-500/20 bg-[#120e08]/96 shadow-[0_28px_120px_rgba(0,0,0,0.55)] backdrop-blur-xl">
+            <div className="flex min-w-0 flex-1 flex-col border-r border-amber-700/15">
+            <div className="border-b border-amber-700/15 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
@@ -4895,7 +4896,7 @@ export function RetroOffice3D({
               </div>
             </div>
 
-            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               {selectedItem ? (
                 <div className="mb-4 rounded-2xl border border-cyan-500/18 bg-[#071018]/80 p-3 shadow-lg">
                   <div className="flex items-start justify-between gap-3">
@@ -4981,20 +4982,72 @@ export function RetroOffice3D({
               </div>
             </div>
 
-            <div className="border-t border-amber-700/15 bg-black/10 px-4 py-3">
+            <div className="border-t border-amber-700/15 bg-black/10 px-5 py-3">
               <div className="flex flex-wrap items-center gap-2 text-[10px] text-amber-100/55">
                 <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Esc clears selection</span>
                 <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Delete removes item</span>
                 <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Arrows move the selected item</span>
+                <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Click floor to place</span>
               </div>
             </div>
+            </div>
+
+            <aside className="hidden w-[320px] shrink-0 flex-col bg-[#0f0b08]/92 xl:flex">
+              <div className="border-b border-amber-700/15 px-5 py-4">
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                  Builder overview
+                </div>
+                <div className="mt-1 text-sm font-semibold text-amber-100">
+                  Layout controls and selection details in one place.
+                </div>
+              </div>
+              <div className="flex-1 space-y-4 overflow-y-auto px-5 py-4">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-amber-700/15 bg-black/20 px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-amber-500/55">Mode</div>
+                    <div className="mt-1 text-sm font-semibold text-amber-100">Editing</div>
+                  </div>
+                  <div className="rounded-2xl border border-amber-700/15 bg-black/20 px-3 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.16em] text-amber-500/55">Category</div>
+                    <div className="mt-1 text-sm font-semibold text-amber-100">{activePaletteCategory === "all" ? "All items" : visiblePaletteCategories[0]?.label ?? "Filtered"}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-cyan-500/15 bg-[#081018]/80 p-4">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-cyan-300/70">Selection</div>
+                  {selectedItem ? (
+                    <>
+                      <div className="mt-2 text-sm font-semibold text-cyan-50">{selectedPaletteEntry?.label ?? selectedItem.type}</div>
+                      <div className="mt-1 text-[11px] leading-5 text-cyan-100/60">
+                        Position {selectedItem.x}, {selectedItem.y}
+                        {typeof selectedItem.facing === "number" ? ` • ${selectedItem.facing}°` : ""}
+                        {typeof selectedItem.elevation === "number" && selectedItem.elevation !== 0
+                          ? ` • z ${selectedItem.elevation.toFixed(1)}`
+                          : ""}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-sm text-cyan-100/60">Select an item in the office to inspect and adjust it here.</div>
+                  )}
+                </div>
+
+                <div className="rounded-2xl border border-amber-700/15 bg-black/20 p-4">
+                  <div className="text-[10px] uppercase tracking-[0.16em] text-amber-500/60">Tips</div>
+                  <div className="mt-2 space-y-2 text-xs leading-5 text-amber-100/65">
+                    <p>Use the camera presets to frame each area before placing furniture.</p>
+                    <p>Keep desks aligned with clear walking paths for better agent routes.</p>
+                    <p>Close the builder after placing items to review the office cleanly.</p>
+                  </div>
+                </div>
+              </div>
+            </aside>
           </div>
         </div>
       ) : null}
 
       {/* Camera presets — top left. */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className="absolute top-3 left-3 z-20 w-[min(92vw,360px)]">
+        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} w-[min(92vw,360px)]`}>
           <div className="rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2.5 shadow-2xl backdrop-blur-md">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
@@ -5077,7 +5130,7 @@ export function RetroOffice3D({
 
       {/* Toolbar — top right. */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 p-2 shadow-2xl backdrop-blur-md">
+        <div className={`absolute top-3 right-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 p-2 shadow-2xl backdrop-blur-md`}>
           {remoteOfficeEnabled &&
           (remoteOfficeSourceKind === "presence_endpoint"
             ? remoteOfficePresenceUrl.trim().length > 0

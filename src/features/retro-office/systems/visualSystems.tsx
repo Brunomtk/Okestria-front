@@ -144,10 +144,27 @@ export function HeatmapSystem({
           <planeGeometry args={[SNAP_GRID * SCALE * 0.88, SNAP_GRID * SCALE * 0.88]} />
           <meshBasicMaterial
             color={
-              cell.v < 0.35 ? "#fb7185" : cell.v < 0.7 ? "#ef4444" : "#b91c1c"
+              cell.v < 0.35 ? "#ff6b6b" : cell.v < 0.7 ? "#ff2d2d" : "#c40000"
             }
             transparent
-            opacity={0.16 + cell.v * 0.34}
+            opacity={0.24 + cell.v * 0.42}
+            depthWrite={false}
+          />
+        </mesh>
+      ))}
+
+      {cells.map((cell, index) => (
+        <mesh
+          key={`heat-outline-${index}`}
+          position={[cell.x, 0.0015, cell.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[SNAP_GRID * SCALE * 0.96, SNAP_GRID * SCALE * 0.96]} />
+          <meshBasicMaterial
+            color="#4a0404"
+            transparent
+            opacity={0.16 + cell.v * 0.22}
+            wireframe
             depthWrite={false}
           />
         </mesh>
@@ -158,20 +175,20 @@ export function HeatmapSystem({
         return (
           <group key={`route-${index}`} position={[point.pos.x, point.pos.y, point.pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
             <mesh position={[0, 0, -0.0005]}>
-              <ringGeometry args={[0.05, 0.082, 18]} />
+              <ringGeometry args={[0.055, 0.094, 20]} />
               <meshBasicMaterial
-                color="#2b0b0b"
+                color="#2a0000"
                 transparent
-                opacity={0.62 * fade}
+                opacity={0.78 * fade}
                 depthWrite={false}
               />
             </mesh>
             <mesh>
-              <circleGeometry args={[0.048, 16]} />
+              <circleGeometry args={[0.058, 18]} />
               <meshBasicMaterial
-                color="#ef4444"
+                color="#ff1f1f"
                 transparent
-                opacity={0.92 * fade}
+                opacity={0.98 * fade}
                 depthWrite={false}
               />
             </mesh>
