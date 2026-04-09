@@ -1642,6 +1642,7 @@ export function RetroOffice3D({
   const [spaceDragging, setSpaceDragging] = useState(false);
   const [standupBoardOpen, setStandupBoardOpen] = useState(false);
   const [agentRosterOpen, setAgentRosterOpen] = useState(false);
+  const [rosterTab, setRosterTab] = useState<"agents" | "squads">("agents");
   const autoOpenedStandupIdRef = useRef<string | null>(null);
   // Idea 1 (original): hovered agent for tooltip overlay.
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
