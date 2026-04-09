@@ -20,7 +20,6 @@ import {
   hasGymRoomMigrationApplied,
   hasPhoneBoothMigrationApplied,
   hasQaLabMigrationApplied,
-  hasSmsBoothMigrationApplied,
   hasServerRoomMigrationApplied,
 } from "@/features/retro-office/core/persistence";
 import type {
@@ -411,7 +410,6 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   ...DEFAULT_SERVER_ROOM_ITEMS,
   ...DEFAULT_GYM_ITEMS,
   ...DEFAULT_QA_LAB_ITEMS,
-  DEFAULT_SMS_BOOTH,
   { type: "chair", x: 100, y: 200, facing: 180 },
 ];
 
@@ -650,9 +648,9 @@ export const ensureOfficePhoneBooth = (
 export const ensureOfficeSmsBooth = (
   items: FurnitureItem[],
 ): FurnitureItem[] => {
-  if (items.some((item) => item.type === "sms_booth")) return items;
-  if (hasSmsBoothMigrationApplied()) return items;
-  return [...items, { ...DEFAULT_SMS_BOOTH, _uid: nextUid() }];
+  // SMS booths were removed from the default office experience.
+  // Keep existing layouts clean by stripping any legacy booth instances.
+  return items.filter((item) => item.type !== "sms_booth");
 };
 
 export const ensureOfficeServerRoom = (

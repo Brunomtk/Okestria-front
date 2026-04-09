@@ -362,7 +362,7 @@ const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     key: "tech",
     label: "Tech & Rooms",
-    items: ["atm", "server_rack", "phone_booth", "sms_booth", "qa_terminal", "device_rack", "test_bench"],
+    items: ["atm", "server_rack", "phone_booth", "qa_terminal", "device_rack", "test_bench"],
   },
   {
     key: "gym",
@@ -516,12 +516,6 @@ const PALETTE: PaletteEntry[] = [
     type: "phone_booth",
     label: "Phone Booth",
     icon: "📞",
-    defaults: { facing: 0 },
-  },
-  {
-    type: "sms_booth",
-    label: "SMS Booth",
-    icon: "💬",
     defaults: { facing: 0 },
   },
   {
@@ -1631,6 +1625,7 @@ export function RetroOffice3D({
   const [hoverUid, setHoverUid] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState>({ kind: "idle" });
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [activePaletteCategory, setActivePaletteCategory] = useState<string>("office");
   const [ghostPos, setGhostPos] = useState<[number, number, number] | null>(
     null,
   );
@@ -1694,6 +1689,9 @@ export function RetroOffice3D({
   // New Idea 7: heatmap mode.
   const [heatmapMode, setHeatmapMode] = useState(false);
   const [trailMode, setTrailMode] = useState(false);
+  const [activeCameraPresetKey, setActiveCameraPresetKey] = useState<
+    "overview" | "frontDesk" | "lounge"
+  >("overview");
   const heatGridRef = useRef<Uint16Array | null>(null);
   // E3 Idea 1: mood emoji reactions above agent chips.
   const [moodByAgentId, setMoodByAgentId] = useState<
@@ -2254,6 +2252,17 @@ export function RetroOffice3D({
     selectedItem?.type === "desk_cubicle"
       ? (deskAssignmentByDeskUid[selectedItem._uid] ?? "")
       : "";
+  const selectedPaletteEntry = useMemo(
+    () => (selectedItem ? PALETTE_BY_TYPE.get(selectedItem.type) ?? null : null),
+    [selectedItem],
+  );
+  const visiblePaletteCategories = useMemo(
+    () =>
+      GROUPED_PALETTE.filter((category) =>
+        activePaletteCategory === "all" ? true : category.key === activePaletteCategory,
+      ),
+    [activePaletteCategory],
+  );
   const [isSavingOfficeLayout, setIsSavingOfficeLayout] = useState(false);
 
   const persistOfficeLayout = useCallback(async () => {
@@ -4851,1136 +4860,235 @@ export function RetroOffice3D({
         ) : null}
       </div>
 
-      {/* New Idea 2: Camera preset buttons — top left. */}
-      {!readOnly && !immersiveOverlayActive ? (
-        <div className="absolute top-3 left-3 z-20 flex flex-col items-start gap-2">
-          <div className="flex items-center gap-1">
-            {(
-              [
-                {
-                  key: "overview",
-                  icon: <Maximize size={12} />,
-                  title: "Overview",
-                },
-                {
-                  key: "frontDesk",
-                  icon: <Monitor size={12} />,
-                  title: "Front desk",
-                },
-                {
-                  key: "lounge",
-                  icon: <Armchair size={12} />,
-                  title: "Lounge",
-                },
-              ] as const
-            ).map(({ key, icon, title }) => {
-              const isOverview = key === "overview";
-              return (
+      {!readOnly && editMode && drawerOpen && !immersiveOverlayActive ? (
+        <div className="absolute left-3 top-24 z-20 w-[min(92vw,380px)] max-w-full">
+          <div className="overflow-hidden rounded-[22px] border border-amber-700/20 bg-[#120e08]/94 shadow-2xl backdrop-blur-md">
+            <div className="border-b border-amber-700/15 px-4 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                    Layout editor
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-amber-100">
+                    Organize the office with a cleaner, faster builder.
+                  </div>
+                </div>
                 <button
-                  key={key}
                   type="button"
-                  title={title}
-                  onClick={() => {
-                    cameraPresetRef.current = cameraPresetMap[key];
-                  }}
-                  className={`flex h-8 w-8 items-center justify-center rounded-md border backdrop-blur-sm transition-all active:scale-[0.98] ${
-                    isOverview
-                      ? "bg-[#2a1e14]/95 text-amber-200 border-amber-600/35 shadow-[0_0_0_1px_rgba(245,158,11,0.08)]"
-                      : "bg-[#1c1610]/80 text-amber-500/60 border-amber-900/20 hover:bg-[#2a1e14] hover:text-amber-300"
-                  }`}
-                  style={{ touchAction: "manipulation" }}
+                  onClick={() => setDrawerOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-700/20 bg-black/20 text-amber-200/75 transition hover:border-amber-400/35 hover:text-amber-50"
+                  aria-label="Close layout drawer"
                 >
-                  {icon}
+                  <X size={14} />
                 </button>
-              );
-            })}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActivePaletteCategory("all")}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${activePaletteCategory === "all" ? "border-amber-400/40 bg-amber-300/12 text-amber-50" : "border-amber-900/25 bg-[#1b150f]/80 text-amber-500/65 hover:border-amber-500/35 hover:text-amber-200"}`}
+                >
+                  All
+                </button>
+                {GROUPED_PALETTE.map((category) => {
+                  const active = activePaletteCategory === category.key;
+                  return (
+                    <button
+                      key={category.key}
+                      type="button"
+                      onClick={() => setActivePaletteCategory(category.key)}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] transition ${active ? "border-amber-400/40 bg-amber-300/12 text-amber-50" : "border-amber-900/25 bg-[#1b150f]/80 text-amber-500/65 hover:border-amber-500/35 hover:text-amber-200"}`}
+                    >
+                      {category.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="max-h-[calc(100vh-12rem)] overflow-y-auto px-4 py-3">
+              {selectedItem ? (
+                <div className="mb-4 rounded-2xl border border-cyan-500/18 bg-[#071018]/80 p-3 shadow-lg">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-300/70">
+                        Selected item
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-cyan-50">
+                        {selectedPaletteEntry?.label ?? selectedItem.type}
+                      </div>
+                      <div className="mt-1 text-[11px] text-cyan-100/55">
+                        Position {selectedItem.x}, {selectedItem.y}
+                        {typeof selectedItem.facing === "number" ? ` • ${selectedItem.facing}°` : ""}
+                        {typeof selectedItem.elevation === "number" && selectedItem.elevation !== 0
+                          ? ` • z ${selectedItem.elevation.toFixed(1)}`
+                          : ""}
+                      </div>
+                      {selectedDeskAssignmentAgentId ? (
+                        <div className="mt-1 text-[11px] text-emerald-300/80">
+                          Assigned desk: {selectedDeskAssignmentAgentId}
+                        </div>
+                      ) : null}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-500/18 bg-red-950/35 text-red-200 transition hover:border-red-400/45 hover:text-red-50"
+                      title="Delete selected item"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => moveSelectedItem(-SNAP_GRID, 0)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">← Move</button>
+                    <button type="button" onClick={() => moveSelectedItem(SNAP_GRID, 0)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Move →</button>
+                    <button type="button" onClick={() => moveSelectedItem(0, -SNAP_GRID)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">↑ Forward</button>
+                    <button type="button" onClick={() => moveSelectedItem(0, SNAP_GRID)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Back ↓</button>
+                    <button type="button" onClick={() => rotateSelectedItem(-ROTATION_STEP_DEG)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Rotate -</button>
+                    <button type="button" onClick={() => rotateSelectedItem(ROTATION_STEP_DEG)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Rotate +</button>
+                    <button type="button" onClick={() => moveSelectedItem(0, 0, ELEVATION_STEP)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Raise</button>
+                    <button type="button" onClick={() => moveSelectedItem(0, 0, -ELEVATION_STEP)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Lower</button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="space-y-4">
+                {visiblePaletteCategories.map((category) => (
+                  <section key={category.key}>
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/85">
+                        {category.label}
+                      </div>
+                      <div className="text-[10px] text-amber-500/55">
+                        {category.entries.length} items
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {category.entries.map((entry) => {
+                        const placing = drag.kind === "placing" && drag.itemType === entry.type;
+                        return (
+                          <button
+                            key={entry.type}
+                            type="button"
+                            onClick={() => startPlacing(entry.type)}
+                            className={`flex items-center gap-3 rounded-2xl border px-3 py-2 text-left transition active:scale-[0.99] ${placing ? "border-amber-400/45 bg-amber-300/10 text-amber-50 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]" : "border-amber-900/25 bg-[#1b150f]/80 text-amber-100/80 hover:border-amber-500/35 hover:bg-[#241b13]"}`}
+                          >
+                            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg ${placing ? "border-amber-300/35 bg-amber-300/10" : "border-amber-900/25 bg-black/20"}`}>
+                              {entry.icon}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold">{entry.label}</span>
+                              <span className="block text-[10px] uppercase tracking-[0.14em] text-white/40">
+                                {placing ? "Click on the floor to place" : "Add to layout"}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-t border-amber-700/15 bg-black/10 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2 text-[10px] text-amber-100/55">
+                <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Esc clears selection</span>
+                <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Delete removes item</span>
+                <span className="rounded-full border border-amber-900/25 bg-[#1b150f]/80 px-2.5 py-1">Arrows move the selected item</span>
+              </div>
+            </div>
           </div>
-          {standupMeeting ? (
-            <button
-              type="button"
-              onClick={() => setStandupBoardOpen(true)}
-              className="rounded-xl border border-emerald-500/20 bg-[#0b1410]/90 px-3 py-2 text-left shadow-lg backdrop-blur-sm transition-colors hover:border-emerald-400/35 hover:bg-[#102017]/95"
-            >
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-200/80">
-                Standup
-              </div>
-              <div className="mt-1 text-[11px] font-semibold text-white/90">
-                {standupMeeting.phase === "gathering"
-                  ? "Gathering in meeting room."
-                  : standupMeeting.phase === "in_progress"
-                    ? `Speaking: ${standupSpeakerCard?.agentName ?? "Team"}`
-                    : "Standup complete."}
-              </div>
-              <div className="mt-1 font-mono text-[10px] text-white/50">
-                {standupMeeting.arrivedAgentIds.length}/
-                {standupMeeting.participantOrder.length} arrived
-              </div>
-            </button>
-          ) : null}
         </div>
       ) : null}
 
-      {/* Title — top center overlay. */}
-      {!immersiveOverlayActive ? (
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-none select-none z-10">
-          <div className="h-px w-12 bg-gradient-to-r from-transparent to-amber-500/40" />
-          <span className="text-sm tracking-[0.3em] text-amber-300/80 font-bold uppercase">
-            {officeTitle}
-          </span>
-          <div className="h-px w-12 bg-gradient-to-l from-transparent to-amber-500/40" />
-        </div>
-      ) : null}
-
-      {/* Agent roster — compact top summary with overflow panel. */}
+      {/* Camera presets — top left. */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className="absolute top-10 left-1/2 z-20 -translate-x-1/2">
-          <div className="flex items-center gap-2 rounded-full border border-amber-900/25 bg-[#1c1610]/92 px-2 py-2 shadow-lg backdrop-blur-sm">
-            <div className="flex items-center -space-x-1.5">
-              {compactRosterAgents.map((agent) => {
-                const status = agentStatusLookup[agent.id];
-                const isError = status?.isError ?? agent.status === "error";
-                const working = status?.working ?? agent.status === "working";
-                const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
-                const mood = moodByAgentId[agent.id];
-                const dotClass = isError
-                  ? "bg-red-400"
-                  : working
-                    ? "bg-green-400"
-                    : "bg-yellow-400";
-                return (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    title={agent.name}
-                    onMouseEnter={() => handleAgentHover(agent.id)}
-                    onMouseLeave={handleAgentUnhover}
-                    onClick={() => {
-                      setSpotlightAgentId(agent.id);
-                      if (!isRemoteAgent) {
-                        onAgentEdit?.(agent.id);
-                      }
-                    }}
-                    className={`relative flex h-8 w-8 items-center justify-center rounded-full border text-[9px] font-bold text-[#120e08] shadow transition-transform hover:-translate-y-0.5 ${
-                      spotlightAgentId === agent.id
-                        ? "border-amber-200/80 ring-2 ring-amber-200/20"
-                        : "border-[#120e08] hover:border-amber-200/50"
-                    }`}
-                    style={{ backgroundColor: agent.color }}
-                  >
-                    {/* E3 Idea 1: Mood emoji float. */}
-                    {mood ? (
-                      <span
-                        key={mood.ts}
-                        className="absolute -top-6 left-1/2 -translate-x-1/2 text-sm pointer-events-none"
-                        style={{
-                          animation: "mood-float 2.5s ease-out forwards",
-                        }}
-                      >
-                        {mood.emoji}
-                      </span>
-                    ) : null}
-                    <span>{getAgentInitials(agent.name)}</span>
-                    <span
-                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-[#1c1610] ${dotClass}`}
-                    />
-                  </button>
-                );
-              })}
-              {hiddenAgentCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setAgentRosterOpen(true)}
-                  className="flex h-8 min-w-8 items-center justify-center rounded-full border border-amber-900/30 bg-[#120e08] px-2 text-[10px] font-semibold text-amber-200 transition-colors hover:border-amber-500/40 hover:text-white"
-                >
-                  +{hiddenAgentCount}
-                </button>
+        <div className="absolute top-3 left-3 z-20 w-[min(92vw,360px)]">
+          <div className="rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2.5 shadow-2xl backdrop-blur-md">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                  Office view
+                </div>
+                <div className="mt-1 text-sm font-semibold text-amber-100">
+                  Quick camera presets for the layout editor.
+                </div>
+              </div>
+              {editMode ? (
+                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-200">
+                  editing
+                </span>
               ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setAgentRosterOpen((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-full border border-amber-900/25 bg-black/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-100 transition-colors hover:border-amber-500/35 hover:text-white"
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span>{agents.length}</span>
-              <span className="hidden sm:inline">agents</span>
-            </button>
-          </div>
-
-          {agentRosterVisible ? (
-            <div className="absolute left-1/2 top-full mt-2 w-[min(92vw,640px)] -translate-x-1/2 rounded-2xl border border-amber-900/25 bg-[#120e08]/96 p-3 shadow-2xl backdrop-blur-sm">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
-                    Team roster
-                  </div>
-                  <div className="mt-1 text-sm font-semibold text-amber-100">
-                    Compact view for larger fleets.
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <div className="rounded-full border border-amber-900/25 bg-black/20 p-1">
-                    {(["agents", "squads"] as const).map((tab) => {
-                      const active = rosterTab === tab;
-                      const count = tab === "agents" ? agents.length : squads.length;
-
-                      return (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => setRosterTab(tab)}
-                          className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
-                            active
-                              ? "border border-amber-400/20 bg-amber-300/14 text-amber-100"
-                              : "text-amber-400/70 hover:text-white"
-                          }`}
-                        >
-                          {tab}
-                          <span className="ml-1 text-[9px] opacity-70">{count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
+            <div className="grid grid-cols-3 gap-2">
+              {(
+                [
+                  {
+                    key: "overview",
+                    icon: <Maximize size={12} />,
+                    title: "Overview",
+                    subtitle: "Full office",
+                  },
+                  {
+                    key: "frontDesk",
+                    icon: <Monitor size={12} />,
+                    title: "Front desk",
+                    subtitle: "Entry area",
+                  },
+                  {
+                    key: "lounge",
+                    icon: <Armchair size={12} />,
+                    title: "Lounge",
+                    subtitle: "Social space",
+                  },
+                ] as const
+              ).map(({ key, icon, title, subtitle }) => {
+                const active = activeCameraPresetKey === key;
+                return (
                   <button
+                    key={key}
                     type="button"
-                    onClick={() => setAgentRosterOpen(false)}
-                    className="rounded-full border border-amber-900/25 p-2 text-amber-200 transition-colors hover:border-amber-500/35 hover:text-white"
-                    aria-label="Close roster"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              {rosterTab === "agents" ? (
-                <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                  {agents.map((agent) => {
-                    const status = agentStatusLookup[agent.id];
-                    const isError = status?.isError ?? agent.status === "error";
-                    const working = status?.working ?? agent.status === "working";
-                    const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
-                    const dotClass = isError
-                      ? "bg-red-400"
-                      : working
-                        ? "bg-green-400"
-                        : "bg-yellow-400";
-                    const runCount = runCountByAgentId[agent.id] ?? 0;
-                    return (
-                      <div
-                        key={agent.id}
-                        className="flex items-center gap-2 rounded-xl border border-amber-900/20 bg-black/20 px-3 py-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSpotlightAgentId(agent.id);
-                            if (!isRemoteAgent) {
-                              onAgentEdit?.(agent.id);
-                            }
-                            setAgentRosterOpen(false);
-                          }}
-                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-                        >
-                          <div
-                            className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[#120e08]"
-                            style={{ backgroundColor: agent.color }}
-                          >
-                            {getAgentInitials(agent.name)}
-                            <span
-                              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-[#120e08] ${dotClass}`}
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-amber-100">
-                              {agent.name}
-                            </div>
-                            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
-                              {isError ? "error" : working ? "working" : "idle"}
-                              {isRemoteAgent ? " · remote" : ""}
-                              {runCount > 0 ? ` · ${runCount} runs` : ""}
-                            </div>
-                          </div>
-                        </button>
-                        <button
-                          type="button"
-                          title={
-                            followAgentId === agent.id
-                              ? "Exit follow cam"
-                              : "Follow cam"
-                          }
-                          onClick={() =>
-                            setFollowAgentId((prev) =>
-                              prev === agent.id ? null : agent.id,
-                            )
-                          }
-                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                            followAgentId === agent.id
-                              ? "border-amber-200/30 bg-amber-100/10 text-white"
-                              : "border-amber-900/20 text-white/60 hover:border-amber-500/35 hover:text-white"
-                          }`}
-                        >
-                          <Camera size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          title={
-                            isRemoteAgent
-                              ? "Remote office is view only"
-                              : monitorAgentId === agent.id
-                                ? "Close desk monitor"
-                                : "Open desk monitor"
-                          }
-                          disabled={isRemoteAgent}
-                          onClick={() => {
-                            if (!isRemoteAgent) {
-                              onMonitorSelect?.(
-                                monitorAgentId === agent.id ? null : agent.id,
-                              );
-                            }
-                          }}
-                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                            isRemoteAgent
-                              ? "cursor-not-allowed border-white/10 text-white/25"
-                              : monitorAgentId === agent.id
-                                ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
-                                : "border-amber-900/20 text-white/60 hover:border-emerald-400/30 hover:text-emerald-200"
-                          }`}
-                        >
-                          <Monitor size={12} />
-                        </button>
-                        {onAgentDelete && !isRemoteAgent ? (
-                          <button
-                            type="button"
-                            title="Delete agent"
-                            onClick={() => {
-                              onAgentDelete(agent.id);
-                              setAgentRosterOpen(false);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-900/30 text-red-300/70 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="max-h-[min(60vh,420px)] space-y-2 overflow-y-auto pr-1">
-                  {squads.length > 0 ? (
-                    squads.map((squad) => {
-                      const leader = squad.members.find((member) => member.isLeader) ?? null;
-                      const onlineMembers = squad.members.filter((member) => member.gatewayAgentId).length;
-
-                      return (
-                        <div
-                          key={squad.id}
-                          className="rounded-xl border border-amber-900/20 bg-black/20 px-3 py-3"
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-amber-100">
-                                {squad.name}
-                              </div>
-                              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
-                                {squad.executionMode} · {onlineMembers}/{squad.members.length} online
-                              </div>
-                              <div className="mt-2 text-xs text-white/65">
-                                Leader: <span className="text-amber-100">{leader?.name ?? "Not set"}</span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                title="Open squad chat"
-                                onClick={() => {
-                                  onAgentChatSelect?.(`squad:${squad.id}`);
-                                  setAgentRosterOpen(false);
-                                }}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/20 text-white/70 transition-colors hover:border-amber-500/35 hover:text-white"
-                              >
-                                <Monitor size={12} />
-                              </button>
-
-                              <button
-                                type="button"
-                                title="Open Squad ops"
-                                onClick={() => {
-                                  onSquadOps?.(squad.id);
-                                  setAgentRosterOpen(false);
-                                }}
-                                className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-300/10 px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-100 transition-colors hover:border-amber-400/45 hover:bg-amber-300/15 hover:text-white"
-                              >
-                                Squad ops
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-amber-900/25 bg-black/10 px-4 py-8 text-center">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
-                        No squads yet
-                      </div>
-                      <div className="mt-2 text-sm text-white/65">
-                        Create a squad to route tasks and open Squad ops from here.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* Idea 1: Agent tooltip — shown when hovering an agent in the 3D scene. */}
-      {!immersiveOverlayActive &&
-        hoveredAgent &&
-        (() => {
-          const isError =
-            hoveredAgentStatus?.isError ?? hoveredAgent.status === "error";
-          const working =
-            hoveredAgentStatus?.working ?? hoveredAgent.status === "working";
-          return (
-            <div className="absolute top-24 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none">
-              <div className="flex items-center gap-3 bg-[#120e08]/95 backdrop-blur-sm border border-amber-800/30 rounded-lg px-4 py-2.5 shadow-xl">
-                <div className="relative shrink-0">
-                  <div
-                    className="w-6 h-6 rounded-sm"
-                    style={{ backgroundColor: hoveredAgent.color }}
-                  />
-                  <div
-                    className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-[#120e08] ${
-                      isError
-                        ? "bg-red-400"
-                        : working
-                          ? "bg-green-400"
-                          : "bg-yellow-400"
+                    title={title}
+                    onClick={() => {
+                      setActiveCameraPresetKey(key);
+                      cameraPresetRef.current = cameraPresetMap[key];
+                    }}
+                    className={`group flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center transition-all active:scale-[0.98] ${
+                      active
+                        ? "border-amber-400/45 bg-amber-300/12 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
+                        : "border-amber-900/25 bg-[#1c1610]/80 text-amber-500/70 hover:border-amber-500/35 hover:bg-[#261d15] hover:text-amber-200"
                     }`}
-                  />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-amber-100">
-                    {hoveredAgent.name}
-                  </div>
-                  <div className="text-[10px] text-amber-600 uppercase tracking-widest">
-                    {hoveredAgent.item}
-                  </div>
-                  {/* New Idea 8: last seen timestamp. */}
-                  {(() => {
-                    const ts = lastSeenByAgentId[hoveredAgent.id];
-                    if (!ts || ts <= 0) return null;
-                    const mins = Math.round((Date.now() - ts) / 60_000);
-                    if (mins <= 0) return null;
-                    return (
-                      <div className="text-[9px] text-amber-700/70">
-                        last active {mins}m ago
-                      </div>
-                    );
-                  })()}
-                </div>
-                <div
-                  className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-1 ${
-                    isError
-                      ? "bg-red-900/40 text-red-400 ring-1 ring-red-800/40"
-                      : working
-                        ? "bg-green-900/40 text-green-400 ring-1 ring-green-800/40"
-                        : "bg-yellow-900/30 text-yellow-500 ring-1 ring-yellow-800/30"
-                  }`}
-                >
-                  {isError ? "error" : working ? "working" : "idle"}
-                </div>
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* Speech bubble image overlay — shows the actual image when an agent's reply contains one. */}
-      {!immersiveOverlayActive &&
-        (() => {
-          const visibleImageAgentId = [...speechAgentIds].find(
-            (id) => speechImageUrlByAgentId[id],
-          );
-          if (!visibleImageAgentId) return null;
-          const agent = agents.find((a) => a.id === visibleImageAgentId);
-          const imageUrl = speechImageUrlByAgentId[visibleImageAgentId];
-          if (!imageUrl) return null;
-          return (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none select-none">
-              <div className="flex flex-col items-center gap-2 bg-[#120e08]/95 backdrop-blur-sm border border-amber-800/30 rounded-lg p-3 shadow-xl max-w-xs">
-                {agent ? (
-                  <div className="flex items-center gap-2 self-start">
-                    <div
-                      className="w-4 h-4 rounded-sm shrink-0"
-                      style={{ backgroundColor: agent.color }}
-                    />
-                    <span className="text-[10px] font-bold text-amber-200 uppercase tracking-widest">
-                      {agent.name}
-                    </span>
-                  </div>
-                ) : null}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={imageUrl}
-                  alt=""
-                  className="rounded max-h-52 w-full object-contain border border-white/10"
-                />
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* New Idea 1: Right-click context menu on agents. */}
-      {!readOnly &&
-        !immersiveOverlayActive &&
-        contextMenu &&
-        (() => {
-          const agent = agents.find((a) => a.id === contextMenu.id);
-          return (
-            <div
-              className="absolute z-50 bg-[#120e08] border border-amber-800/30 rounded-lg shadow-xl overflow-hidden"
-              style={{ left: contextMenu.x, top: contextMenu.y }}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-              <div className="px-3 py-1.5 border-b border-amber-900/20">
-                <span className="text-[10px] font-bold text-amber-500/70 uppercase tracking-widest">
-                  {agent?.name}
-                </span>
-              </div>
-              <button
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-amber-200/80 hover:bg-amber-900/20 transition-colors text-left"
-                onClick={() => {
-                  navigator.clipboard.writeText(contextMenu.id);
-                  setContextMenu(null);
-                }}
-              >
-                Copy ID
-              </button>
-            </div>
-          );
-        })()}
-
-      {/* Follow cam HUD — shown while a third-person follow camera is active. */}
-      {!immersiveOverlayActive &&
-        followAgentId &&
-        (() => {
-          const followed = agents.find((a) => a.id === followAgentId);
-          return (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-[#120e08]/90 backdrop-blur-sm border border-amber-700/40 rounded-full px-3 py-1 z-20 pointer-events-none select-none">
-              <Camera size={10} className="text-amber-400" />
-              <span className="text-[10px] font-bold text-amber-300 tracking-widest uppercase">
-                {followed?.name ?? "Agent"}
-              </span>
-              <span className="text-[9px] text-amber-600/60">
-                · click 📷 to exit
-              </span>
-            </div>
-          );
-        })()}
-
-      {!immersiveOverlayActive &&
-      githubReviewAgentId &&
-      !githubCommandArrived ? (
-        <div className="pointer-events-none absolute top-16 left-1/2 z-20 -translate-x-1/2">
-          <div className="rounded-full border border-cyan-300/18 bg-[#06101f]/88 px-4 py-2 text-[11px] uppercase tracking-[0.22em] text-cyan-100/78 backdrop-blur-sm">
-            Agent walking to the Code Review room.
-          </div>
-        </div>
-      ) : null}
-
-      {!immersiveOverlayActive && qaTestingAgentId && !qaCommandArrived ? (
-        <div className="pointer-events-none absolute top-28 left-1/2 z-20 -translate-x-1/2">
-          <div className="rounded-full border border-violet-300/20 bg-[#12091d]/88 px-4 py-2 text-[11px] uppercase tracking-[0.22em] text-violet-100/80 backdrop-blur-sm">
-            Agent walking to the QA Lab.
-          </div>
-        </div>
-      ) : null}
-
-      {monitorImmersive ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-black/18" />
-          <div className="absolute inset-x-0 top-0 h-[10vh] bg-black" />
-          <div className="absolute inset-x-0 bottom-0 h-[13vh] bg-black" />
-          <div className="absolute inset-y-0 left-0 w-[6vw] bg-black" />
-          <div className="absolute inset-y-0 right-0 w-[6vw] bg-black" />
-          <div className="absolute inset-[5vh_5vw_8vh_5vw] rounded-[28px] border border-[#3a3a3a] shadow-[0_0_0_18px_rgba(8,8,8,0.96),0_0_0_22px_rgba(64,64,64,0.7),0_24px_90px_rgba(0,0,0,0.65)]" />
-          <div className="absolute inset-[5.7vh_5.7vw_8.7vh_5.7vw] rounded-[18px] border border-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]" />
-          <div className="pointer-events-auto absolute inset-[5.8vh_5.8vw_8.8vh_5.8vw] overflow-hidden rounded-[16px] bg-black">
-            {activeMonitor ? (
-              <MonitorImmersiveOverlay monitor={activeMonitor} />
-            ) : null}
-            <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-emerald-300/6" />
-            <div
-              className="absolute inset-0 opacity-[0.08]"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(to bottom, rgba(255,255,255,0.22) 0px, rgba(255,255,255,0.22) 1px, transparent 2px, transparent 4px)",
-              }}
-            />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_45%,rgba(0,0,0,0.22)_100%)]" />
-          </div>
-          <div className="absolute bottom-[3.1vh] left-1/2 h-[1.2vh] w-[12vw] -translate-x-1/2 rounded-full bg-[#0d0d0d] shadow-[0_0_0_1px_rgba(90,90,90,0.5)]" />
-          <div className="absolute bottom-[1.1vh] left-1/2 h-[2vh] w-[20vw] -translate-x-1/2 rounded-[999px] bg-[#101010] shadow-[0_0_0_1px_rgba(82,82,82,0.5)]" />
-          <div className="pointer-events-auto absolute right-[7vw] top-[7vh] flex items-center gap-3 rounded-full border border-white/10 bg-black/60 px-4 py-2 backdrop-blur-sm">
-            <div className="h-2 w-2 rounded-full bg-emerald-400" />
-            <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-emerald-200/90">
-              Monitor View
-            </div>
-            <button
-              type="button"
-              onClick={() => onMonitorSelect?.(null)}
-              className="rounded-full border border-white/10 px-3 py-1 text-[11px] text-white/70 transition-colors hover:border-white/20 hover:text-white"
-            >
-              Exit
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {standupImmersive && standupMeeting ? (
-        <StandupImmersiveScreen
-          meeting={standupMeeting}
-          onClose={closeStandupBoard}
-        />
-      ) : null}
-
-      {githubImmersive ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.12),rgba(0,0,0,0.84))]" />
-          <div className="absolute inset-x-0 top-0 h-[9vh] bg-[linear-gradient(180deg,rgba(1,5,16,0.98),rgba(1,5,16,0.75))]" />
-          <div className="absolute inset-x-0 bottom-0 h-[11vh] bg-[linear-gradient(0deg,rgba(0,0,0,0.98),rgba(0,0,0,0.55))]" />
-          <div className="absolute inset-y-0 left-0 w-[5vw] bg-black/94" />
-          <div className="absolute inset-y-0 right-0 w-[5vw] bg-black/94" />
-          <div className="absolute inset-[5vh_4.8vw_7vh_4.8vw] rounded-[34px] border border-cyan-300/16 bg-[#030815] shadow-[0_0_0_18px_rgba(1,5,16,0.96),0_0_0_22px_rgba(34,211,238,0.14),0_28px_110px_rgba(0,0,0,0.74)]" />
-          <div className="absolute inset-[5.8vh_5.6vw_7.8vh_5.6vw] rounded-[26px] border border-cyan-300/12 bg-[#050d1d] shadow-[inset_0_0_0_1px_rgba(125,211,252,0.04)]" />
-          <div className="pointer-events-auto absolute inset-[6vh_5.8vw_8vh_5.8vw] overflow-hidden rounded-[24px] bg-[#040a15]">
-            <GithubImmersiveScreen
-              agentName={
-                githubReviewAgentId
-                  ? (agents.find((agent) => agent.id === githubReviewAgentId)
-                      ?.name ?? null)
-                  : null
-              }
-              githubSkill={githubSkill}
-              onOpenSetup={onOpenGithubSkillSetup}
-            />
-          </div>
-          <div className="absolute bottom-[2vh] left-1/2 h-[2vh] w-[22vw] -translate-x-1/2 rounded-[999px] bg-[#061120] shadow-[0_0_0_1px_rgba(34,211,238,0.2)]" />
-          <div className="pointer-events-auto absolute right-[5.2vw] top-[3.4vh]">
-            <button
-              type="button"
-              onClick={() => {
-                if (activeGithubTerminalUid) {
-                  setActiveGithubTerminalUid(null);
-                } else {
-                  onGithubReviewDismiss?.();
-                }
-              }}
-              aria-label="Close GitHub view"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/20 bg-[#05111f]/82 text-[18px] leading-none text-cyan-100/78 backdrop-blur-sm transition-colors hover:border-cyan-200/40 hover:text-white"
-            >
-              X
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {qaImmersive ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(167,139,250,0.14),rgba(0,0,0,0.88))]" />
-          <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.14)_1px,transparent_1px)] [background-size:52px_52px]" />
-          <div className="absolute inset-x-0 top-0 h-[10vh] bg-[linear-gradient(180deg,rgba(12,6,24,0.98),rgba(12,6,24,0.78))]" />
-          <div className="absolute inset-x-0 bottom-0 h-[12vh] bg-[linear-gradient(0deg,rgba(6,2,18,0.98),rgba(6,2,18,0.58))]" />
-          <div className="absolute inset-y-0 left-0 w-[6vw] bg-[#05030d]/94" />
-          <div className="absolute inset-y-0 right-0 w-[6vw] bg-[#05030d]/94" />
-          <div className="absolute inset-[6vh_6vw_8vh_6vw] rounded-[32px] border border-violet-300/18 bg-[#090411] shadow-[0_0_0_18px_rgba(8,4,18,0.96),0_0_0_22px_rgba(167,139,250,0.16),0_30px_110px_rgba(0,0,0,0.72)]" />
-          <div className="pointer-events-auto absolute inset-[6.7vh_6.7vw_8.7vh_6.7vw] overflow-x-hidden overflow-y-auto overscroll-contain rounded-[24px] border border-violet-300/10 bg-[#0d0718]">
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(167,139,250,0.08),transparent_22%,transparent_78%,rgba(56,189,248,0.06))]" />
-            <div className="absolute inset-0 opacity-[0.08] [background-image:repeating-linear-gradient(to_bottom,rgba(255,255,255,0.22)_0px,rgba(255,255,255,0.22)_1px,transparent_2px,transparent_4px)]" />
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_44%,rgba(0,0,0,0.22)_100%)]" />
-            <div className="relative flex min-h-full flex-col text-white">
-              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-violet-300/10 bg-[#0d0718]/95 px-8 py-5 backdrop-blur-sm">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-violet-200/72">
-                    QA Lab
-                  </div>
-                  <div className="mt-2 text-2xl font-semibold text-white/94">
-                    Testing Console
-                  </div>
-                </div>
-                <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-200/88">
-                  Verifying Build
-                </div>
-              </div>
-              <div className="grid flex-1 grid-cols-[1.4fr_1fr] gap-6 px-8 py-6">
-                <div className="rounded-[22px] border border-violet-300/12 bg-black/26 p-5">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-200/70">
-                      Active Workflow
-                    </div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-cyan-200/70">
-                      QA Ready
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {[
-                      "Write tests",
-                      "Run tests",
-                      "Verify behavior",
-                      "Reproduce bugs",
-                      "Check if this works",
-                      "Regression scan",
-                    ].map((step) => (
-                      <div
-                        key={step}
-                        className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3 text-white/82"
-                      >
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-5 rounded-[20px] border border-violet-300/12 bg-[#120d22]/88 p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-200/70">
-                        Pipeline Health
-                      </div>
-                      <div className="text-[11px] uppercase tracking-[0.22em] text-emerald-200/82">
-                        Stable
-                      </div>
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {[
-                        {
-                          label: "Unit suite",
-                          width: "92%",
-                          tone: "from-emerald-400 to-cyan-400",
-                        },
-                        {
-                          label: "Regression pass",
-                          width: "78%",
-                          tone: "from-cyan-400 to-violet-400",
-                        },
-                        {
-                          label: "Device verification",
-                          width: "66%",
-                          tone: "from-violet-400 to-fuchsia-400",
-                        },
-                      ].map((bar) => (
-                        <div key={bar.label}>
-                          <div className="mb-1 flex items-center justify-between text-[11px] text-white/68">
-                            <span>{bar.label}</span>
-                            <span>{bar.width}</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-white/8">
-                            <div
-                              className={`h-2 rounded-full bg-gradient-to-r ${bar.tone}`}
-                              style={{ width: bar.width }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="mt-5 rounded-[20px] border border-cyan-300/12 bg-[#07111d]/86 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/72">
-                      Assigned Agent
-                    </div>
-                    <div className="mt-2 text-lg font-semibold text-cyan-50">
-                      {qaTestingAgentId
-                        ? (agents.find((agent) => agent.id === qaTestingAgentId)
-                            ?.name ?? "Agent")
-                        : "QA Operator"}
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-cyan-50/72">
-                      Running validation passes across the lab monitors and
-                      connected test devices.
-                    </div>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-4">
-                  <div className="rounded-[22px] border border-violet-300/12 bg-black/26 p-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-violet-200/70">
-                      Device Wall
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      {[
-                        { label: "Web smoke tests", state: "online" },
-                        { label: "Mobile repro pass", state: "online" },
-                        { label: "Console verification", state: "online" },
-                        { label: "Cross-device check", state: "queued" },
-                      ].map(({ label, state }, index) => (
-                        <div
-                          key={label}
-                          className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3"
-                        >
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${
-                                index < 3 ? "bg-emerald-300" : "bg-amber-300"
-                              }`}
-                            />
-                            <span className="text-sm text-white/82">
-                              {label}
-                            </span>
-                          </div>
-                          <span className="text-[11px] uppercase tracking-[0.22em] text-emerald-200/78">
-                            {state}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-[22px] border border-cyan-300/12 bg-[#07111d]/88 p-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-cyan-200/72">
-                      Live Findings
-                    </div>
-                    <div className="mt-4 space-y-3 text-sm">
-                      {[
-                        "Input validation mismatch on mobile settings view.",
-                        "Repro path captured for flaky workspace sync issue.",
-                        "Visual diff queued for monitor overlay transition.",
-                      ].map((finding) => (
-                        <div
-                          key={finding}
-                          className="rounded-2xl border border-cyan-300/10 bg-cyan-300/[0.04] px-4 py-3 text-cyan-50/78"
-                        >
-                          {finding}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-[22px] border border-amber-300/12 bg-[#161007]/88 p-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-200/72">
-                      Suggested Prompts
-                    </div>
-                    <div className="mt-4 space-y-2 text-sm text-amber-50/78">
-                      <div>`write tests`</div>
-                      <div>`run tests`</div>
-                      <div>`verify`</div>
-                      <div>`reproduce`</div>
-                      <div>`check if this works`</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="absolute bottom-[2.4vh] left-1/2 h-[1.8vh] w-[20vw] -translate-x-1/2 rounded-[999px] bg-[#12081e] shadow-[0_0_0_1px_rgba(167,139,250,0.24)]" />
-          <div className="pointer-events-auto absolute right-[5.2vw] top-[3.4vh]">
-            <button
-              type="button"
-              onClick={() => {
-                if (activeQaTerminalUid) {
-                  setActiveQaTerminalUid(null);
-                } else {
-                  onQaLabDismiss?.();
-                }
-              }}
-              aria-label="Close QA lab view"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-violet-300/20 bg-[#12091d]/82 text-[18px] leading-none text-violet-100/78 backdrop-blur-sm transition-colors hover:border-violet-200/40 hover:text-white"
-            >
-              X
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {smsBoothImmersive &&
-      effectiveTextMessageScenario &&
-      effectiveSmsBoothAgentId ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-black/45" />
-          <div className="absolute inset-x-0 top-0 h-[8vh] bg-[linear-gradient(180deg,rgba(0,0,0,0.94),rgba(0,0,0,0.62))]" />
-          <div className="absolute inset-x-0 bottom-0 h-[12vh] bg-[linear-gradient(0deg,rgba(0,0,0,0.96),rgba(0,0,0,0.58))]" />
-          <div className="absolute inset-y-0 left-0 w-[7vw] bg-black/94" />
-          <div className="absolute inset-y-0 right-0 w-[7vw] bg-black/94" />
-          <div className="absolute inset-[7vh_8vw_10vh_8vw] rounded-[34px] border border-sky-300/18 bg-[#010617] shadow-[0_0_0_18px_rgba(1,6,23,0.96),0_0_0_22px_rgba(56,189,248,0.15),0_28px_100px_rgba(0,0,0,0.8)]" />
-          <div className="absolute inset-[7.8vh_8.8vw_10.8vh_8.8vw] rounded-[24px] border border-sky-200/14 bg-[#020817] shadow-[inset_0_0_0_1px_rgba(125,211,252,0.04)]" />
-          <div className="pointer-events-auto absolute inset-[8vh_9vw_11vh_9vw] overflow-hidden rounded-[22px] bg-[#020617]">
-            <SmsBoothImmersiveScreen
-              scenario={effectiveTextMessageScenario}
-              step={textMessageStep}
-              typedMessage={typedMessageText}
-              activeKey={activeTextKey}
-              contacts={textContacts}
-              activeContactIndex={activeTextContactIndex}
-            />
-          </div>
-          <div className="absolute bottom-[4vh] left-1/2 h-[1.6vh] w-[16vw] -translate-x-1/2 rounded-full bg-[#07111f] shadow-[0_0_0_1px_rgba(56,189,248,0.22)]" />
-          <div className="absolute bottom-[2vh] left-1/2 h-[2.2vh] w-[24vw] -translate-x-1/2 rounded-[999px] bg-[#07101c] shadow-[0_0_0_1px_rgba(56,189,248,0.18)]" />
-          <div className="pointer-events-auto absolute right-[5.2vw] top-[3.4vh]">
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  effectiveSmsBoothAgentId &&
-                  !effectiveSmsBoothAgentId.startsWith("__manual")
-                ) {
-                  onTextMessageDismiss?.(effectiveSmsBoothAgentId);
-                  return;
-                }
-                closeManualSmsBoothView();
-              }}
-              aria-label="Close messaging booth view"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-sky-200/20 bg-[#03111f]/82 text-[18px] leading-none text-sky-50/78 backdrop-blur-sm transition-colors hover:border-sky-200/40 hover:text-white"
-            >
-              X
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {phoneBoothImmersive &&
-      effectivePhoneCallScenario &&
-      effectivePhoneBoothAgentId ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-black/45" />
-          <div className="absolute inset-x-0 top-0 h-[8vh] bg-[linear-gradient(180deg,rgba(0,0,0,0.94),rgba(0,0,0,0.62))]" />
-          <div className="absolute inset-x-0 bottom-0 h-[12vh] bg-[linear-gradient(0deg,rgba(0,0,0,0.96),rgba(0,0,0,0.58))]" />
-          <div className="absolute inset-y-0 left-0 w-[7vw] bg-black/94" />
-          <div className="absolute inset-y-0 right-0 w-[7vw] bg-black/94" />
-          <div className="absolute inset-[7vh_8vw_10vh_8vw] rounded-[34px] border border-sky-300/18 bg-[#010617] shadow-[0_0_0_18px_rgba(1,6,23,0.96),0_0_0_22px_rgba(56,189,248,0.15),0_28px_100px_rgba(0,0,0,0.8)]" />
-          <div className="absolute inset-[7.8vh_8.8vw_10.8vh_8.8vw] rounded-[24px] border border-sky-200/14 bg-[#020817] shadow-[inset_0_0_0_1px_rgba(125,211,252,0.04)]" />
-          <div className="pointer-events-auto absolute inset-[8vh_9vw_11vh_9vw] overflow-hidden rounded-[22px] bg-[#020617]">
-            <PhoneBoothImmersiveScreen
-              scenario={effectivePhoneCallScenario}
-              step={phoneCallStep}
-              typedDigits={dialedDigits}
-            />
-          </div>
-          <div className="absolute bottom-[4vh] left-1/2 h-[1.6vh] w-[16vw] -translate-x-1/2 rounded-full bg-[#07111f] shadow-[0_0_0_1px_rgba(56,189,248,0.22)]" />
-          <div className="absolute bottom-[2vh] left-1/2 h-[2.2vh] w-[24vw] -translate-x-1/2 rounded-[999px] bg-[#07101c] shadow-[0_0_0_1px_rgba(56,189,248,0.18)]" />
-          <div className="pointer-events-auto absolute right-[5.2vw] top-[3.4vh]">
-            <button
-              type="button"
-              onClick={() => {
-                if (phoneBoothAgentId) {
-                  onPhoneCallComplete?.(phoneBoothAgentId);
-                  return;
-                }
-                closeManualPhoneBoothView();
-              }}
-              aria-label="Close phone booth view"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-sky-200/20 bg-[#03111f]/82 text-[18px] leading-none text-sky-50/78 backdrop-blur-sm transition-colors hover:border-sky-200/40 hover:text-white"
-            >
-              X
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {atmImmersive ? (
-        <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
-          <div className="absolute inset-0 bg-black/30" />
-          <div className="absolute inset-x-0 top-0 h-[8vh] bg-[linear-gradient(180deg,rgba(0,0,0,0.92),rgba(0,0,0,0.65))]" />
-          <div className="absolute inset-x-0 bottom-0 h-[12vh] bg-[linear-gradient(0deg,rgba(0,0,0,0.94),rgba(0,0,0,0.55))]" />
-          <div className="absolute inset-y-0 left-0 w-[7vw] bg-black/92" />
-          <div className="absolute inset-y-0 right-0 w-[7vw] bg-black/92" />
-          <div className="absolute inset-[7vh_8vw_10vh_8vw] rounded-[34px] border border-[#7dfff0]/22 bg-[#010708] shadow-[0_0_0_18px_rgba(1,8,9,0.96),0_0_0_22px_rgba(86,255,234,0.18),0_28px_100px_rgba(0,0,0,0.72)]" />
-          <div className="absolute inset-[7.8vh_8.8vw_10.8vh_8.8vw] rounded-[24px] border border-[#8efff2]/16 bg-[#021112] shadow-[inset_0_0_0_1px_rgba(130,255,232,0.04)]" />
-          <div className="pointer-events-auto absolute inset-[8vh_9vw_11vh_9vw] overflow-hidden rounded-[22px] bg-[#031011]">
-            {atmAnalytics ? <AtmImmersiveScreen {...atmAnalytics} /> : null}
-            <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background-image:repeating-linear-gradient(to_bottom,rgba(255,255,255,0.22)_0px,rgba(255,255,255,0.22)_1px,transparent_2px,transparent_4px)]" />
-          </div>
-          <div className="absolute bottom-[4vh] left-1/2 h-[1.6vh] w-[16vw] -translate-x-1/2 rounded-full bg-[#071617] shadow-[0_0_0_1px_rgba(86,255,234,0.24)]" />
-          <div className="absolute bottom-[2vh] left-1/2 h-[2.2vh] w-[24vw] -translate-x-1/2 rounded-[999px] bg-[#071113] shadow-[0_0_0_1px_rgba(86,255,234,0.18)]" />
-          <div className="pointer-events-auto absolute right-[5.2vw] top-[3.4vh]">
-            <button
-              type="button"
-              onClick={() => setActiveAtmUid(null)}
-              aria-label="Close ATM view"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#8efff2]/20 bg-[#031214]/82 text-[18px] leading-none text-[#d7fff9]/78 backdrop-blur-sm transition-colors hover:border-[#8efff2]/40 hover:text-white"
-            >
-              X
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Edit mode badge. */}
-      {!immersiveOverlayActive && editMode && (
-        <div className="absolute top-3 left-3 px-3 py-1 rounded-md bg-amber-500/90 text-[#1a1008] text-xs font-bold uppercase tracking-widest pointer-events-none z-10">
-          Edit Mode
-        </div>
-      )}
-
-      {!immersiveOverlayActive && editMode && selectedItem && (
-        <div className="absolute top-12 right-16 w-64 rounded-lg border border-amber-800/30 bg-[#120e08]/95 p-3 shadow-xl backdrop-blur-sm z-20">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-[0.22em] text-amber-500/65">
-                Selected
-              </div>
-              <div className="mt-1 text-xs font-semibold text-amber-100">
-                {PALETTE.find((entry) => entry.type === selectedItem.type)
-                  ?.label ??
-                  resolveItemTypeKey(selectedItem).replaceAll("_", " ")}
-              </div>
-              <div className="mt-1 text-[10px] text-amber-500/55">
-                rot {Math.round(selectedItem.facing ?? 0)} deg · lift{" "}
-                {(selectedItem.elevation ?? 0).toFixed(2)}
-              </div>
-            </div>
-            <button
-              onClick={closeSelectedEditor}
-              title="Close object editor"
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-amber-800/25 bg-[#1c1610] text-amber-300/80 transition-colors hover:bg-[#261e16] hover:text-amber-200"
-            >
-              <X size={12} />
-            </button>
-          </div>
-          <div className="mb-3">
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-amber-500/65">
-              Move
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              <div />
-              <button
-                onClick={() => moveSelectedItem(0, -SNAP_GRID)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Forward
-              </button>
-              <div />
-              <button
-                onClick={() => moveSelectedItem(-SNAP_GRID, 0)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Left
-              </button>
-              <button
-                onClick={() => moveSelectedItem(0, 0, ELEVATION_STEP)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Up
-              </button>
-              <button
-                onClick={() => moveSelectedItem(SNAP_GRID, 0)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Right
-              </button>
-              <div />
-              <button
-                onClick={() => moveSelectedItem(0, SNAP_GRID)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Back
-              </button>
-              <div />
-              <div />
-              <button
-                onClick={() => moveSelectedItem(0, 0, -ELEVATION_STEP)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                Down
-              </button>
-              <div />
-            </div>
-          </div>
-          <div>
-            <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-amber-500/65">
-              Rotate
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => rotateSelectedItem(-ROTATION_STEP_DEG)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                -15 deg
-              </button>
-              <button
-                onClick={() => rotateSelectedItem(ROTATION_STEP_DEG)}
-                className="rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200/85 hover:bg-[#261e16]"
-              >
-                +15 deg
-              </button>
-            </div>
-            <div className="mt-2 text-[10px] text-amber-500/50">
-              Arrows move on the floor. PageUp and PageDown lift. [ and ]
-              rotate.
-            </div>
-          </div>
-          {selectedItem.type === "desk_cubicle" ? (
-            <div className="mt-3 border-t border-amber-900/20 pt-3">
-              <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.22em] text-amber-500/65">
-                Desk Assignment
-              </div>
-              <select
-                value={selectedDeskAssignmentAgentId}
-                onChange={(event) => {
-                  const nextAgentId = event.target.value.trim();
-                  onDeskAssignmentChange?.(
-                    selectedItem._uid,
-                    nextAgentId || null,
-                  );
-                }}
-                className="w-full rounded-md border border-amber-800/25 bg-[#1c1610] px-2 py-2 text-[11px] text-amber-100 outline-none transition-colors focus:border-amber-500/50"
-              >
-                <option value="">Unassigned desk.</option>
-                {agents.map((agent) => (
-                  <option key={agent.id} value={agent.id}>
-                    {agent.name}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-2 text-[10px] text-amber-500/50">
-                Assigning a desk makes `target: desk` route that agent here.
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* Object Drawer — bottom right above toolbar when open. */}
-      {!immersiveOverlayActive && editMode && drawerOpen && !selectedItem && (
-        <div className="absolute bottom-14 right-3 w-64 max-h-[calc(100vh-100px)] overflow-y-auto rounded-lg bg-[#1c1610]/95 border border-amber-800/20 p-3 shadow-xl backdrop-blur-sm z-20">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-widest text-amber-500/70">
-            Objects Library
-          </div>
-          <div className="mb-3 text-[10px] text-amber-500/45">
-            Grouped by room and use so it is easier to find props.
-          </div>
-          <div className="space-y-3">
-            {GROUPED_PALETTE.map((group) => (
-              <div key={group.key} className="rounded-md border border-amber-900/15 bg-[#120e08]/70 p-2">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-300/70">
-                  {group.label}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {group.entries.map((entry) => (
-                    <button
-                      key={entry.type}
-                      onClick={() => startPlacing(entry.type)}
-                      className={`flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-md border p-2 text-center transition-all ${
-                        drag.kind === "placing" &&
-                        (drag as { kind: "placing"; itemType: string }).itemType === entry.type
-                          ? "border-amber-500/50 bg-amber-500/20 text-amber-300"
-                          : "border-amber-900/15 bg-[#18120c] text-amber-200/75 hover:border-amber-800/30 hover:bg-[#261e16]"
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    <span
+                      className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                        active
+                          ? "border-amber-300/35 bg-amber-300/10"
+                          : "border-amber-900/20 bg-black/20"
                       }`}
                     >
-                      <span className="text-lg leading-none">{entry.icon}</span>
-                      <span className="text-[9px] font-semibold uppercase tracking-wider leading-tight">
-                        {entry.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+                      {icon}
+                    </span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">
+                      {title}
+                    </span>
+                    <span className="text-[9px] text-white/45 group-hover:text-white/60">
+                      {subtitle}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Toolbar — top right. */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className="absolute top-3 right-3 flex items-center gap-2 z-20">
+        <div className="absolute top-3 right-3 z-20 flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 p-2 shadow-2xl backdrop-blur-md">
           {remoteOfficeEnabled &&
           (remoteOfficeSourceKind === "presence_endpoint"
             ? remoteOfficePresenceUrl.trim().length > 0
@@ -6000,7 +5108,7 @@ export function RetroOffice3D({
               className="flex h-7 items-center justify-center gap-1 rounded-md border border-cyan-500/35 bg-[#071018]/92 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-200 transition-all backdrop-blur-sm hover:border-cyan-400/55 hover:text-white"
             >
               <UserPlus size={12} />
-              <span>Add</span>
+              <span>Add agent</span>
             </button>
           ) : null}
           {onOpenProfile ? (
@@ -6087,7 +5195,7 @@ export function RetroOffice3D({
                 onClick={() => setDrawerOpen((p) => !p)}
                 className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider bg-[#2a1e14]/90 text-amber-400 border border-amber-800/30 hover:bg-[#3a2a1a] backdrop-blur-sm"
               >
-                {drawerOpen ? "Hide Objects" : "Show Objects"}
+                {drawerOpen ? "Hide builder" : "Open builder"}
               </button>
             </>
           )}

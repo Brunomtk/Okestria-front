@@ -76,9 +76,10 @@ export function OfficeBuilderPanel({ initialMap, workspaceId, officeId }: Office
 
   return (
     <div className="flex h-full w-full gap-3">
-      <aside className="ui-panel w-72 shrink-0 overflow-y-auto p-3">
-        <div className="font-mono text-[11px] text-muted-foreground">builder controls</div>
-        <div className="mt-3 flex flex-col gap-2">
+      <aside className="ui-panel w-80 shrink-0 overflow-y-auto rounded-3xl border border-border/50 bg-background/95 p-4 shadow-xl">
+        <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">layout builder</div>
+        <div className="mt-1 text-sm font-semibold text-foreground">Polish the office and publish a cleaner default layout.</div>
+        <div className="mt-4 grid gap-2">
           <button type="button" className="ui-btn-secondary px-2 py-1 text-left text-xs" onClick={store.undo}>
             undo
           </button>
@@ -162,8 +163,8 @@ export function OfficeBuilderPanel({ initialMap, workspaceId, officeId }: Office
             publish active
           </button>
         </div>
-        <div className="mt-4 border-t border-border/50 pt-3">
-          <div className="font-mono text-[11px] text-muted-foreground">simulation toggles</div>
+        <div className="mt-5 border-t border-border/50 pt-4">
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">simulation toggles</div>
           <div className="mt-2 flex flex-col gap-2 text-xs">
             <label className="flex items-center justify-between">
               <span>debug</span>
@@ -195,10 +196,10 @@ export function OfficeBuilderPanel({ initialMap, workspaceId, officeId }: Office
             </label>
           </div>
         </div>
-        <div className="mt-4 text-xs text-muted-foreground">selected {selectedIds.length}</div>
+        <div className="mt-5 rounded-2xl border border-border/50 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Selected items: <span className="font-semibold text-foreground">{selectedIds.length}</span></div>
         {message ? <div className="mt-2 text-xs text-muted-foreground">{message}</div> : null}
       </aside>
-      <div className="ui-panel min-h-0 flex-1 overflow-hidden p-2">
+      <div className="ui-panel min-h-0 flex-1 overflow-hidden rounded-3xl border border-border/50 bg-background/95 p-2 shadow-xl">
         <OfficePhaserCanvas
           mode="builder"
           map={store.map}
