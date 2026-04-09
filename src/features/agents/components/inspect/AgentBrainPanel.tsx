@@ -54,6 +54,7 @@ export const AgentBrainPanel = ({
   );
 
   const {
+    activeGatewayAgentId,
     agentFiles,
     agentFilesLoading,
     agentFilesSaving,
@@ -61,7 +62,12 @@ export const AgentBrainPanel = ({
     agentFilesError,
     setAgentFileContent,
     saveAgentFiles,
-  } = useAgentFilesEditor({ client, agentId: selectedAgent?.agentId ?? null });
+  } = useAgentFilesEditor({
+    client,
+    agentId: selectedAgent?.agentId ?? selectedAgentId ?? null,
+    selectedAgent,
+    agents,
+  });
   const draft = useMemo(() => parsePersonalityFiles(agentFiles), [agentFiles]);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -87,7 +93,7 @@ export const AgentBrainPanel = ({
     if (!nextName || nextName === currentName) {
       return;
     }
-    const renamed = await onRename(selectedAgent.agentId, nextName);
+    const renamed = await onRename(activeGatewayAgentId ?? selectedAgent.agentId, nextName);
     if (!renamed) {
       setSaveError("Saved IDENTITY.md, but could not rename the live agent.");
     }
@@ -99,6 +105,7 @@ export const AgentBrainPanel = ({
     onRename,
     saveAgentFiles,
     selectedAgent,
+    activeGatewayAgentId,
   ]);
 
   useEffect(() => {
