@@ -5081,9 +5081,9 @@ export function RetroOffice3D({
             <div className="ml-auto flex flex-wrap items-center gap-1.5">
               {compactRosterAgents.map((agent) => (
                 <button
-                  key={agent.agentId}
+                  key={agent.id}
                   type="button"
-                  onClick={() => onAgentChatSelect?.(agent.agentId)}
+                  onClick={() => onAgentChatSelect?.(agent.id)}
                   className="rounded-full border border-amber-900/25 bg-[#1c1610]/75 px-2 py-1 text-[10px] text-amber-100/75 transition-all hover:border-amber-400/35 hover:text-white"
                   title={agent.name}
                 >
@@ -5322,10 +5322,10 @@ export function RetroOffice3D({
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                 {agents.map((agent) => (
                   <button
-                    key={agent.agentId}
+                    key={agent.id}
                     type="button"
                     onClick={() => {
-                      onAgentChatSelect?.(agent.agentId);
+                      onAgentChatSelect?.(agent.id);
                       setAgentRosterOpen(false);
                     }}
                     className="rounded-xl border border-amber-900/25 bg-[#1c1610]/75 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#241a12]"
