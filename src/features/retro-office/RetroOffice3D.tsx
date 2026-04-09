@@ -5045,27 +5045,76 @@ export function RetroOffice3D({
         </div>
       ) : null}
 
-      {/* Camera presets — top left. */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} w-[min(92vw,360px)]`}>
-          <div className="rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2.5 shadow-2xl backdrop-blur-md">
+        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col gap-2`}>
+          <div className="flex max-w-[min(92vw,760px)] flex-wrap items-center gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 px-3 py-2 shadow-2xl backdrop-blur-md">
+            <div className="min-w-0 pr-2">
+              <div className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                {officeTitleLoaded ? officeTitle : "Office HQ"}
+              </div>
+              <div className="text-[11px] text-amber-100/55">
+                {agents.length} agents • {squads.length} squads
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentRosterOpen(true);
+                  setRosterTab("agents");
+                }}
+                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+              >
+                Agents {agents.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgentRosterOpen(true);
+                  setRosterTab("squads");
+                }}
+                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+              >
+                Squads {squads.length}
+              </button>
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-1.5">
+              {compactRosterAgents.map((agent) => (
+                <button
+                  key={agent.agentId}
+                  type="button"
+                  onClick={() => onAgentChatSelect?.(agent.agentId)}
+                  className="rounded-full border border-amber-900/25 bg-[#1c1610]/75 px-2 py-1 text-[10px] text-amber-100/75 transition-all hover:border-amber-400/35 hover:text-white"
+                  title={agent.name}
+                >
+                  {agent.name}
+                </button>
+              ))}
+              {hiddenAgentCount > 0 ? (
+                <span className="rounded-full border border-amber-900/25 bg-black/20 px-2 py-1 text-[10px] text-amber-100/50">+{hiddenAgentCount}</span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Camera presets — top left. */}
+          <div className="w-[min(92vw,320px)] rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2 shadow-2xl backdrop-blur-md">
             <div className="mb-2 flex items-start justify-between gap-3">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">
                   Office view
                 </div>
-                <div className="mt-1 text-sm font-semibold text-amber-100">
-                  Quick camera presets for the layout editor.
+                <div className="mt-1 text-xs font-semibold leading-5 text-amber-100">
+                  Quick camera presets.
                 </div>
               </div>
               {editMode ? (
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[9px] uppercase tracking-[0.16em] text-emerald-200">
+                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.16em] text-emerald-200">
                   editing
                 </span>
               ) : null}
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 gap-1.5">
               {(
                 [
                   {
@@ -5098,7 +5147,7 @@ export function RetroOffice3D({
                       setActiveCameraPresetKey(key);
                       cameraPresetRef.current = cameraPresetMap[key];
                     }}
-                    className={`group flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center transition-all active:scale-[0.98] ${
+                    className={`group flex min-h-[50px] flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition-all active:scale-[0.98] ${
                       active
                         ? "border-amber-400/45 bg-amber-300/12 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
                         : "border-amber-900/25 bg-[#1c1610]/80 text-amber-500/70 hover:border-amber-500/35 hover:bg-[#261d15] hover:text-amber-200"
@@ -5106,7 +5155,7 @@ export function RetroOffice3D({
                     style={{ touchAction: "manipulation" }}
                   >
                     <span
-                      className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg border ${
                         active
                           ? "border-amber-300/35 bg-amber-300/10"
                           : "border-amber-900/20 bg-black/20"
@@ -5114,10 +5163,10 @@ export function RetroOffice3D({
                     >
                       {icon}
                     </span>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em]">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.12em]">
                       {title}
                     </span>
-                    <span className="text-[9px] text-white/45 group-hover:text-white/60">
+                    <span className="text-[8px] text-white/45 group-hover:text-white/60">
                       {subtitle}
                     </span>
                   </button>
@@ -5236,6 +5285,79 @@ export function RetroOffice3D({
           )}
         </div>
       ) : null}
+      {agentRosterVisible ? (
+        <div className="absolute inset-x-0 top-16 z-20 flex justify-center px-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-amber-700/20 bg-[#120e08]/94 p-3 shadow-2xl backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-700/15 pb-3">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">Company overview</div>
+                <div className="mt-1 text-sm font-semibold text-amber-100">{officeTitleLoaded ? officeTitle : "Office HQ"}</div>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRosterTab("agents")}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+                >
+                  Agents
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRosterTab("squads")}
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+                >
+                  Squads
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAgentRosterOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/25 bg-black/20 text-amber-100/70 transition-all hover:border-amber-400/35 hover:text-white"
+                  aria-label="Close company overview"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            </div>
+            {rosterTab === "agents" ? (
+              <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+                {agents.map((agent) => (
+                  <button
+                    key={agent.agentId}
+                    type="button"
+                    onClick={() => {
+                      onAgentChatSelect?.(agent.agentId);
+                      setAgentRosterOpen(false);
+                    }}
+                    className="rounded-xl border border-amber-900/25 bg-[#1c1610]/75 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#241a12]"
+                  >
+                    <div className="truncate text-sm font-semibold text-amber-100">{agent.name}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{agent.status ?? "online"}</div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                {squads.map((squad) => (
+                  <button
+                    key={String(squad.id)}
+                    type="button"
+                    onClick={() => {
+                      onSquadOps?.(String(squad.id));
+                      setAgentRosterOpen(false);
+                    }}
+                    className="rounded-xl border border-violet-900/25 bg-[#15101c]/75 p-3 text-left transition-all hover:border-violet-400/35 hover:bg-[#1b1324]"
+                  >
+                    <div className="truncate text-sm font-semibold text-violet-100">{squad.name}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-violet-100/45">{squad.memberCount ?? 0} members</div>
+                  </button>
+                ))}
+                {squads.length === 0 ? <div className="rounded-xl border border-amber-900/25 bg-black/20 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {!readOnly && settingsModalOpen ? (
         <div className="absolute inset-0 z-30 flex items-start justify-end overflow-y-auto bg-black/35 p-4 backdrop-blur-[1px]">
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-cyan-500/20 bg-[#05090d]/95 shadow-2xl">
