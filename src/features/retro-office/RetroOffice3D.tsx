@@ -5348,7 +5348,7 @@ export function RetroOffice3D({
                     className="rounded-xl border border-violet-900/25 bg-[#15101c]/75 p-3 text-left transition-all hover:border-violet-400/35 hover:bg-[#1b1324]"
                   >
                     <div className="truncate text-sm font-semibold text-violet-100">{squad.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-violet-100/45">{squad.memberCount ?? 0} members</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-violet-100/45">{squad.members?.length ?? 0} members</div>
                   </button>
                 ))}
                 {squads.length === 0 ? <div className="rounded-xl border border-amber-900/25 bg-black/20 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
