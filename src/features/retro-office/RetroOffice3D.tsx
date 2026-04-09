@@ -14,6 +14,7 @@ import {
   LogOut,
   Trash2,
   Users,
+  MessageSquare,
   X,
 } from "lucide-react";
 import {
@@ -31,6 +32,7 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+import type { SquadSummary } from "@/lib/squads/api";
 import { SettingsPanel } from "@/features/office/components/panels/SettingsPanel";
 import { AtmImmersiveScreen } from "@/features/office/screens/AtmImmersiveScreen";
 import { GithubImmersiveScreen } from "@/features/office/screens/GithubImmersiveScreen";
@@ -1358,6 +1360,10 @@ export function RetroOffice3D({
   onLogout,
   onAgentEdit,
   onAgentDelete,
+  squads = [],
+  onSquadEdit,
+  onSquadDelete,
+  onSquadChatSelect,
   onDeskAssignmentChange,
   onDeskAssignmentsReset,
   onGithubReviewDismiss,
@@ -1449,6 +1455,10 @@ export function RetroOffice3D({
   onLogout?: () => void;
   onAgentEdit?: (agentId: string) => void;
   onAgentDelete?: (agentId: string) => void;
+  squads?: SquadSummary[];
+  onSquadEdit?: (squadId: string) => void;
+  onSquadDelete?: (squadId: string) => void;
+  onSquadChatSelect?: (squadId: string) => void;
   onDeskAssignmentChange?: (deskUid: string, agentId: string | null) => void;
   onDeskAssignmentsReset?: (deskUids: string[]) => void;
   onGithubReviewDismiss?: () => void;
@@ -5023,7 +5033,8 @@ export function RetroOffice3D({
                 </button>
               </div>
 
-              <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+              <div className="max-h-[min(60vh,420px)] overflow-y-auto pr-1">
+                <div className="grid gap-2 sm:grid-cols-2">
                 {agents.map((agent) => {
                   const status = agentStatusLookup[agent.id];
                   const isError = status?.isError ?? agent.status === "error";
@@ -5134,6 +5145,83 @@ export function RetroOffice3D({
                     </div>
                   );
                 })}
+                </div>
+
+                {squads.length > 0 ? (
+                  <div className="mt-4 border-t border-amber-900/20 pt-4">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+                      Squads
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {squads.map((squad) => {
+                        const leaderName = squad.members.find((member) => member.isLeader)?.name ?? squad.leaderName ?? "No leader";
+                        const memberCount = squad.members.length;
+                        return (
+                          <div
+                            key={squad.id}
+                            className="flex items-center gap-2 rounded-xl border border-amber-900/20 bg-black/20 px-3 py-2"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onSquadChatSelect?.(squad.id);
+                                setAgentRosterOpen(false);
+                              }}
+                              className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-100">
+                                <Users size={14} />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-amber-100">{squad.name}</div>
+                                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
+                                  {memberCount} members · leader {leaderName}
+                                </div>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              title="Open squad chat"
+                              onClick={() => {
+                                onSquadChatSelect?.(squad.id);
+                                setAgentRosterOpen(false);
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/20 text-white/60 transition-colors hover:border-amber-500/35 hover:text-white"
+                            >
+                              <MessageSquare size={12} />
+                            </button>
+                            {onSquadEdit ? (
+                              <button
+                                type="button"
+                                title="Edit squad"
+                                onClick={() => {
+                                  onSquadEdit(squad.id);
+                                  setAgentRosterOpen(false);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/20 text-white/60 transition-colors hover:border-amber-500/35 hover:text-white"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                            ) : null}
+                            {onSquadDelete ? (
+                              <button
+                                type="button"
+                                title="Delete squad"
+                                onClick={() => {
+                                  onSquadDelete(squad.id);
+                                  setAgentRosterOpen(false);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-900/30 text-red-300/70 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

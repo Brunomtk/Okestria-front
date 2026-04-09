@@ -118,6 +118,8 @@ import {
 } from "@/lib/agents/backend-api";
 import {
   createCompanySquad,
+  updateCompanySquad,
+  deleteCompanySquad,
   fetchCompanySquads,
   type SquadExecutionMode,
   type SquadSummary,
@@ -946,6 +948,7 @@ export function OfficeScreen({
   const [createAgentWizardNonce, setCreateAgentWizardNonce] = useState(0);
   const [createTargetModalOpen, setCreateTargetModalOpen] = useState(false);
   const [createSquadModalOpen, setCreateSquadModalOpen] = useState(false);
+  const [editingSquad, setEditingSquad] = useState<SquadSummary | null>(null);
   const [createSquadBusy, setCreateSquadBusy] = useState(false);
   const [createSquadError, setCreateSquadError] = useState<string | null>(null);
   const [createAgentWizardOpen, setCreateAgentWizardOpen] = useState(false);
@@ -1634,8 +1637,19 @@ export function OfficeScreen({
     setCreateAgentWizardOpen(false);
     setCreateAgentModalError(null);
     setCreateSquadError(null);
+    setEditingSquad(null);
     setCreateSquadModalOpen(true);
   }, []);
+  const handleOpenEditSquadModal = useCallback((squadId: string) => {
+    const squad = companySquads.find((entry) => entry.id === squadId) ?? null;
+    if (!squad) return;
+    setCreateTargetModalOpen(false);
+    setCreateAgentWizardOpen(false);
+    setCreateAgentModalError(null);
+    setCreateSquadError(null);
+    setEditingSquad(squad);
+    setCreateSquadModalOpen(true);
+  }, [companySquads]);
   const clearDeletedAgentUiState = useCallback((agentId: string) => {
     setSelectedChatAgentId((current) => (current === agentId ? null : current));
     setAgentEditorAgentId((current) => (current === agentId ? null : current));
@@ -1857,20 +1871,42 @@ export function OfficeScreen({
       setCreateSquadBusy(true);
       setCreateSquadError(null);
       try {
-        const createdSquad = await createCompanySquad(payload);
+        const savedSquad = editingSquad
+          ? await updateCompanySquad({ squadId: editingSquad.id, ...payload })
+          : await createCompanySquad(payload);
         await loadCompanySquads(true);
-  setCreateSquadModalOpen(false);
-  setSelectedChatAgentId(`squad:${createdSquad.id}`);
-  setChatOpen(true);
+        setCreateSquadModalOpen(false);
+        setEditingSquad(null);
+        setSelectedChatAgentId(`squad:${savedSquad.id}`);
+        setChatTargetView("squads");
+        setChatOpen(true);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Unable to create the squad right now.";
+        const fallback = editingSquad ? "Unable to update the squad right now." : "Unable to create the squad right now.";
+        const message = error instanceof Error ? error.message : fallback;
         setCreateSquadError(message);
       } finally {
         setCreateSquadBusy(false);
       }
     },
-    [loadCompanySquads],
+    [editingSquad, loadCompanySquads],
   );
+
+  const handleDeleteSquad = useCallback(async (squadId: string) => {
+    const squad = companySquads.find((entry) => entry.id === squadId) ?? null;
+    if (!squad) return;
+    const confirmed = window.confirm(
+      `Delete ${squad.name}? Only the squad will be removed. The member agents will stay in the company.`,
+    );
+    if (!confirmed) return;
+    try {
+      await deleteCompanySquad({ squadId });
+      await loadCompanySquads(true);
+      setSelectedChatAgentId((current) => (current === `squad:${squadId}` ? null : current));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to delete the squad right now.";
+      setError(message);
+    }
+  }, [companySquads, loadCompanySquads, setError]);
 
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {
@@ -1896,6 +1932,15 @@ export function OfficeScreen({
         (entry) => entry.agentId === decision.normalizedAgentId,
       );
       if (!agent) return;
+      const leaderSquad = companySquads.find(
+        (squad) => squad.leaderGatewayAgentId === decision.normalizedAgentId,
+      );
+      if (leaderSquad) {
+        const message = `${agent.name} is the leader of squad ${leaderSquad.name}. Change the squad leader first before deleting this agent.`;
+        setError(message);
+        window.alert(message);
+        return;
+      }
       const confirmed = window.confirm(
         `Delete ${agent.name}? This removes the agent record and clears its scheduled automations. Workspace files are not affected.`,
       );
@@ -1976,11 +2021,13 @@ export function OfficeScreen({
     [
       clearDeletedAgentUiState,
       client,
+      companySquads,
       createAgentBlock,
       dispatch,
       enqueueConfigMutation,
       hasDeleteMutationBlock,
       loadAgents,
+      loadCompanyScopedAgentScope,
       setError,
       state.agents,
       status,
@@ -4406,6 +4453,18 @@ export function OfficeScreen({
           onAgentDelete={(agentId) => {
             void handleDeleteAgent(agentId);
           }}
+          squads={companySquads}
+          onSquadChatSelect={(squadId) => {
+            setSelectedChatAgentId(`squad:${squadId}`);
+            setChatTargetView("squads");
+            setChatOpen(true);
+          }}
+          onSquadEdit={(squadId) => {
+            handleOpenEditSquadModal(squadId);
+          }}
+          onSquadDelete={(squadId) => {
+            void handleDeleteSquad(squadId);
+          }}
           onDeskAssignmentChange={handleDeskAssignmentChange}
           onDeskAssignmentsReset={handleDeskAssignmentsReset}
           onGithubReviewDismiss={() => {
@@ -5183,6 +5242,7 @@ export function OfficeScreen({
         open={createSquadModalOpen}
         busy={createSquadBusy}
         error={createSquadError}
+        initialSquad={editingSquad}
         agents={state.agents.map((agent) => ({
           id: agent.agentId,
           name: agent.name || agent.agentId,
@@ -5191,6 +5251,7 @@ export function OfficeScreen({
         preferredAgentId={state.selectedAgentId}
         onClose={() => {
           setCreateSquadModalOpen(false);
+          setEditingSquad(null);
           setCreateSquadError(null);
         }}
         onSubmit={(payload) => {

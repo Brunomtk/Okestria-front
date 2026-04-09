@@ -23,6 +23,7 @@ export type SquadSummary = {
   description: string;
   executionMode: SquadExecutionMode;
   leaderGatewayAgentId: string | null;
+  leaderName?: string | null;
   members: SquadMember[];
 };
 
@@ -168,6 +169,9 @@ const normalizeBackendSquad = (
       typeof raw.description === "string" ? raw.description.trim() : "",
     executionMode: normalizeExecutionMode(raw.defaultExecutionMode ?? raw.executionMode),
     leaderGatewayAgentId,
+    leaderName:
+      members.find((member) => member.isLeader)?.name ??
+      (typeof raw.leaderAgentName === "string" ? raw.leaderAgentName.trim() || null : null),
     members,
   };
 };
@@ -293,4 +297,111 @@ export const createCompanySquad = async (params: {
   const nextLocalSquads = [...readLocalSquads(companyId), fallback];
   writeLocalSquads(companyId, nextLocalSquads);
   return fallback;
+};
+
+
+const slugifySquadName = (value: string) =>
+  value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+const buildSquadMembersPayload = (members: Array<{ backendAgentId: number | null; isLeader: boolean }>) =>
+  members
+    .filter((member): member is { backendAgentId: number; isLeader: boolean } => typeof member.backendAgentId === "number")
+    .map((member, index) => ({
+      agentId: member.backendAgentId,
+      isLeader: member.isLeader,
+      canReceiveTasks: true,
+      order: index,
+    }));
+
+export const updateCompanySquad = async (params: {
+  squadId: string;
+  name: string;
+  description?: string;
+  memberGatewayAgentIds: string[];
+  leaderGatewayAgentId?: string | null;
+  executionMode?: SquadExecutionMode;
+  companyId?: number | null;
+  token?: string | null;
+}): Promise<SquadSummary> => {
+  const companyId = params.companyId ?? getBrowserCompanyId();
+  if (!companyId) {
+    throw new Error("CompanyId is missing in the current browser session.");
+  }
+
+  const backendLinks = await buildBackendAgentLinks(companyId, params.token);
+  const normalizedMembers = params.memberGatewayAgentIds
+    .map((gatewayAgentId) => {
+      const trimmedGatewayAgentId = gatewayAgentId.trim();
+      const backendLink =
+        backendLinks.find((candidate) => candidate.gatewayAgentId === trimmedGatewayAgentId) ?? null;
+      return {
+        backendAgentId: backendLink?.backendAgentId ?? null,
+        gatewayAgentId: trimmedGatewayAgentId,
+        name: backendLink?.name ?? trimmedGatewayAgentId,
+        isLeader: trimmedGatewayAgentId === (params.leaderGatewayAgentId ?? ""),
+      };
+    })
+    .filter((member) => member.gatewayAgentId.length > 0);
+
+  const executionMode = normalizeExecutionMode(params.executionMode);
+  const leaderGatewayAgentId = params.leaderGatewayAgentId?.trim() || normalizedMembers[0]?.gatewayAgentId || null;
+  const leaderBackendAgentId =
+    normalizedMembers.find((member) => member.gatewayAgentId === leaderGatewayAgentId)?.backendAgentId ?? null;
+
+  await requestBackendJson<unknown>(
+    `/api/Squads/update/${encodeURIComponent(params.squadId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        id: Number(params.squadId),
+        companyId,
+        name: params.name.trim(),
+        slug: slugifySquadName(params.name.trim()) || `squad-${params.squadId}`,
+        description: params.description?.trim() || null,
+        leaderAgentId: leaderBackendAgentId,
+        defaultExecutionMode: executionMode,
+        status: true,
+        members: buildSquadMembersPayload(
+          normalizedMembers.map((member) => ({
+            backendAgentId: member.backendAgentId,
+            isLeader: member.gatewayAgentId === leaderGatewayAgentId,
+          })),
+        ),
+      }),
+    },
+    params.token,
+  );
+
+  const refreshed = await fetchCompanySquads({ companyId, token: params.token });
+  const matched = refreshed.find((entry) => entry.id === String(params.squadId));
+  if (!matched) {
+    throw new Error("Squad updated, but the refreshed squad could not be found.");
+  }
+  return matched;
+};
+
+export const deleteCompanySquad = async (params: {
+  squadId: string;
+  companyId?: number | null;
+  token?: string | null;
+}) => {
+  const companyId = params.companyId ?? getBrowserCompanyId();
+  if (!companyId) {
+    throw new Error("CompanyId is missing in the current browser session.");
+  }
+
+  await requestBackendJson<unknown>(
+    `/api/Squads/delete/${encodeURIComponent(params.squadId)}`,
+    { method: "DELETE" },
+    params.token,
+  );
+
+  const nextLocalSquads = readLocalSquads(companyId).filter((entry) => entry.id !== String(params.squadId));
+  writeLocalSquads(companyId, nextLocalSquads);
 };

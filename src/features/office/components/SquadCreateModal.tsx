@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { SquadExecutionMode } from "@/lib/squads/api";
+import type { SquadExecutionMode, SquadSummary } from "@/lib/squads/api";
 
 type SquadCreateAgentOption = {
   id: string;
@@ -13,6 +13,7 @@ type SquadCreateModalProps = {
   error: string | null;
   agents: SquadCreateAgentOption[];
   preferredAgentId?: string | null;
+  initialSquad?: SquadSummary | null;
   onClose: () => void;
   onSubmit: (payload: {
     name: string;
@@ -36,17 +37,40 @@ const EXECUTION_MODE_OPTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  { value: "leader", label: "Leader first", description: "Send the chat task to the leader first." },
+  { value: "leader", label: "Leader first", description: "Route the chat task to the leader first." },
   { value: "all", label: "Everyone", description: "Send the same task to every squad member." },
   { value: "workflow", label: "Workflow", description: "Use the leader as the squad entry point." },
-  { value: "manual", label: "Manual", description: "Create the squad now and route tasks manually." },
+  { value: "manual", label: "Manual", description: "Keep the squad ready and route tasks manually." },
 ];
 
-function buildInitialState(agents: SquadCreateAgentOption[], preferredAgentId?: string | null): FormState {
+function buildInitialState(
+  agents: SquadCreateAgentOption[],
+  preferredAgentId?: string | null,
+  initialSquad?: SquadSummary | null,
+): FormState {
   const sortedAgents = [...agents].sort(
     (left, right) =>
       Number(right.isDefault === true) - Number(left.isDefault === true) || left.name.localeCompare(right.name),
   );
+
+  if (initialSquad) {
+    const validAgentIds = new Set(sortedAgents.map((agent) => agent.id));
+    const memberIds = initialSquad.members
+      .map((member) => member.gatewayAgentId)
+      .filter((value): value is string => typeof value === "string" && value.length > 0 && validAgentIds.has(value));
+    const leaderId =
+      (initialSquad.leaderGatewayAgentId && memberIds.includes(initialSquad.leaderGatewayAgentId)
+        ? initialSquad.leaderGatewayAgentId
+        : null) ?? memberIds[0] ?? null;
+
+    return {
+      name: initialSquad.name?.trim() || "New Squad",
+      description: initialSquad.description?.trim() || "",
+      executionMode: initialSquad.executionMode ?? "leader",
+      memberIds,
+      leaderId,
+    };
+  }
 
   const fallbackAgentId =
     preferredAgentId && sortedAgents.some((agent) => agent.id === preferredAgentId)
@@ -70,10 +94,12 @@ export function SquadCreateModal({
   error,
   agents,
   preferredAgentId,
+  initialSquad,
   onClose,
   onSubmit,
 }: SquadCreateModalProps) {
   const hasInitializedRef = useRef(false);
+  const mode = initialSquad ? "edit" : "create";
 
   const sortedAgents = useMemo(
     () =>
@@ -84,7 +110,7 @@ export function SquadCreateModal({
     [agents],
   );
 
-  const [form, setForm] = useState<FormState>(() => buildInitialState(agents, preferredAgentId));
+  const [form, setForm] = useState<FormState>(() => buildInitialState(agents, preferredAgentId, initialSquad));
 
   useEffect(() => {
     if (!open) {
@@ -93,7 +119,7 @@ export function SquadCreateModal({
     }
 
     if (!hasInitializedRef.current) {
-      setForm(buildInitialState(agents, preferredAgentId));
+      setForm(buildInitialState(agents, preferredAgentId, initialSquad));
       hasInitializedRef.current = true;
       return;
     }
@@ -101,7 +127,7 @@ export function SquadCreateModal({
     setForm((current) => {
       const validAgentIds = new Set(sortedAgents.map((agent) => agent.id));
       const memberIds = current.memberIds.filter((id) => validAgentIds.has(id));
-      const nextMemberIds = memberIds.length > 0 ? memberIds : current.memberIds.length === 0 ? [] : sortedAgents[0] ? [sortedAgents[0].id] : [];
+      const nextMemberIds = memberIds.length > 0 ? memberIds : [];
       const leaderId = current.leaderId && nextMemberIds.includes(current.leaderId)
         ? current.leaderId
         : nextMemberIds[0] ?? null;
@@ -120,7 +146,7 @@ export function SquadCreateModal({
         leaderId,
       };
     });
-  }, [open, preferredAgentId, agents, sortedAgents]);
+  }, [open, preferredAgentId, initialSquad, agents, sortedAgents]);
 
   const selectedMembers = useMemo(
     () => sortedAgents.filter((agent) => form.memberIds.includes(agent.id)),
@@ -148,10 +174,14 @@ export function SquadCreateModal({
 
       <section className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-amber-500/20 bg-[#0a0603] shadow-[0_32px_120px_rgba(0,0,0,0.72)]">
         <div className="border-b border-white/10 px-6 py-5">
-          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-amber-300/70">Create squad</div>
+          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-amber-300/70">
+            {mode === "edit" ? "Edit squad" : "Create squad"}
+          </div>
           <div className="mt-3 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-semibold text-white">Build your squad</h2>
+              <h2 className="text-2xl font-semibold text-white">
+                {mode === "edit" ? "Update your squad" : "Build your squad"}
+              </h2>
               <p className="mt-2 text-sm text-white/55">Choose the members, define the leader and save.</p>
             </div>
             <button
@@ -346,7 +376,7 @@ export function SquadCreateModal({
             }
             className="rounded-xl border border-amber-400/35 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {busy ? "Creating squad..." : "Create squad"}
+            {busy ? (mode === "edit" ? "Saving..." : "Creating squad...") : mode === "edit" ? "Save changes" : "Create squad"}
           </button>
         </div>
       </section>
