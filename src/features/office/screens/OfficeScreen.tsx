@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MessageSquare, ChevronDown, Mic, Radar, PanelsTopLeft } from "lucide-react";
+import { MessageSquare, ChevronDown, Mic, Radar, PanelsTopLeft, Users2 } from "lucide-react";
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
@@ -5148,6 +5148,29 @@ export function OfficeScreen({
         >
           {leadOpsModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Radar className="h-3.5 w-3.5" />}
           <span>{leadOpsModalOpen ? "HIDE LEADS" : "LEADS"}</span>
+        </button>
+
+        <button
+          type="button"
+          disabled={companySquads.length === 0}
+          onClick={() => {
+            const preferredSquadId =
+              focusedSquadChatTarget?.id?.replace(/^squad:/, "") ??
+              (selectedChatAgentId && isSquadChatTargetId(selectedChatAgentId)
+                ? selectedChatAgentId.replace(/^squad:/, "")
+                : companySquads[0]?.id ?? null);
+            if (!preferredSquadId) {
+              return;
+            }
+            handleOpenSquadOps(preferredSquadId);
+          }}
+          className="flex items-center gap-1.5 rounded border border-violet-500/35 bg-[#0a0715]/92 px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider text-violet-200 shadow-lg backdrop-blur transition-colors hover:border-violet-400/55 hover:text-violet-50 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          <Users2 className="h-3.5 w-3.5" />
+          <span>SQUADS</span>
+          {companySquads.length > 0 ? (
+            <span className="rounded bg-violet-500/20 px-1 text-[10px] text-violet-300">{companySquads.length}</span>
+          ) : null}
         </button>
 
         <button

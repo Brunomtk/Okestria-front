@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CheckCircle2, Clock3, Play, RefreshCcw, Rocket, Users2, XCircle } from "lucide-react";
 import type { SquadSummary, SquadTask, SquadTaskSummary } from "@/lib/squads/api";
 
 type SquadOpsModalProps = {
@@ -22,14 +23,16 @@ const formatDateTime = (value: string | null | undefined) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
 };
 
+const normalizeStatus = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+
 const statusTone = (status: string | null | undefined) => {
-  const normalized = (status ?? "").toLowerCase();
+  const normalized = normalizeStatus(status);
   if (["completed", "success", "done"].includes(normalized)) {
     return "border-emerald-400/20 bg-emerald-500/10 text-emerald-100";
   }
@@ -40,6 +43,18 @@ const statusTone = (status: string | null | undefined) => {
     return "border-cyan-400/20 bg-cyan-500/10 text-cyan-100";
   }
   return "border-white/10 bg-white/5 text-white/70";
+};
+
+const statusLabel = (status: string | null | undefined) => {
+  const normalized = normalizeStatus(status);
+  if (!normalized) return "Draft";
+  return normalized.replace(/_/g, " ");
+};
+
+const modeLabel = (mode: string | null | undefined) => {
+  const normalized = (mode ?? "leader").trim();
+  if (!normalized) return "Leader";
+  return normalized.replace(/([a-z])([A-Z])/g, "$1 $2");
 };
 
 export function SquadOpsModal({
@@ -73,9 +88,9 @@ export function SquadOpsModal({
     const runs = selectedTask?.runs ?? [];
     return {
       total: runs.length,
-      running: runs.filter((run) => ["running", "dispatching", "processing", "in_progress"].includes(run.status.toLowerCase())).length,
-      completed: runs.filter((run) => ["completed", "success", "done"].includes(run.status.toLowerCase())).length,
-      failed: runs.filter((run) => ["failed", "error", "cancelled"].includes(run.status.toLowerCase())).length,
+      running: runs.filter((run) => ["running", "dispatching", "processing", "in_progress"].includes(normalizeStatus(run.status))).length,
+      completed: runs.filter((run) => ["completed", "success", "done"].includes(normalizeStatus(run.status))).length,
+      failed: runs.filter((run) => ["failed", "error", "cancelled"].includes(normalizeStatus(run.status))).length,
     };
   }, [selectedTask]);
 
@@ -84,21 +99,22 @@ export function SquadOpsModal({
   return (
     <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      <section className="relative z-10 flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-cyan-500/20 bg-[#07090c] shadow-[0_40px_140px_rgba(0,0,0,0.78)]">
-        <header className="flex items-center justify-between gap-4 border-b border-white/10 px-6 py-5">
+      <section className="relative z-10 flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-[30px] border border-cyan-500/20 bg-[#07090c] shadow-[0_40px_140px_rgba(0,0,0,0.78)]">
+        <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div className="min-w-0">
-            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">Squad ops</div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">Squad Ops</div>
             <h2 className="mt-2 truncate text-2xl font-semibold text-white">{squad.name}</h2>
-            <p className="mt-2 text-sm text-white/50">
-              Crie uma task, dispare os sub-agents do squad e acompanhe o status de cada run sem sair do office.
+            <p className="mt-2 max-w-3xl text-sm text-white/55">
+              Create a task, dispatch the squad, and review each run from one place.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onRefresh}
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
             >
+              <RefreshCcw className="h-4 w-4" />
               Refresh
             </button>
             <button
@@ -106,50 +122,65 @@ export function SquadOpsModal({
               onClick={onClose}
               className="rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/15"
             >
-              Fechar
+              Close
             </button>
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[360px_minmax(0,1fr)_420px]">
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[380px_minmax(0,1fr)_380px]">
           <aside className="min-h-0 overflow-y-auto border-r border-white/10 p-5">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Nova task</div>
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="flex items-center gap-2 text-cyan-100">
+                <Rocket className="h-4 w-4" />
+                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/55">Create task</div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-white/55">
+                Write a clear title and explain what the squad should deliver.
+              </p>
+              <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Task title</label>
               <input
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
-                placeholder="Ex: Revisar landing page e apontar melhorias"
-                className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
+                placeholder="Review the landing page and suggest improvements"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
               />
+              <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Instructions</label>
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder="Descreva o que os agentes precisam fazer, o que deve ser entregue e o tom esperado."
-                className="mt-3 min-h-[180px] w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
+                placeholder="Explain the goal, expected output, tone, constraints, and who should focus on what."
+                className="mt-2 min-h-[200px] w-full resize-none rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
               />
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-white/45">
+                Good prompt example: “Audit the landing page. CRO focuses on conversion issues, content agent rewrites copy, and design agent lists layout fixes. Return a concise prioritized plan.”
+              </div>
               <button
                 type="button"
                 disabled={submitDisabled}
                 onClick={() => onCreateTask({ title: title.trim(), prompt: prompt.trim() })}
-                className="mt-3 w-full rounded-xl border border-cyan-400/35 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/35 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
               >
-                {createBusy ? "Criando task..." : "Criar task do squad"}
+                <Play className="h-4 w-4" />
+                {createBusy ? "Creating task..." : "Create task"}
               </button>
             </div>
 
-            <div className="mt-5">
-              <div className="flex items-center justify-between">
-                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Tasks recentes</div>
-                <div className="text-xs text-white/35">{tasks.length}</div>
+            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Recent tasks</div>
+                  <div className="mt-1 text-xs text-white/35">Pick one to inspect runs and dispatch actions.</div>
+                </div>
+                <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">{tasks.length}</div>
               </div>
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 space-y-2">
                 {loading ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
-                    Carregando tasks...
+                    Loading tasks...
                   </div>
                 ) : tasks.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
-                    Nenhuma task criada ainda para esse squad.
+                    No tasks yet for this squad.
                   </div>
                 ) : (
                   tasks.map((task) => {
@@ -171,11 +202,11 @@ export function SquadOpsModal({
                             <div className="mt-1 text-xs text-white/40">{formatDateTime(task.createdDate)}</div>
                           </div>
                           <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${statusTone(task.status)}`}>
-                            {task.status || "draft"}
+                            {statusLabel(task.status)}
                           </span>
                         </div>
                         <div className="mt-3 flex items-center justify-between text-xs text-white/45">
-                          <span>{task.executionMode || "leader"}</span>
+                          <span>{modeLabel(task.executionMode)}</span>
                           <span>{task.runCount} runs</span>
                         </div>
                       </button>
@@ -188,18 +219,24 @@ export function SquadOpsModal({
 
           <main className="min-h-0 overflow-y-auto border-r border-white/10 p-5">
             {!selectedTask ? (
-              <div className="flex h-full min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-6 text-center text-sm text-white/40">
-                Selecione uma task para ver os runs e disparar os sub-agents.
+              <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-8 text-center">
+                <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 p-4 text-cyan-100">
+                  <Rocket className="h-7 w-7" />
+                </div>
+                <h3 className="mt-5 text-xl font-semibold text-white">Choose a task to continue</h3>
+                <p className="mt-2 max-w-md text-sm leading-6 text-white/45">
+                  After you select a task, you will see run status, agent responses, and dispatch actions here.
+                </p>
               </div>
             ) : (
-              <div>
-                <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <div className="space-y-5">
+                <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Task selecionada</div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Selected task</div>
                       <h3 className="mt-2 text-xl font-semibold text-white">{selectedTask.title}</h3>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/45">
-                        <span>{selectedTask.executionMode || "leader"}</span>
+                        <span>{modeLabel(selectedTask.executionMode)}</span>
                         <span>•</span>
                         <span>{selectedTask.runs.length} runs</span>
                         <span>•</span>
@@ -207,70 +244,88 @@ export function SquadOpsModal({
                       </div>
                     </div>
                     <span className={`rounded-full border px-3 py-1.5 text-[11px] font-medium uppercase tracking-[0.16em] ${statusTone(selectedTask.status)}`}>
-                      {selectedTask.status || "draft"}
+                      {statusLabel(selectedTask.status)}
                     </span>
                   </div>
 
                   <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/75">
-                    {selectedTask.prompt || "Sem prompt informado."}
+                    {selectedTask.prompt || "No instructions were provided for this task."}
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-4">
                     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="text-xs text-white/40">Total</div>
+                      <div className="flex items-center gap-2 text-xs text-white/40">
+                        <Users2 className="h-4 w-4" />
+                        Total runs
+                      </div>
                       <div className="mt-2 text-2xl font-semibold text-white">{runSummary.total}</div>
                     </div>
                     <div className="rounded-2xl border border-cyan-400/15 bg-cyan-500/10 p-4">
-                      <div className="text-xs text-cyan-100/70">Em andamento</div>
+                      <div className="flex items-center gap-2 text-xs text-cyan-100/70">
+                        <Clock3 className="h-4 w-4" />
+                        Running
+                      </div>
                       <div className="mt-2 text-2xl font-semibold text-cyan-50">{runSummary.running}</div>
                     </div>
                     <div className="rounded-2xl border border-emerald-400/15 bg-emerald-500/10 p-4">
-                      <div className="text-xs text-emerald-100/70">Concluídos</div>
+                      <div className="flex items-center gap-2 text-xs text-emerald-100/70">
+                        <CheckCircle2 className="h-4 w-4" />
+                        Completed
+                      </div>
                       <div className="mt-2 text-2xl font-semibold text-emerald-50">{runSummary.completed}</div>
                     </div>
                     <div className="rounded-2xl border border-red-400/15 bg-red-500/10 p-4">
-                      <div className="text-xs text-red-100/70">Falharam</div>
+                      <div className="flex items-center gap-2 text-xs text-red-100/70">
+                        <XCircle className="h-4 w-4" />
+                        Failed
+                      </div>
                       <div className="mt-2 text-2xl font-semibold text-red-50">{runSummary.failed}</div>
                     </div>
                   </div>
 
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  <div className="mt-4 grid gap-3 lg:grid-cols-3">
                     <button
                       type="button"
                       disabled={dispatchBusy}
                       onClick={() => onDispatchTask(selectedTask.id, "pending")}
-                      className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-left text-sm text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      {dispatchBusy ? "Disparando..." : "Dispatch pending"}
+                      <div className="font-medium">Dispatch pending runs</div>
+                      <div className="mt-1 text-xs text-cyan-100/65">Only sends runs that are still waiting.</div>
                     </button>
                     <button
                       type="button"
                       disabled={dispatchBusy}
                       onClick={() => onDispatchTask(selectedTask.id, "retryFailed")}
-                      className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                      className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      Retry failed
+                      <div className="font-medium">Retry failed runs</div>
+                      <div className="mt-1 text-xs text-white/45">Only retries runs that finished with an error.</div>
                     </button>
                     <button
                       type="button"
                       disabled={dispatchBusy}
                       onClick={() => onDispatchTask(selectedTask.id, "redispatchAll")}
-                      className="rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-2 text-sm text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-45"
+                      className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      Redispatch all
+                      <div className="font-medium">Redispatch all runs</div>
+                      <div className="mt-1 text-xs text-amber-100/65">Sends the full task again to every run.</div>
                     </button>
                   </div>
-                </div>
+                </section>
 
-                <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Runs por agent</div>
-                    <div className="text-xs text-white/35">{refreshingTask ? "Atualizando..." : `${selectedTask.runs.length} itens`}</div>
+                <section className="rounded-3xl border border-white/10 bg-white/5 p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Agent runs</div>
+                      <div className="mt-1 text-xs text-white/35">{refreshingTask ? "Refreshing task details..." : "Review what each agent produced."}</div>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">{selectedTask.runs.length}</div>
                   </div>
                   <div className="mt-4 space-y-3">
                     {selectedTask.runs.length === 0 ? (
                       <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
-                        Essa task ainda não gerou runs.
+                        This task does not have runs yet.
                       </div>
                     ) : (
                       selectedTask.runs.map((run) => (
@@ -281,7 +336,7 @@ export function SquadOpsModal({
                               <div className="mt-1 text-xs text-white/40">{run.role || run.agentSlug || `Agent #${run.agentId}`}</div>
                             </div>
                             <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${statusTone(run.status)}`}>
-                              {run.status || "pending"}
+                              {statusLabel(run.status || "pending")}
                             </span>
                           </div>
 
@@ -307,34 +362,44 @@ export function SquadOpsModal({
                           </div>
 
                           <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3 text-sm leading-6 text-white/75">
-                            {run.outputText?.trim() || "Sem resposta final ainda para esse run."}
+                            {run.outputText?.trim() || "No final response yet for this run."}
                           </div>
                         </article>
                       ))
                     )}
                   </div>
-                </div>
+                </section>
               </div>
             )}
           </main>
 
           <aside className="min-h-0 overflow-y-auto p-5">
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Resumo do squad</div>
+            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Squad summary</div>
               <div className="mt-3 text-lg font-semibold text-white">{squad.name}</div>
-              <div className="mt-2 text-sm text-white/60">{squad.description || "Sem descrição informada."}</div>
+              <div className="mt-2 text-sm leading-6 text-white/60">{squad.description || "No description provided for this squad yet."}</div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100">
-                  {squad.executionMode}
+                  {modeLabel(squad.executionMode)}
                 </span>
                 <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-                  {squad.members.length} membros
+                  {squad.members.length} member{squad.members.length === 1 ? "" : "s"}
                 </span>
               </div>
             </div>
 
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/5 p-5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Membros</div>
+            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">How to use</div>
+              <div className="mt-4 space-y-3 text-sm leading-6 text-white/60">
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">1. Create a task with a clear outcome.</div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">2. Select the task from the recent list.</div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">3. Dispatch pending runs or retry failed ones.</div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">4. Review each agent response before sending a new iteration.</div>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Members</div>
               <div className="mt-4 space-y-2">
                 {squad.members.map((member) => (
                   <div key={`${member.backendAgentId ?? "na"}-${member.gatewayAgentId ?? member.name}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
@@ -354,7 +419,10 @@ export function SquadOpsModal({
 
             {error ? (
               <div className="mt-5 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                {error}
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
               </div>
             ) : null}
           </aside>
