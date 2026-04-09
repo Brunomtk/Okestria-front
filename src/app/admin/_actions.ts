@@ -155,18 +155,40 @@ export async function deleteSquadAction(formData: FormData) {
 export async function saveSquadAction(formData: FormData) {
   const token = await requireToken();
   const squadId = asNumber(formData, 'squadId');
+  const companyId = asNumber(formData, 'companyId');
   const leaderAgentId = asNumber(formData, 'leaderAgentId');
+  const workspaceId = asNumber(formData, 'workspaceId');
+  const selectedMembers = formData
+    .getAll('memberAgentIds')
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  const uniqueMemberIds = Array.from(new Set(selectedMembers));
+  if (leaderAgentId > 0 && !uniqueMemberIds.includes(leaderAgentId)) uniqueMemberIds.unshift(leaderAgentId);
+
   const payload = {
-    companyId: asNumber(formData, 'companyId'),
+    companyId,
     name: asString(formData, 'name'),
     slug: asNullableString(formData, 'slug'),
     description: asNullableString(formData, 'description'),
     leaderAgentId: leaderAgentId > 0 ? leaderAgentId : null,
+    workspaceId: workspaceId > 0 ? workspaceId : null,
+    defaultExecutionMode: asNullableString(formData, 'defaultExecutionMode') ?? 'manual',
     status: asBool(formData, 'status'),
+    members: uniqueMemberIds.map((agentId, index) => ({
+      agentId,
+      isLeader: leaderAgentId > 0 && agentId === leaderAgentId,
+      canReceiveTasks: true,
+      order: index,
+    })),
   };
+
   if (squadId > 0) await updateSquad(squadId, payload, token).catch(() => null);
   else await createSquad(payload, token).catch(() => null);
-  revalidatePath('/admin'); revalidatePath('/admin/squads'); redirect('/admin/squads');
+
+  revalidatePath('/admin');
+  revalidatePath('/admin/squads');
+  redirect('/admin/squads');
 }
 
 export async function saveLeadAction(formData: FormData) {

@@ -93,15 +93,65 @@ export type OkestriaAgent = {
   isDefault?: boolean | null;
 };
 
+export type OkestriaSquadMember = {
+  id?: number;
+  squadId?: number;
+  agentId?: number | null;
+  agentName?: string | null;
+  agentSlug?: string | null;
+  agentStatus?: boolean | null;
+  role?: string | null;
+  isLeader?: boolean | null;
+  canReceiveTasks?: boolean | null;
+  order?: number | null;
+};
+
 export type OkestriaSquad = {
   id: number;
   companyId: number;
   workspaceId?: number | null;
+  companyName?: string | null;
+  workspaceName?: string | null;
   name?: string | null;
+  slug?: string | null;
   description?: string | null;
   status?: boolean | null;
   isActive?: boolean | null;
   leaderAgentId?: number | null;
+  leaderAgentName?: string | null;
+  defaultExecutionMode?: string | null;
+  memberCount?: number | null;
+  activeMemberCount?: number | null;
+  createdDate?: string | null;
+  updatedDate?: string | null;
+  members?: OkestriaSquadMember[];
+};
+
+export type OkestriaSquadDetails = OkestriaSquad & {
+  taskCount?: number | null;
+  recentTasks?: Array<{
+    id?: number;
+    title?: string | null;
+    status?: string | null;
+    createdDate?: string | null;
+    updatedDate?: string | null;
+  }>;
+};
+
+export type OkestriaSquadCatalog = {
+  companyId: number;
+  agents: Array<{
+    agentId: number;
+    agentName?: string | null;
+    agentSlug?: string | null;
+    role?: string | null;
+    status: boolean;
+  }>;
+  workspaces: Array<{
+    workspaceId: number;
+    workspaceName?: string | null;
+    status: boolean;
+  }>;
 };
 
 export type OkestriaUser = {
@@ -260,6 +310,10 @@ export async function fetchSquadsByCompany(companyId: number, token: string) {
   return requestJson<OkestriaSquad[]>(`/api/Squads/by-company/${companyId}`, undefined, token);
 }
 
+export async function fetchSquadCatalogByCompany(companyId: number, token: string) {
+  return requestJson<OkestriaSquadCatalog>(`/api/Squads/by-company/${companyId}/catalog`, undefined, token);
+}
+
 export async function fetchRuntimeConfigStatus(token: string) {
   return requestJson<{ configured?: boolean; baseUrl?: string | null; hasUpstreamToken?: boolean }>(`/api/Runtime/config-status`, undefined, token);
 }
@@ -336,7 +390,7 @@ export async function fetchWorkspaceById(workspaceId: number, token: string) {
 }
 
 export async function fetchSquadById(squadId: number, token: string) {
-  return requestJson<OkestriaSquad>(`/api/Squads/${squadId}`, undefined, token);
+  return requestJson<OkestriaSquadDetails>(`/api/Squads/${squadId}`, undefined, token);
 }
 
 export async function toggleCompanyStatus(companyId: number, token: string) {
@@ -430,17 +484,17 @@ export async function updateAgent(agentId: number, payload: { companyId: number;
   }, token);
 }
 
-export async function createSquad(payload: { companyId: number; name: string; slug?: string | null; description?: string | null; leaderAgentId?: number | null; status?: boolean }, token: string) {
+export async function createSquad(payload: { companyId: number; name: string; slug?: string | null; description?: string | null; leaderAgentId?: number | null; workspaceId?: number | null; defaultExecutionMode?: string | null; status?: boolean; members?: Array<{ agentId: number; isLeader?: boolean; canReceiveTasks?: boolean; order?: number }> }, token: string) {
   return requestJson<unknown>(`/api/Squads/create`, {
     method: 'POST',
-    body: JSON.stringify({ ...payload, members: [] }),
+    body: JSON.stringify({ ...payload, members: payload.members ?? [] }),
   }, token);
 }
 
-export async function updateSquad(squadId: number, payload: { companyId: number; name: string; slug?: string | null; description?: string | null; leaderAgentId?: number | null; status?: boolean }, token: string) {
+export async function updateSquad(squadId: number, payload: { companyId: number; name: string; slug?: string | null; description?: string | null; leaderAgentId?: number | null; workspaceId?: number | null; defaultExecutionMode?: string | null; status?: boolean; members?: Array<{ agentId: number; isLeader?: boolean; canReceiveTasks?: boolean; order?: number }> }, token: string) {
   return requestJson<unknown>(`/api/Squads/update/${squadId}`, {
     method: 'PUT',
-    body: JSON.stringify({ id: squadId, ...payload, members: [] }),
+    body: JSON.stringify({ id: squadId, ...payload, members: payload.members ?? [] }),
   }, token);
 }
 
