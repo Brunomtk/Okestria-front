@@ -5046,7 +5046,7 @@ export function RetroOffice3D({
       ) : null}
 
       {!readOnly && !immersiveOverlayActive ? (
-        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col gap-1.5`}>
+        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-1.5`}>
           <div className="flex max-w-[min(92vw,520px)] flex-wrap items-center gap-1.5 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 px-2.5 py-2 shadow-2xl backdrop-blur-md">
             <div className="min-w-0 pr-1.5">
               <div className="truncate font-mono text-[9px] uppercase tracking-[0.16em] text-amber-500/70">
@@ -5106,7 +5106,7 @@ export function RetroOffice3D({
           </div>
 
           {/* Camera presets — top left. */}
-          <div className="w-auto rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-1.5 shadow-2xl backdrop-blur-md">
+          <div className="w-auto self-start rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-1.5 shadow-2xl backdrop-blur-md">
             <div className="flex items-center gap-1">
               {(
                 [
