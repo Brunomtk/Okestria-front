@@ -5078,43 +5078,36 @@ export function RetroOffice3D({
                 Squads {squads.length}
               </button>
             </div>
-            <div className="ml-auto flex flex-wrap items-center gap-1">
-              {compactRosterAgents.slice(0, 2).map((agent) => (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => onAgentChatSelect?.(agent.id)}
-                  className="max-w-[120px] truncate rounded-full border border-amber-900/25 bg-[#1c1610]/75 px-2 py-1 text-[9px] text-amber-100/70 transition-all hover:border-amber-400/35 hover:text-white"
-                  title={agent.name}
-                >
-                  {agent.name}
-                </button>
-              ))}
-              {(hiddenAgentCount > 0 || compactRosterAgents.length > 2) ? (
-                <span className="rounded-full border border-amber-900/25 bg-black/20 px-2 py-1 text-[9px] text-amber-100/50">+{hiddenAgentCount + Math.max(compactRosterAgents.length - 2, 0)}</span>
+            <div className="ml-auto flex items-center gap-1">
+              {compactRosterAgents.slice(0, 4).map((agent, index) => {
+                const initials = agent.name
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) => part[0]?.toUpperCase() ?? "")
+                  .join("") || "A";
+                return (
+                  <button
+                    key={agent.id}
+                    type="button"
+                    onClick={() => onAgentChatSelect?.(agent.id)}
+                    className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-700/30 bg-[#1c1610]/85 text-[9px] font-semibold text-amber-100/80 transition-all hover:-translate-y-0.5 hover:border-amber-400/45 hover:text-white"
+                    title={agent.name}
+                    style={{ marginLeft: index === 0 ? 0 : -6 }}
+                  >
+                    {initials}
+                  </button>
+                );
+              })}
+              {hiddenAgentCount > 0 ? (
+                <span className="rounded-full border border-amber-900/25 bg-black/20 px-1.5 py-1 text-[9px] text-amber-100/50">+{hiddenAgentCount}</span>
               ) : null}
             </div>
           </div>
 
           {/* Camera presets — top left. */}
-          <div className="w-[min(92vw,270px)] rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2 shadow-2xl backdrop-blur-md">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <div>
-                <div className="font-mono text-[8px] uppercase tracking-[0.16em] text-amber-500/70">
-                  Camera
-                </div>
-                <div className="mt-0.5 text-[11px] font-semibold leading-4 text-amber-100">
-                  Quick view
-                </div>
-              </div>
-              {editMode ? (
-                <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.16em] text-emerald-200">
-                  editing
-                </span>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-3 gap-1">
+          <div className="w-auto rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-1.5 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center gap-1">
               {(
                 [
                   {
@@ -5136,7 +5129,7 @@ export function RetroOffice3D({
                     subtitle: "Social space",
                   },
                 ] as const
-              ).map(({ key, icon, title, subtitle }) => {
+              ).map(({ key, icon, title }) => {
                 const active = activeCameraPresetKey === key;
                 return (
                   <button
@@ -5147,7 +5140,7 @@ export function RetroOffice3D({
                       setActiveCameraPresetKey(key);
                       cameraPresetRef.current = cameraPresetMap[key];
                     }}
-                    className={`group flex min-h-[42px] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center transition-all active:scale-[0.98] ${
+                    className={`group flex h-10 w-10 items-center justify-center rounded-xl border transition-all active:scale-[0.98] ${
                       active
                         ? "border-amber-400/45 bg-amber-300/12 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
                         : "border-amber-900/25 bg-[#1c1610]/80 text-amber-500/70 hover:border-amber-500/35 hover:bg-[#261d15] hover:text-amber-200"
@@ -5163,15 +5156,14 @@ export function RetroOffice3D({
                     >
                       {icon}
                     </span>
-                    <span className="text-[8px] font-semibold uppercase tracking-[0.1em]">
-                      {title}
-                    </span>
-                    <span className="text-[7px] text-white/40 group-hover:text-white/55">
-                      {subtitle}
-                    </span>
                   </button>
                 );
               })}
+              {editMode ? (
+                <span className="ml-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.16em] text-emerald-200">
+                  editing
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
