@@ -14,7 +14,6 @@ import {
   LogOut,
   Trash2,
   Users,
-  MessageSquare,
   X,
 } from "lucide-react";
 import {
@@ -32,7 +31,6 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Environment, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
-import type { SquadSummary } from "@/lib/squads/api";
 import { SettingsPanel } from "@/features/office/components/panels/SettingsPanel";
 import { AtmImmersiveScreen } from "@/features/office/screens/AtmImmersiveScreen";
 import { GithubImmersiveScreen } from "@/features/office/screens/GithubImmersiveScreen";
@@ -1360,10 +1358,6 @@ export function RetroOffice3D({
   onLogout,
   onAgentEdit,
   onAgentDelete,
-  squads = [],
-  onSquadEdit,
-  onSquadDelete,
-  onSquadChatSelect,
   onDeskAssignmentChange,
   onDeskAssignmentsReset,
   onGithubReviewDismiss,
@@ -1455,10 +1449,6 @@ export function RetroOffice3D({
   onLogout?: () => void;
   onAgentEdit?: (agentId: string) => void;
   onAgentDelete?: (agentId: string) => void;
-  squads?: SquadSummary[];
-  onSquadEdit?: (squadId: string) => void;
-  onSquadDelete?: (squadId: string) => void;
-  onSquadChatSelect?: (squadId: string) => void;
   onDeskAssignmentChange?: (deskUid: string, agentId: string | null) => void;
   onDeskAssignmentsReset?: (deskUids: string[]) => void;
   onGithubReviewDismiss?: () => void;
@@ -1647,7 +1637,6 @@ export function RetroOffice3D({
   const [spaceDragging, setSpaceDragging] = useState(false);
   const [standupBoardOpen, setStandupBoardOpen] = useState(false);
   const [agentRosterOpen, setAgentRosterOpen] = useState(false);
-  const [agentRosterTab, setAgentRosterTab] = useState<"agents" | "squads">("agents");
   const autoOpenedStandupIdRef = useRef<string | null>(null);
   // Idea 1 (original): hovered agent for tooltip overlay.
   const [hoveredAgentId, setHoveredAgentId] = useState<string | null>(null);
@@ -5021,7 +5010,7 @@ export function RetroOffice3D({
                     Team roster
                   </div>
                   <div className="mt-1 text-sm font-semibold text-amber-100">
-                    Manage agents and squads in one place.
+                    Compact view for larger fleets.
                   </div>
                 </div>
                 <button
@@ -5034,32 +5023,7 @@ export function RetroOffice3D({
                 </button>
               </div>
 
-              <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-900/20 bg-black/25 p-1">
-                {[
-                  { key: "agents", label: `Agents (${agents.length})` },
-                  { key: "squads", label: `Squads (${squads.length})` },
-                ].map((tab) => {
-                  const active = agentRosterTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      onClick={() => setAgentRosterTab(tab.key as "agents" | "squads")}
-                      className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold transition-colors ${
-                        active
-                          ? "bg-amber-400/15 text-amber-100 ring-1 ring-amber-400/30"
-                          : "text-amber-200/70 hover:bg-white/5 hover:text-white"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="max-h-[min(60vh,420px)] overflow-y-auto pr-1">
-                {agentRosterTab === "agents" ? (
-                <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                 {agents.map((agent) => {
                   const status = agentStatusLookup[agent.id];
                   const isError = status?.isError ?? agent.status === "error";
@@ -5170,89 +5134,6 @@ export function RetroOffice3D({
                     </div>
                   );
                 })}
-                </div>
-                ) : (
-                  squads.length > 0 ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {squads.map((squad) => {
-                        const leaderName = squad.members.find((member) => member.isLeader)?.name ?? squad.leaderName ?? "No leader";
-                        const memberCount = squad.members.length;
-                        return (
-                          <div
-                            key={squad.id}
-                            className="rounded-2xl border border-amber-900/20 bg-black/25 p-3"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                onSquadChatSelect?.(squad.id);
-                                setAgentRosterOpen(false);
-                              }}
-                              className="flex w-full items-start gap-3 text-left"
-                            >
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-100">
-                                <Users size={15} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="truncate text-sm font-semibold text-amber-100">{squad.name}</div>
-                                <div className="mt-1 text-xs text-amber-200/70">{memberCount} membro{memberCount === 1 ? "" : "s"}</div>
-                                <div className="mt-2 rounded-xl border border-amber-900/15 bg-black/20 px-2.5 py-2">
-                                  <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">Leader</div>
-                                  <div className="mt-1 line-clamp-2 text-xs font-medium text-amber-100/90">{leaderName}</div>
-                                </div>
-                              </div>
-                            </button>
-                            <div className="mt-3 flex items-center gap-2">
-                              <button
-                                type="button"
-                                title="Open squad chat"
-                                onClick={() => {
-                                  onSquadChatSelect?.(squad.id);
-                                  setAgentRosterOpen(false);
-                                }}
-                                className="flex h-9 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-900/20 text-white/70 transition-colors hover:border-amber-500/35 hover:text-white"
-                              >
-                                <MessageSquare size={12} />
-                                <span className="text-xs font-semibold">Chat</span>
-                              </button>
-                              {onSquadEdit ? (
-                                <button
-                                  type="button"
-                                  title="Edit squad"
-                                  onClick={() => {
-                                    onSquadEdit(squad.id);
-                                    setAgentRosterOpen(false);
-                                  }}
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-amber-900/20 text-white/60 transition-colors hover:border-amber-500/35 hover:text-white"
-                                >
-                                  <Pencil size={12} />
-                                </button>
-                              ) : null}
-                              {onSquadDelete ? (
-                                <button
-                                  type="button"
-                                  title="Delete squad"
-                                  onClick={() => {
-                                    onSquadDelete(squad.id);
-                                    setAgentRosterOpen(false);
-                                  }}
-                                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-red-900/30 text-red-300/70 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200"
-                                >
-                                  <Trash2 size={12} />
-                                </button>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-amber-900/20 bg-black/20 px-4 py-8 text-center">
-                      <div className="text-sm font-semibold text-amber-100">No squads yet</div>
-                      <div className="mt-1 text-xs text-amber-200/60">Create a squad to group agents for shared chat routing.</div>
-                    </div>
-                  )
-                )}
               </div>
             </div>
           ) : null}

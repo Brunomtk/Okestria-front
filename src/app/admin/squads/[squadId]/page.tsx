@@ -33,11 +33,7 @@ export default async function AdminSquadDetailPage({ params }: { params: Promise
   ]);
   if (!squad) notFound();
 
-  const fallbackCompanyName =
-    (companies?.result ?? []).find((item) => item.id === squad.companyId)?.name ??
-    `Company #${squad.companyId}`;
-
-  const companyName = squad.companyName?.trim() || fallbackCompanyName;
+  const companyName = squad.companyName?.trim() || (companies?.result ?? []).find((item) => item.id === squad.companyId)?.name ?? `Company #${squad.companyId}`;
 
   return (
     <div className="space-y-6">

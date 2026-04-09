@@ -67,6 +67,7 @@ import {
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
+import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
@@ -118,11 +119,15 @@ import {
 } from "@/lib/agents/backend-api";
 import {
   createCompanySquad,
-  updateCompanySquad,
-  deleteCompanySquad,
+  createSquadTask,
+  dispatchSquadTask,
   fetchCompanySquads,
+  fetchSquadTask,
+  fetchSquadTasks,
   type SquadExecutionMode,
   type SquadSummary,
+  type SquadTask,
+  type SquadTaskSummary,
 } from "@/lib/squads/api";
 import { randomUUID } from "@/lib/uuid";
 import { HistoryPanel } from "@/features/office/components/panels/HistoryPanel";
@@ -948,9 +953,17 @@ export function OfficeScreen({
   const [createAgentWizardNonce, setCreateAgentWizardNonce] = useState(0);
   const [createTargetModalOpen, setCreateTargetModalOpen] = useState(false);
   const [createSquadModalOpen, setCreateSquadModalOpen] = useState(false);
-  const [editingSquad, setEditingSquad] = useState<SquadSummary | null>(null);
   const [createSquadBusy, setCreateSquadBusy] = useState(false);
   const [createSquadError, setCreateSquadError] = useState<string | null>(null);
+  const [squadOpsModalOpen, setSquadOpsModalOpen] = useState(false);
+  const [squadOpsSquadId, setSquadOpsSquadId] = useState<string | null>(null);
+  const [squadOpsTasks, setSquadOpsTasks] = useState<SquadTaskSummary[]>([]);
+  const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
+  const [squadOpsLoading, setSquadOpsLoading] = useState(false);
+  const [squadOpsRefreshingTask, setSquadOpsRefreshingTask] = useState(false);
+  const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
+  const [squadOpsDispatchBusy, setSquadOpsDispatchBusy] = useState(false);
+  const [squadOpsError, setSquadOpsError] = useState<string | null>(null);
   const [createAgentWizardOpen, setCreateAgentWizardOpen] = useState(false);
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [createAgentModalError, setCreateAgentModalError] = useState<string | null>(
@@ -1637,19 +1650,8 @@ export function OfficeScreen({
     setCreateAgentWizardOpen(false);
     setCreateAgentModalError(null);
     setCreateSquadError(null);
-    setEditingSquad(null);
     setCreateSquadModalOpen(true);
   }, []);
-  const handleOpenEditSquadModal = useCallback((squadId: string) => {
-    const squad = companySquads.find((entry) => entry.id === squadId) ?? null;
-    if (!squad) return;
-    setCreateTargetModalOpen(false);
-    setCreateAgentWizardOpen(false);
-    setCreateAgentModalError(null);
-    setCreateSquadError(null);
-    setEditingSquad(squad);
-    setCreateSquadModalOpen(true);
-  }, [companySquads]);
   const clearDeletedAgentUiState = useCallback((agentId: string) => {
     setSelectedChatAgentId((current) => (current === agentId ? null : current));
     setAgentEditorAgentId((current) => (current === agentId ? null : current));
@@ -1871,42 +1873,135 @@ export function OfficeScreen({
       setCreateSquadBusy(true);
       setCreateSquadError(null);
       try {
-        const savedSquad = editingSquad
-          ? await updateCompanySquad({ squadId: editingSquad.id, ...payload })
-          : await createCompanySquad(payload);
+        const createdSquad = await createCompanySquad(payload);
         await loadCompanySquads(true);
-        setCreateSquadModalOpen(false);
-        setEditingSquad(null);
-        setSelectedChatAgentId(`squad:${savedSquad.id}`);
-        setChatTargetView("squads");
-        setChatOpen(true);
+  setCreateSquadModalOpen(false);
+  setSelectedChatAgentId(`squad:${createdSquad.id}`);
+  setChatOpen(true);
       } catch (error) {
-        const fallback = editingSquad ? "Unable to update the squad right now." : "Unable to create the squad right now.";
-        const message = error instanceof Error ? error.message : fallback;
+        const message = error instanceof Error ? error.message : "Unable to create the squad right now.";
         setCreateSquadError(message);
       } finally {
         setCreateSquadBusy(false);
       }
     },
-    [editingSquad, loadCompanySquads],
+    [loadCompanySquads],
   );
 
-  const handleDeleteSquad = useCallback(async (squadId: string) => {
-    const squad = companySquads.find((entry) => entry.id === squadId) ?? null;
-    if (!squad) return;
-    const confirmed = window.confirm(
-      `Delete ${squad.name}? Only the squad will be removed. The member agents will stay in the company.`,
-    );
-    if (!confirmed) return;
+  const activeSquadOpsSquad = useMemo(
+    () => companySquads.find((entry) => entry.id === squadOpsSquadId) ?? null,
+    [companySquads, squadOpsSquadId],
+  );
+
+  const loadSquadOpsTasks = useCallback(
+    async (squadId: string, preferredTaskId?: number | null) => {
+      const numericSquadId = Number(squadId);
+      if (!Number.isFinite(numericSquadId)) return;
+      setSquadOpsLoading(true);
+      setSquadOpsError(null);
+      try {
+        const summaries = await fetchSquadTasks({ squadId: numericSquadId });
+        setSquadOpsTasks(summaries);
+        const nextTaskId = preferredTaskId ?? summaries[0]?.id ?? null;
+        if (nextTaskId) {
+          setSquadOpsRefreshingTask(true);
+          try {
+            const detail = await fetchSquadTask(nextTaskId);
+            setSquadOpsSelectedTask(detail);
+          } finally {
+            setSquadOpsRefreshingTask(false);
+          }
+        } else {
+          setSquadOpsSelectedTask(null);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to load squad tasks right now.";
+        setSquadOpsError(message);
+      } finally {
+        setSquadOpsLoading(false);
+      }
+    },
+    [],
+  );
+
+  const handleOpenSquadOps = useCallback(
+    (squadId: string) => {
+      setSquadOpsSquadId(squadId);
+      setSquadOpsModalOpen(true);
+      void loadSquadOpsTasks(squadId);
+    },
+    [loadSquadOpsTasks],
+  );
+
+  const handleSelectSquadTask = useCallback(async (taskId: number) => {
+    setSquadOpsRefreshingTask(true);
+    setSquadOpsError(null);
     try {
-      await deleteCompanySquad({ squadId });
-      await loadCompanySquads(true);
-      setSelectedChatAgentId((current) => (current === `squad:${squadId}` ? null : current));
+      const detail = await fetchSquadTask(taskId);
+      setSquadOpsSelectedTask(detail);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to delete the squad right now.";
-      setError(message);
+      const message = error instanceof Error ? error.message : "Unable to load task details right now.";
+      setSquadOpsError(message);
+    } finally {
+      setSquadOpsRefreshingTask(false);
     }
-  }, [companySquads, loadCompanySquads, setError]);
+  }, []);
+
+  const handleCreateSquadTask = useCallback(
+    async (payload: { title: string; prompt: string }) => {
+      const numericSquadId = Number(squadOpsSquadId);
+      if (!Number.isFinite(numericSquadId)) return;
+      setSquadOpsCreateBusy(true);
+      setSquadOpsError(null);
+      try {
+        const created = await createSquadTask({
+          squadId: numericSquadId,
+          title: payload.title,
+          prompt: payload.prompt,
+          executionMode: activeSquadOpsSquad?.executionMode ?? "leader",
+        });
+        await loadSquadOpsTasks(String(numericSquadId), created.id);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to create the squad task right now.";
+        setSquadOpsError(message);
+      } finally {
+        setSquadOpsCreateBusy(false);
+      }
+    },
+    [activeSquadOpsSquad?.executionMode, loadSquadOpsTasks, squadOpsSquadId],
+  );
+
+  const handleDispatchSquadTask = useCallback(
+    async (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => {
+      setSquadOpsDispatchBusy(true);
+      setSquadOpsError(null);
+      try {
+        await dispatchSquadTask(taskId, {
+          onlyPendingRuns: mode === "pending",
+          retryFailedRuns: mode !== "redispatchAll",
+          forceRedispatchCompletedRuns: mode === "redispatchAll",
+          thinking: "medium",
+          deliveryMode: "none",
+          wakeMode: "now",
+        });
+        await loadSquadOpsTasks(squadOpsSquadId ?? String(activeSquadOpsSquad?.id ?? ""), taskId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to dispatch squad task right now.";
+        setSquadOpsError(message);
+      } finally {
+        setSquadOpsDispatchBusy(false);
+      }
+    },
+    [activeSquadOpsSquad?.id, loadSquadOpsTasks, squadOpsSquadId],
+  );
+
+  useEffect(() => {
+    if (!squadOpsModalOpen || !squadOpsSquadId) return;
+    const intervalId = window.setInterval(() => {
+      void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask?.id ?? null);
+    }, 12000);
+    return () => window.clearInterval(intervalId);
+  }, [loadSquadOpsTasks, squadOpsModalOpen, squadOpsSelectedTask?.id, squadOpsSquadId]);
 
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {
@@ -1932,15 +2027,6 @@ export function OfficeScreen({
         (entry) => entry.agentId === decision.normalizedAgentId,
       );
       if (!agent) return;
-      const leaderSquad = companySquads.find(
-        (squad) => squad.leaderGatewayAgentId === decision.normalizedAgentId,
-      );
-      if (leaderSquad) {
-        const message = `${agent.name} is the leader of squad ${leaderSquad.name}. Change the squad leader first before deleting this agent.`;
-        setError(message);
-        window.alert(message);
-        return;
-      }
       const confirmed = window.confirm(
         `Delete ${agent.name}? This removes the agent record and clears its scheduled automations. Workspace files are not affected.`,
       );
@@ -2021,13 +2107,11 @@ export function OfficeScreen({
     [
       clearDeletedAgentUiState,
       client,
-      companySquads,
       createAgentBlock,
       dispatch,
       enqueueConfigMutation,
       hasDeleteMutationBlock,
       loadAgents,
-      loadCompanyScopedAgentScope,
       setError,
       state.agents,
       status,
@@ -4453,18 +4537,6 @@ export function OfficeScreen({
           onAgentDelete={(agentId) => {
             void handleDeleteAgent(agentId);
           }}
-          squads={companySquads}
-          onSquadChatSelect={(squadId) => {
-            setSelectedChatAgentId(`squad:${squadId}`);
-            setChatTargetView("squads");
-            setChatOpen(true);
-          }}
-          onSquadEdit={(squadId) => {
-            handleOpenEditSquadModal(squadId);
-          }}
-          onSquadDelete={(squadId) => {
-            void handleDeleteSquad(squadId);
-          }}
           onDeskAssignmentChange={handleDeskAssignmentChange}
           onDeskAssignmentsReset={handleDeskAssignmentsReset}
           onGithubReviewDismiss={() => {
@@ -4922,13 +4994,24 @@ export function OfficeScreen({
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setChatOpen(false)}
-                    className="rounded-md border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300 transition hover:bg-amber-500/15 hover:text-amber-200"
-                  >
-                    Hide chat
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {focusedSquadChatTarget ? (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSquadOps(focusedSquadChatTarget.id)}
+                        className="rounded-md border border-cyan-500/35 bg-cyan-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-100 transition hover:bg-cyan-500/15"
+                      >
+                        Squad ops
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => setChatOpen(false)}
+                      className="rounded-md border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300 transition hover:bg-amber-500/15 hover:text-amber-200"
+                    >
+                      Hide chat
+                    </button>
+                  </div>
                 </div>
 
                 <div className="min-h-0 flex-1">
@@ -5242,7 +5325,6 @@ export function OfficeScreen({
         open={createSquadModalOpen}
         busy={createSquadBusy}
         error={createSquadError}
-        initialSquad={editingSquad}
         agents={state.agents.map((agent) => ({
           id: agent.agentId,
           name: agent.name || agent.agentId,
@@ -5251,13 +5333,42 @@ export function OfficeScreen({
         preferredAgentId={state.selectedAgentId}
         onClose={() => {
           setCreateSquadModalOpen(false);
-          setEditingSquad(null);
           setCreateSquadError(null);
         }}
         onSubmit={(payload) => {
           void handleCreateSquad(payload);
         }}
       />
+      <SquadOpsModal
+        open={squadOpsModalOpen}
+        squad={activeSquadOpsSquad}
+        tasks={squadOpsTasks}
+        selectedTask={squadOpsSelectedTask}
+        loading={squadOpsLoading}
+        refreshingTask={squadOpsRefreshingTask}
+        createBusy={squadOpsCreateBusy}
+        dispatchBusy={squadOpsDispatchBusy}
+        error={squadOpsError}
+        onClose={() => {
+          setSquadOpsModalOpen(false);
+          setSquadOpsError(null);
+        }}
+        onRefresh={() => {
+          if (squadOpsSquadId) {
+            void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask?.id ?? null);
+          }
+        }}
+        onSelectTask={(taskId) => {
+          void handleSelectSquadTask(taskId);
+        }}
+        onCreateTask={(payload) => {
+          void handleCreateSquadTask(payload);
+        }}
+        onDispatchTask={(taskId, mode) => {
+          void handleDispatchSquadTask(taskId, mode);
+        }}
+      />
+
       <AgentCreateWizardModal
         key={createAgentWizardNonce}
         open={createAgentWizardOpen}

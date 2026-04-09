@@ -78,12 +78,8 @@ export type GitHubDashboardResponse = {
 };
 
 export type GitHubDetailResponse = {
-  ready: boolean;
-  authState: GitHubAuthState;
-  viewerLogin: string | null;
-  currentRepoSlug: string | null;
-  pullRequest: GitHubPullRequestDetail | null;
-  message: string | null;
+  ok: true;
+  detail: GitHubPullRequestDetail;
 };
 
 export type GitHubReviewAction = "APPROVE" | "COMMENT" | "REQUEST_CHANGES";
