@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, Play, RefreshCcw, Rocket, Users2, XCircle } from "lucide-react";
-import type { SquadSummary, SquadTask, SquadTaskSummary } from "@/lib/squads/api";
+import type { SquadSummary, SquadTask, SquadTaskDispatchEstimate, SquadTaskSummary } from "@/lib/squads/api";
 
 type SquadOpsModalProps = {
   open: boolean;
@@ -13,13 +13,20 @@ type SquadOpsModalProps = {
   refreshingTask: boolean;
   createBusy: boolean;
   dispatchBusy: boolean;
+  dispatchEstimate: SquadTaskDispatchEstimate | null;
+  dispatchEstimateBusy: boolean;
+  dispatchApprovalMode: "pending" | "retryFailed" | "redispatchAll" | null;
   error: string | null;
+  hooksConfigured: boolean;
+  hooksMessage: string | null;
   onClose: () => void;
   onRefresh: () => void;
   onSelectSquad: (squadId: string) => void;
   onSelectTask: (taskId: number) => void;
   onCreateTask: (payload: { title: string; prompt: string }) => void;
-  onDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
+  onPreviewDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
+  onConfirmDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
+  onCancelDispatchApproval: () => void;
 };
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -54,6 +61,13 @@ const statusLabel = (status: string | null | undefined) => {
   return normalized.replace(/_/g, " ");
 };
 
+const dispatchModeLabel = (mode: "pending" | "retryFailed" | "redispatchAll" | null) => {
+  if (mode === "pending") return "Dispatch pending runs";
+  if (mode === "retryFailed") return "Retry failed runs";
+  if (mode === "redispatchAll") return "Redispatch all runs";
+  return "Dispatch runs";
+};
+
 const modeLabel = (mode: string | null | undefined) => {
   const normalized = (mode ?? "leader").trim();
   if (!normalized) return "Leader";
@@ -71,13 +85,20 @@ export function SquadOpsModal({
   refreshingTask,
   createBusy,
   dispatchBusy,
+  dispatchEstimate,
+  dispatchEstimateBusy,
+  dispatchApprovalMode,
   error,
+  hooksConfigured,
+  hooksMessage,
   onClose,
   onRefresh,
   onSelectSquad,
   onSelectTask,
   onCreateTask,
-  onDispatchTask,
+  onPreviewDispatchTask,
+  onConfirmDispatchTask,
+  onCancelDispatchApproval,
 }: SquadOpsModalProps) {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
@@ -89,6 +110,7 @@ export function SquadOpsModal({
   }, [open, squad?.id]);
 
   const submitDisabled = createBusy || !title.trim() || !prompt.trim() || !selectedSquadId;
+  const dispatchDisabled = dispatchBusy || !hooksConfigured;
   const selectedTaskId = selectedTask?.id ?? null;
   const runSummary = useMemo(() => {
     const runs = selectedTask?.runs ?? [];
@@ -207,7 +229,13 @@ export function SquadOpsModal({
                 <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">{tasks.length}</div>
               </div>
               <div className="mt-4 space-y-2">
-                {!selectedSquadId ? (
+                {hooksMessage ? (
+              <div className={`mb-5 rounded-3xl border px-4 py-3 text-sm leading-6 ${hooksConfigured ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100" : "border-amber-500/20 bg-amber-500/10 text-amber-100"}`}>
+                {hooksMessage}
+              </div>
+            ) : null}
+
+            {!selectedSquadId ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
                     Select a squad to load its tasks.
                   </div>
@@ -255,6 +283,12 @@ export function SquadOpsModal({
           </aside>
 
           <main className="min-h-0 overflow-y-auto p-5">
+            {hooksMessage ? (
+              <div className={`mb-5 rounded-3xl border px-4 py-3 text-sm leading-6 ${hooksConfigured ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-100" : "border-amber-500/20 bg-amber-500/10 text-amber-100"}`}>
+                {hooksMessage}
+              </div>
+            ) : null}
+
             {!selectedSquadId ? (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-8 text-center">
                 <div className="rounded-full border border-amber-400/20 bg-amber-500/10 p-4 text-amber-100">
@@ -332,33 +366,98 @@ export function SquadOpsModal({
                     </div>
                   </div>
 
+                  {dispatchApprovalMode ? (
+                    <div className="mt-4 rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-100/70">Approval required</div>
+                          <h4 className="mt-2 text-lg font-semibold text-white">{dispatchModeLabel(dispatchApprovalMode)}</h4>
+                          <p className="mt-2 max-w-2xl text-sm leading-6 text-amber-50/80">
+                            Review the estimated token usage before sending this squad task to OpenClaw sub-agents.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-amber-300/25 bg-black/20 px-3 py-1 text-xs text-amber-100/80">
+                          Manual approval
+                        </span>
+                      </div>
+
+                      {dispatchEstimateBusy ? (
+                        <div className="mt-4 rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/45">
+                          Estimating token usage...
+                        </div>
+                      ) : dispatchEstimate ? (
+                        <>
+                          <div className="mt-4 grid gap-3 md:grid-cols-4">
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <div className="text-xs text-white/40">Selected runs</div>
+                              <div className="mt-2 text-2xl font-semibold text-white">{dispatchEstimate.selectedRuns}</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <div className="text-xs text-white/40">Input / run</div>
+                              <div className="mt-2 text-2xl font-semibold text-white">~{dispatchEstimate.estimatedInputTokensPerRun}</div>
+                            </div>
+                            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                              <div className="text-xs text-white/40">Output / run</div>
+                              <div className="mt-2 text-2xl font-semibold text-white">~{dispatchEstimate.estimatedOutputTokensPerRun}</div>
+                            </div>
+                            <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4">
+                              <div className="text-xs text-amber-100/70">Estimated total</div>
+                              <div className="mt-2 text-2xl font-semibold text-amber-50">~{dispatchEstimate.estimatedTotalTokens}</div>
+                            </div>
+                          </div>
+                          <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-white/55">
+                            {dispatchEstimate.notes} Thinking: <span className="text-white/80">{dispatchEstimate.thinking}</span>.
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <button
+                              type="button"
+                              onClick={() => onConfirmDispatchTask(selectedTask.id, dispatchApprovalMode)}
+                              disabled={dispatchBusy || dispatchEstimateBusy || !hooksConfigured}
+                              className="inline-flex items-center justify-center rounded-2xl border border-amber-300/35 bg-amber-500/15 px-4 py-3 text-sm font-medium text-amber-50 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              {dispatchBusy ? "Sending..." : "Approve and run"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={onCancelDispatchApproval}
+                              disabled={dispatchBusy}
+                              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 grid gap-3 lg:grid-cols-3">
                     <button
                       type="button"
-                      disabled={dispatchBusy}
-                      onClick={() => onDispatchTask(selectedTask.id, "pending")}
+                      disabled={dispatchDisabled}
+                      onClick={() => onPreviewDispatchTask(selectedTask.id, "pending")}
                       className="rounded-2xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-left text-sm text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       <div className="font-medium">Dispatch pending runs</div>
-                      <div className="mt-1 text-xs text-cyan-100/65">Only sends runs that are still waiting.</div>
+                      <div className="mt-1 text-xs text-cyan-100/65">Only sends runs that are still waiting. Requires OpenClaw hooks.</div>
                     </button>
                     <button
                       type="button"
-                      disabled={dispatchBusy}
-                      onClick={() => onDispatchTask(selectedTask.id, "retryFailed")}
+                      disabled={dispatchDisabled}
+                      onClick={() => onPreviewDispatchTask(selectedTask.id, "retryFailed")}
                       className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left text-sm text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       <div className="font-medium">Retry failed runs</div>
-                      <div className="mt-1 text-xs text-white/45">Only retries runs that finished with an error.</div>
+                      <div className="mt-1 text-xs text-white/45">Only retries runs that finished with an error. Requires OpenClaw hooks.</div>
                     </button>
                     <button
                       type="button"
-                      disabled={dispatchBusy}
-                      onClick={() => onDispatchTask(selectedTask.id, "redispatchAll")}
+                      disabled={dispatchDisabled}
+                      onClick={() => onPreviewDispatchTask(selectedTask.id, "redispatchAll")}
                       className="rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-left text-sm text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       <div className="font-medium">Redispatch all runs</div>
-                      <div className="mt-1 text-xs text-amber-100/65">Sends the full task again to every run.</div>
+                      <div className="mt-1 text-xs text-amber-100/65">Sends the full task again to every run. Requires OpenClaw hooks.</div>
                     </button>
                   </div>
                 </section>

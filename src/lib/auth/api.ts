@@ -314,8 +314,17 @@ export async function fetchSquadCatalogByCompany(companyId: number, token: strin
   return requestJson<OkestriaSquadCatalog>(`/api/Squads/by-company/${companyId}/catalog`, undefined, token);
 }
 
+export type RuntimeConfigStatusResponse = {
+  configured?: boolean;
+  baseUrl?: string | null;
+  hasUpstreamToken?: boolean;
+  hooksConfigured?: boolean;
+  hooksBaseUrl?: string | null;
+  hasHookToken?: boolean;
+};
+
 export async function fetchRuntimeConfigStatus(token: string) {
-  return requestJson<{ configured?: boolean; baseUrl?: string | null; hasUpstreamToken?: boolean }>(`/api/Runtime/config-status`, undefined, token);
+  return requestJson<RuntimeConfigStatusResponse>(`/api/Runtime/config-status`, undefined, token);
 }
 
 export type GatewaySettingsResponse = {

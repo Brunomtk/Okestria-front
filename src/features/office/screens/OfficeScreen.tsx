@@ -114,6 +114,7 @@ import {
 import { writeGatewayAgentFiles } from "@/lib/gateway/agentFiles";
 import {
   fetchCompanyAgentScope,
+  getBrowserAccessToken,
   persistCompanyAgentFromWizard,
   type CompanyAgentScope,
 } from "@/lib/agents/backend-api";
@@ -121,12 +122,14 @@ import {
   createCompanySquad,
   createSquadTask,
   dispatchSquadTask,
+  estimateSquadTaskDispatch,
   fetchCompanySquads,
   fetchSquadTask,
   fetchSquadTasks,
   type SquadExecutionMode,
   type SquadSummary,
   type SquadTask,
+  type SquadTaskDispatchEstimate,
   type SquadTaskSummary,
 } from "@/lib/squads/api";
 import { randomUUID } from "@/lib/uuid";
@@ -178,6 +181,7 @@ import {
 import { deriveSkillReadinessState } from "@/lib/skills/presentation";
 import type { StandupAgentSnapshot } from "@/lib/office/standup/types";
 import type { SkillStatusEntry } from "@/lib/skills/types";
+import { fetchRuntimeConfigStatus, type RuntimeConfigStatusResponse } from "@/lib/auth/api";
 
 const stringToColor = (str: string) => {
   let hash = 0;
@@ -964,6 +968,10 @@ export function OfficeScreen({
   const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
   const [squadOpsDispatchBusy, setSquadOpsDispatchBusy] = useState(false);
   const [squadOpsError, setSquadOpsError] = useState<string | null>(null);
+  const [squadOpsRuntimeStatus, setSquadOpsRuntimeStatus] = useState<RuntimeConfigStatusResponse | null>(null);
+  const [squadOpsDispatchEstimate, setSquadOpsDispatchEstimate] = useState<SquadTaskDispatchEstimate | null>(null);
+  const [squadOpsDispatchApprovalMode, setSquadOpsDispatchApprovalMode] = useState<"pending" | "retryFailed" | "redispatchAll" | null>(null);
+  const [squadOpsDispatchEstimateBusy, setSquadOpsDispatchEstimateBusy] = useState(false);
   const [createAgentWizardOpen, setCreateAgentWizardOpen] = useState(false);
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [createAgentModalError, setCreateAgentModalError] = useState<string | null>(
@@ -1888,6 +1896,20 @@ export function OfficeScreen({
     [loadCompanySquads],
   );
 
+  const loadSquadOpsRuntimeStatus = useCallback(async () => {
+    const token = getBrowserAccessToken();
+    if (!token) {
+      setSquadOpsRuntimeStatus(null);
+      return;
+    }
+    try {
+      const runtimeStatus = await fetchRuntimeConfigStatus(token);
+      setSquadOpsRuntimeStatus(runtimeStatus);
+    } catch {
+      setSquadOpsRuntimeStatus(null);
+    }
+  }, []);
+
   const activeSquadOpsSquad = useMemo(
     () => companySquads.find((entry) => entry.id === squadOpsSquadId) ?? null,
     [companySquads, squadOpsSquadId],
@@ -1929,6 +1951,9 @@ export function OfficeScreen({
       setSquadOpsSquadId(squadId || null);
       setSquadOpsModalOpen(true);
       setSquadOpsError(null);
+      setSquadOpsDispatchEstimate(null);
+      setSquadOpsDispatchApprovalMode(null);
+      void loadSquadOpsRuntimeStatus();
       if (!squadId) {
         setSquadOpsTasks([]);
         setSquadOpsSelectedTask(null);
@@ -1936,12 +1961,14 @@ export function OfficeScreen({
       }
       void loadSquadOpsTasks(squadId);
     },
-    [loadSquadOpsTasks],
+    [loadSquadOpsRuntimeStatus, loadSquadOpsTasks],
   );
 
   const handleSelectSquadTask = useCallback(async (taskId: number) => {
     setSquadOpsRefreshingTask(true);
     setSquadOpsError(null);
+    setSquadOpsDispatchEstimate(null);
+    setSquadOpsDispatchApprovalMode(null);
     try {
       const detail = await fetchSquadTask(taskId);
       setSquadOpsSelectedTask(detail);
@@ -1959,6 +1986,8 @@ export function OfficeScreen({
       if (!Number.isFinite(numericSquadId)) return;
       setSquadOpsCreateBusy(true);
       setSquadOpsError(null);
+      setSquadOpsDispatchEstimate(null);
+      setSquadOpsDispatchApprovalMode(null);
       try {
         const created = await createSquadTask({
           squadId: numericSquadId,
@@ -1977,20 +2006,53 @@ export function OfficeScreen({
     [activeSquadOpsSquad?.executionMode, loadSquadOpsTasks, squadOpsSquadId],
   );
 
-  const handleDispatchSquadTask = useCallback(
+  const buildSquadDispatchPayload = useCallback(
+    (mode: "pending" | "retryFailed" | "redispatchAll") => ({
+      onlyPendingRuns: mode === "pending",
+      retryFailedRuns: mode !== "redispatchAll",
+      forceRedispatchCompletedRuns: mode === "redispatchAll",
+      thinking: "medium",
+      deliveryMode: "none",
+      wakeMode: "now",
+    }),
+    [],
+  );
+
+  const handlePreviewDispatchSquadTask = useCallback(
+    async (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => {
+      setSquadOpsDispatchEstimateBusy(true);
+      setSquadOpsError(null);
+      setSquadOpsDispatchApprovalMode(mode);
+      try {
+        const estimate = await estimateSquadTaskDispatch(taskId, buildSquadDispatchPayload(mode));
+        setSquadOpsDispatchEstimate(estimate);
+      } catch (error) {
+        setSquadOpsDispatchApprovalMode(null);
+        setSquadOpsDispatchEstimate(null);
+        const message = error instanceof Error ? error.message : "Unable to estimate squad task tokens right now.";
+        setSquadOpsError(message);
+      } finally {
+        setSquadOpsDispatchEstimateBusy(false);
+      }
+    },
+    [buildSquadDispatchPayload],
+  );
+
+  const handleCancelSquadTaskDispatchApproval = useCallback(() => {
+    setSquadOpsDispatchEstimate(null);
+    setSquadOpsDispatchApprovalMode(null);
+  }, []);
+
+  const handleConfirmDispatchSquadTask = useCallback(
     async (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => {
       setSquadOpsDispatchBusy(true);
       setSquadOpsError(null);
       try {
-        await dispatchSquadTask(taskId, {
-          onlyPendingRuns: mode === "pending",
-          retryFailedRuns: mode !== "redispatchAll",
-          forceRedispatchCompletedRuns: mode === "redispatchAll",
-          thinking: "medium",
-          deliveryMode: "none",
-          wakeMode: "now",
-        });
+        await dispatchSquadTask(taskId, buildSquadDispatchPayload(mode));
+        setSquadOpsDispatchEstimate(null);
+        setSquadOpsDispatchApprovalMode(null);
         await loadSquadOpsTasks(squadOpsSquadId ?? String(activeSquadOpsSquad?.id ?? ""), taskId);
+        await loadSquadOpsRuntimeStatus();
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to dispatch squad task right now.";
         setSquadOpsError(message);
@@ -1998,7 +2060,7 @@ export function OfficeScreen({
         setSquadOpsDispatchBusy(false);
       }
     },
-    [activeSquadOpsSquad?.id, loadSquadOpsTasks, squadOpsSquadId],
+    [activeSquadOpsSquad?.id, buildSquadDispatchPayload, loadSquadOpsRuntimeStatus, loadSquadOpsTasks, squadOpsSquadId],
   );
 
   useEffect(() => {
@@ -5383,12 +5445,26 @@ export function OfficeScreen({
         refreshingTask={squadOpsRefreshingTask}
         createBusy={squadOpsCreateBusy}
         dispatchBusy={squadOpsDispatchBusy}
+        dispatchEstimate={squadOpsDispatchEstimate}
+        dispatchEstimateBusy={squadOpsDispatchEstimateBusy}
+        dispatchApprovalMode={squadOpsDispatchApprovalMode}
         error={squadOpsError}
+        hooksConfigured={squadOpsRuntimeStatus?.hooksConfigured === true}
+        hooksMessage={
+          squadOpsRuntimeStatus
+            ? squadOpsRuntimeStatus.hooksConfigured
+              ? "OpenClaw hooks are configured. You can dispatch runs to squad sub-agents."
+              : "OpenClaw hooks are not configured for this backend yet. Set a dedicated hooks token in the gateway and expose Okestria runtime hook settings in the service before dispatching squad runs."
+            : null
+        }
         onClose={() => {
           setSquadOpsModalOpen(false);
           setSquadOpsError(null);
+          setSquadOpsDispatchEstimate(null);
+          setSquadOpsDispatchApprovalMode(null);
         }}
         onRefresh={() => {
+          void loadSquadOpsRuntimeStatus();
           if (squadOpsSquadId) {
             void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask?.id ?? null);
           }
@@ -5402,9 +5478,13 @@ export function OfficeScreen({
         onCreateTask={(payload) => {
           void handleCreateSquadTask(payload);
         }}
-        onDispatchTask={(taskId, mode) => {
-          void handleDispatchSquadTask(taskId, mode);
+        onPreviewDispatchTask={(taskId, mode) => {
+          void handlePreviewDispatchSquadTask(taskId, mode);
         }}
+        onConfirmDispatchTask={(taskId, mode) => {
+          void handleConfirmDispatchSquadTask(taskId, mode);
+        }}
+        onCancelDispatchApproval={handleCancelSquadTaskDispatchApproval}
       />
 
       <AgentCreateWizardModal

@@ -360,6 +360,19 @@ export type SquadTaskDispatchRequest = {
   additionalInstructions?: string | null;
 };
 
+export type SquadTaskDispatchEstimate = {
+  taskId: number;
+  requestedRuns: number;
+  selectedRuns: number;
+  estimatedInputTokensPerRun: number;
+  estimatedOutputTokensPerRun: number;
+  estimatedTokensPerRun: number;
+  estimatedTotalTokens: number;
+  thinking: string;
+  model: string | null;
+  notes: string;
+};
+
 export type SquadTaskDispatchResult = {
   taskId: number;
   requestedRuns: number;
@@ -496,6 +509,34 @@ export const createSquadTask = async (params: {
     params.token,
   );
   return normalizeTask(payload);
+};
+
+export const estimateSquadTaskDispatch = async (
+  taskId: number,
+  payload: SquadTaskDispatchRequest,
+  token?: string | null,
+): Promise<SquadTaskDispatchEstimate> => {
+  return await requestBackendJson<SquadTaskDispatchEstimate>(
+    `/api/Squads/tasks/${taskId}/dispatch-estimate`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        onlyPendingRuns: payload.onlyPendingRuns ?? true,
+        retryFailedRuns: payload.retryFailedRuns ?? true,
+        forceRedispatchCompletedRuns: payload.forceRedispatchCompletedRuns ?? false,
+        model: payload.model ?? null,
+        thinking: payload.thinking ?? "medium",
+        timeoutSeconds: payload.timeoutSeconds ?? 0,
+        deliveryMode: payload.deliveryMode ?? "none",
+        channel: payload.channel ?? null,
+        to: payload.to ?? null,
+        wakeMode: payload.wakeMode ?? "now",
+        additionalInstructions: payload.additionalInstructions ?? null,
+        runIds: payload.runIds ?? null,
+      }),
+    },
+    token,
+  );
 };
 
 export const dispatchSquadTask = async (
