@@ -30,10 +30,12 @@ export function HeatmapSystem({
 }) {
   const frameRef = useRef(0);
   const cellsRef = useRef<{ x: number; z: number; v: number }[]>([]);
+  const routeTrailsRef = useRef<Map<string, TrailPoint[]>>(new Map());
   const fallbackHeatGridRef = useRef<Uint16Array>(
     new Uint16Array(HEAT_COLS * HEAT_ROWS),
   );
   const [cells, setCells] = useState<{ x: number; z: number; v: number }[]>([]);
+  const [routePoints, setRoutePoints] = useState<TrailPoint[]>([]);
 
   useEffect(() => {
     cellsRef.current = cells;
@@ -62,6 +64,43 @@ export function HeatmapSystem({
             grid[row * HEAT_COLS + col] + 1,
           );
         }
+      }
+    }
+
+    if (frameRef.current % 8 === 0) {
+      const trails = routeTrailsRef.current;
+      const agents = agentsRef.current ?? [];
+      for (const agent of agents) {
+        if (agent.state !== "walking") continue;
+        const [wx, , wz] = toWorld(agent.x, agent.y);
+        const existing = trails.get(agent.id) ?? [];
+        existing.unshift({
+          pos: new THREE.Vector3(wx, 0.012, wz),
+          age: 0,
+          color: "#ef4444",
+        });
+        if (existing.length > 14) existing.splice(14);
+        trails.set(agent.id, existing);
+      }
+
+      let changed = false;
+      for (const [id, trailPoints] of trails) {
+        for (const point of trailPoints) point.age += 1;
+        for (let index = trailPoints.length - 1; index >= 0; index -= 1) {
+          if (trailPoints[index].age < 80) continue;
+          trailPoints.splice(index, 1);
+          changed = true;
+        }
+        if (trailPoints.length === 0) {
+          trails.delete(id);
+          changed = true;
+        }
+      }
+
+      if (heatmapMode || changed || frameRef.current % 16 === 0) {
+        const nextRoutePoints: TrailPoint[] = [];
+        for (const trailPoints of trails.values()) nextRoutePoints.push(...trailPoints);
+        setRoutePoints([...nextRoutePoints]);
       }
     }
 
@@ -98,21 +137,47 @@ export function HeatmapSystem({
     <>
       {cells.map((cell, index) => (
         <mesh
-          key={index}
+          key={`heat-${index}`}
           position={[cell.x, 0.002, cell.z]}
           rotation={[-Math.PI / 2, 0, 0]}
         >
-          <planeGeometry args={[SNAP_GRID * SCALE * 0.9, SNAP_GRID * SCALE * 0.9]} />
+          <planeGeometry args={[SNAP_GRID * SCALE * 0.88, SNAP_GRID * SCALE * 0.88]} />
           <meshBasicMaterial
             color={
-              cell.v < 0.4 ? "#f59e0b" : cell.v < 0.75 ? "#ef4444" : "#dc2626"
+              cell.v < 0.35 ? "#fb7185" : cell.v < 0.7 ? "#ef4444" : "#b91c1c"
             }
             transparent
-            opacity={0.15 + cell.v * 0.35}
+            opacity={0.16 + cell.v * 0.34}
             depthWrite={false}
           />
         </mesh>
       ))}
+
+      {routePoints.map((point, index) => {
+        const fade = Math.max(0.18, 1 - point.age / 80);
+        return (
+          <group key={`route-${index}`} position={[point.pos.x, point.pos.y, point.pos.z]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, 0, -0.0005]}>
+              <ringGeometry args={[0.05, 0.082, 18]} />
+              <meshBasicMaterial
+                color="#2b0b0b"
+                transparent
+                opacity={0.62 * fade}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh>
+              <circleGeometry args={[0.048, 16]} />
+              <meshBasicMaterial
+                color="#ef4444"
+                transparent
+                opacity={0.92 * fade}
+                depthWrite={false}
+              />
+            </mesh>
+          </group>
+        );
+      })}
     </>
   );
 }

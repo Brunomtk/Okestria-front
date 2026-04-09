@@ -4,7 +4,6 @@ import {
   Pencil,
   Check,
   Map as MapIcon,
-  Maximize,
   Monitor,
   Armchair,
   Settings2,
@@ -227,7 +226,6 @@ import {
 import {
   DeskNameplates as DeskNameplateOverlay,
   HeatmapSystem as AgentHeatmapSystem,
-  TrailSystem as AgentTrailSystem,
 } from "@/features/retro-office/systems/visualSystems";
 import type { OfficeCleaningCue } from "@/lib/office/janitorReset";
 import { useRebuiltAgentTick } from "@/features/retro-office/core/agentMotion";
@@ -1688,7 +1686,6 @@ export function RetroOffice3D({
   } | null>(null);
   // New Idea 7: heatmap mode.
   const [heatmapMode, setHeatmapMode] = useState(false);
-  const [trailMode, setTrailMode] = useState(false);
   const [activeCameraPresetKey, setActiveCameraPresetKey] = useState<
     "overview" | "frontDesk" | "lounge"
   >("overview");
@@ -4785,14 +4782,6 @@ export function RetroOffice3D({
               deskByAgentRef={deskByAgentRef}
             />
 
-            {/* New Idea 5: Agent color trails while walking. */}
-            {trailMode ? (
-              <AgentTrailSystem
-                agentsRef={renderAgentsRef}
-                colorMap={agentColorMap}
-              />
-            ) : null}
-
             {/* New Idea 7: Heatmap overlay when heatmap mode is active. */}
             {heatmapMode ? (
               <AgentHeatmapSystem
@@ -5028,7 +5017,7 @@ export function RetroOffice3D({
                 [
                   {
                     key: "overview",
-                    icon: <Maximize size={12} />,
+                    icon: <Camera size={12} />,
                     title: "Overview",
                     subtitle: "Full office",
                   },
@@ -5124,16 +5113,9 @@ export function RetroOffice3D({
           <button
             onClick={() => setHeatmapMode((p) => !p)}
             title="Toggle heatmap"
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${heatmapMode ? "bg-amber-500/30 text-amber-300 border-amber-500/50" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-amber-400"}`}
+            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border shadow-sm ${heatmapMode ? "bg-red-500/22 text-red-100 border-red-400/70 shadow-red-900/40 ring-2 ring-red-500/55" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-red-200 hover:border-red-400/50"}`}
           >
             <MapIcon size={12} />
-          </button>
-          <button
-            onClick={() => setTrailMode((p) => !p)}
-            title="Toggle trails"
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${trailMode ? "bg-amber-500/30 text-amber-300 border-amber-500/50" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-amber-400"}`}
-          >
-            <Maximize size={12} />
           </button>
           {/* Edit office toggle. */}
           <button
