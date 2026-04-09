@@ -127,7 +127,7 @@ export function SquadOpsModal({
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[380px_minmax(0,1fr)_380px]">
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[380px_minmax(0,1fr)]">
           <aside className="min-h-0 overflow-y-auto border-r border-white/10 p-5">
             <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
               <div className="flex items-center gap-2 text-cyan-100">
@@ -217,7 +217,7 @@ export function SquadOpsModal({
             </div>
           </aside>
 
-          <main className="min-h-0 overflow-y-auto border-r border-white/10 p-5">
+          <main className="min-h-0 overflow-y-auto p-5">
             {!selectedTask ? (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-8 text-center">
                 <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 p-4 text-cyan-100">
@@ -373,59 +373,14 @@ export function SquadOpsModal({
             )}
           </main>
 
-          <aside className="min-h-0 overflow-y-auto p-5">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Squad summary</div>
-              <div className="mt-3 text-lg font-semibold text-white">{squad.name}</div>
-              <div className="mt-2 text-sm leading-6 text-white/60">{squad.description || "No description provided for this squad yet."}</div>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100">
-                  {modeLabel(squad.executionMode)}
-                </span>
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-                  {squad.members.length} member{squad.members.length === 1 ? "" : "s"}
-                </span>
+          {error ? (
+            <div className="border-t border-red-500/20 bg-red-500/8 px-6 py-4 text-sm text-red-100">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{error}</span>
               </div>
             </div>
-
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">How to use</div>
-              <div className="mt-4 space-y-3 text-sm leading-6 text-white/60">
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">1. Create a task with a clear outcome.</div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">2. Select the task from the recent list.</div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">3. Dispatch pending runs or retry failed ones.</div>
-                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">4. Review each agent response before sending a new iteration.</div>
-              </div>
-            </div>
-
-            <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Members</div>
-              <div className="mt-4 space-y-2">
-                {squad.members.map((member) => (
-                  <div key={`${member.backendAgentId ?? "na"}-${member.gatewayAgentId ?? member.name}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                    <div>
-                      <div className="text-sm font-medium text-white">{member.name}</div>
-                      <div className="mt-1 text-xs text-white/40">{member.gatewayAgentId || member.backendAgentId || "No gateway id"}</div>
-                    </div>
-                    {member.isLeader ? (
-                      <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-amber-100">
-                        Leader
-                      </span>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {error ? (
-              <div className="mt-5 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              </div>
-            ) : null}
-          </aside>
+          ) : null}
         </div>
       </section>
     </div>
