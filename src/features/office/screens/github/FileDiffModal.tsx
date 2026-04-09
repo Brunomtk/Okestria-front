@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
-import type { GitHubInlineCommentSide } from "@/lib/office/github";
+import type { GitHubInlineCommentSide } from "@/lib/office/github-types";
 
 import {
   getDiffLineTone,

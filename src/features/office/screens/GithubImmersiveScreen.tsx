@@ -18,7 +18,7 @@ import type {
   GitHubPullRequestDetail,
   GitHubPullRequestSummary,
   GitHubReviewAction,
-} from "@/lib/office/github";
+} from "@/lib/office/github-types";
 import { resolveSkillMarketplaceMetadata } from "@/lib/skills/marketplace";
 import {
   buildSkillMissingDetails,

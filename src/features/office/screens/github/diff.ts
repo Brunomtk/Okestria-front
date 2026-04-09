@@ -3,7 +3,7 @@
 import type {
   GitHubInlineCommentSide,
   GitHubPullRequestDetail,
-} from "@/lib/office/github";
+} from "@/lib/office/github-types";
 
 export type GitHubDiffFile = GitHubPullRequestDetail["files"][number];
 

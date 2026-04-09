@@ -4,10 +4,9 @@ import {
   loadGitHubDashboard,
   loadGitHubPullRequestDetail,
   submitGitHubInlineComment,
-  submitGitHubPullRequestReview,
-  type GitHubInlineCommentSide,
-  type GitHubReviewAction,
+  submitGitHubPullRequestReview
 } from "@/lib/office/github";
+import type { GitHubInlineCommentSide, GitHubReviewAction } from "@/lib/office/github-types";
 
 export const runtime = "nodejs";
 
