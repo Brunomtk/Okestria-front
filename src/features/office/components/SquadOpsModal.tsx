@@ -4,7 +4,9 @@ import type { SquadSummary, SquadTask, SquadTaskSummary } from "@/lib/squads/api
 
 type SquadOpsModalProps = {
   open: boolean;
+  squads: SquadSummary[];
   squad: SquadSummary | null;
+  selectedSquadId: string | null;
   tasks: SquadTaskSummary[];
   selectedTask: SquadTask | null;
   loading: boolean;
@@ -14,6 +16,7 @@ type SquadOpsModalProps = {
   error: string | null;
   onClose: () => void;
   onRefresh: () => void;
+  onSelectSquad: (squadId: string) => void;
   onSelectTask: (taskId: number) => void;
   onCreateTask: (payload: { title: string; prompt: string }) => void;
   onDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
@@ -59,7 +62,9 @@ const modeLabel = (mode: string | null | undefined) => {
 
 export function SquadOpsModal({
   open,
+  squads,
   squad,
+  selectedSquadId,
   tasks,
   selectedTask,
   loading,
@@ -69,6 +74,7 @@ export function SquadOpsModal({
   error,
   onClose,
   onRefresh,
+  onSelectSquad,
   onSelectTask,
   onCreateTask,
   onDispatchTask,
@@ -82,7 +88,7 @@ export function SquadOpsModal({
     setPrompt("");
   }, [open, squad?.id]);
 
-  const submitDisabled = createBusy || !title.trim() || !prompt.trim() || !squad;
+  const submitDisabled = createBusy || !title.trim() || !prompt.trim() || !selectedSquadId;
   const selectedTaskId = selectedTask?.id ?? null;
   const runSummary = useMemo(() => {
     const runs = selectedTask?.runs ?? [];
@@ -94,7 +100,9 @@ export function SquadOpsModal({
     };
   }, [selectedTask]);
 
-  if (!open || !squad) return null;
+  if (!open) return null;
+
+  const hasSquads = squads.length > 0;
 
   return (
     <div className="fixed inset-0 z-[96] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
@@ -103,7 +111,7 @@ export function SquadOpsModal({
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div className="min-w-0">
             <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-cyan-300/70">Squad Ops</div>
-            <h2 className="mt-2 truncate text-2xl font-semibold text-white">{squad.name}</h2>
+            <h2 className="mt-2 truncate text-2xl font-semibold text-white">{squad?.name ?? "Squad Ops"}</h2>
             <p className="mt-2 max-w-3xl text-sm text-white/55">
               Create a task, dispatch the squad, and review each run from one place.
             </p>
@@ -135,8 +143,33 @@ export function SquadOpsModal({
                 <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/55">Create task</div>
               </div>
               <p className="mt-3 text-sm leading-6 text-white/55">
-                Write a clear title and explain what the squad should deliver.
+                First choose which squad should receive the task, then describe the expected delivery.
               </p>
+              <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Target squad</label>
+              <select
+                value={selectedSquadId ?? ""}
+                onChange={(event) => onSelectSquad(event.target.value)}
+                disabled={!hasSquads}
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <option value="" className="bg-[#07090c] text-white">
+                  {hasSquads ? "Select a squad" : "No squads available"}
+                </option>
+                {squads.map((entry) => (
+                  <option key={entry.id} value={entry.id} className="bg-[#07090c] text-white">
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+              {squad ? (
+                <div className="mt-3 rounded-2xl border border-cyan-500/20 bg-cyan-500/8 px-4 py-3 text-xs leading-6 text-cyan-100/80">
+                  {squad.members.length} member{squad.members.length === 1 ? "" : "s"} • Default mode: {modeLabel(squad.executionMode)}
+                </div>
+              ) : hasSquads ? (
+                <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-xs leading-6 text-amber-100/80">
+                  Select a squad before creating or dispatching tasks.
+                </div>
+              ) : null}
               <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Task title</label>
               <input
                 value={title}
@@ -161,7 +194,7 @@ export function SquadOpsModal({
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/35 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Play className="h-4 w-4" />
-                {createBusy ? "Creating task..." : "Create task"}
+                {createBusy ? "Creating task..." : "Create task for squad"}
               </button>
             </div>
 
@@ -174,7 +207,11 @@ export function SquadOpsModal({
                 <div className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">{tasks.length}</div>
               </div>
               <div className="mt-4 space-y-2">
-                {loading ? (
+                {!selectedSquadId ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
+                    Select a squad to load its tasks.
+                  </div>
+                ) : loading ? (
                   <div className="rounded-2xl border border-dashed border-white/10 px-4 py-5 text-sm text-white/35">
                     Loading tasks...
                   </div>
@@ -218,7 +255,17 @@ export function SquadOpsModal({
           </aside>
 
           <main className="min-h-0 overflow-y-auto p-5">
-            {!selectedTask ? (
+            {!selectedSquadId ? (
+              <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-8 text-center">
+                <div className="rounded-full border border-amber-400/20 bg-amber-500/10 p-4 text-amber-100">
+                  <Users2 className="h-7 w-7" />
+                </div>
+                <h3 className="mt-5 text-xl font-semibold text-white">Select a squad first</h3>
+                <p className="mt-2 max-w-md text-sm leading-6 text-white/45">
+                  Use the squad selector on the left to choose who should receive the task. After that, tasks and runs will appear here.
+                </p>
+              </div>
+            ) : !selectedTask ? (
               <div className="flex h-full min-h-[520px] flex-col items-center justify-center rounded-3xl border border-dashed border-white/10 bg-white/5 px-8 text-center">
                 <div className="rounded-full border border-cyan-400/20 bg-cyan-500/10 p-4 text-cyan-100">
                   <Rocket className="h-7 w-7" />
@@ -236,6 +283,8 @@ export function SquadOpsModal({
                       <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Selected task</div>
                       <h3 className="mt-2 text-xl font-semibold text-white">{selectedTask.title}</h3>
                       <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/45">
+                        <span>{squad?.name ?? "Selected squad"}</span>
+                        <span>•</span>
                         <span>{modeLabel(selectedTask.executionMode)}</span>
                         <span>•</span>
                         <span>{selectedTask.runs.length} runs</span>

@@ -1926,8 +1926,14 @@ export function OfficeScreen({
 
   const handleOpenSquadOps = useCallback(
     (squadId: string) => {
-      setSquadOpsSquadId(squadId);
+      setSquadOpsSquadId(squadId || null);
       setSquadOpsModalOpen(true);
+      setSquadOpsError(null);
+      if (!squadId) {
+        setSquadOpsTasks([]);
+        setSquadOpsSelectedTask(null);
+        return;
+      }
       void loadSquadOpsTasks(squadId);
     },
     [loadSquadOpsTasks],
@@ -5368,7 +5374,9 @@ export function OfficeScreen({
       />
       <SquadOpsModal
         open={squadOpsModalOpen}
+        squads={companySquads}
         squad={activeSquadOpsSquad}
+        selectedSquadId={squadOpsSquadId}
         tasks={squadOpsTasks}
         selectedTask={squadOpsSelectedTask}
         loading={squadOpsLoading}
@@ -5384,6 +5392,9 @@ export function OfficeScreen({
           if (squadOpsSquadId) {
             void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask?.id ?? null);
           }
+        }}
+        onSelectSquad={(squadId) => {
+          handleOpenSquadOps(squadId);
         }}
         onSelectTask={(taskId) => {
           void handleSelectSquadTask(taskId);
