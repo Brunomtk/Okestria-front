@@ -52,6 +52,7 @@ import type { OfficeDeskMonitor } from "@/lib/office/deskMonitor";
 import type { OfficeAnimationState } from "@/lib/office/eventTriggers";
 import type { StandupMeeting } from "@/lib/office/standup/types";
 import type { SkillStatusEntry } from "@/lib/skills/types";
+import type { SquadSummary } from "@/lib/squads/api";
 import { extractSpeechImage } from "@/lib/text/speech-image";
 import { MonitorImmersiveContent as MonitorImmersiveOverlay } from "@/features/retro-office/overlays/MonitorImmersiveContent";
 import {
@@ -1352,6 +1353,8 @@ export function RetroOffice3D({
   onStandupStartRequested,
   onMonitorSelect,
   onAgentChatSelect,
+  squads = [],
+  onSquadOps,
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
@@ -1443,6 +1446,8 @@ export function RetroOffice3D({
   onStandupStartRequested?: () => void;
   onMonitorSelect?: (agentId: string | null) => void;
   onAgentChatSelect?: (agentId: string) => void;
+  squads?: SquadSummary[];
+  onSquadOps?: (squadId: string) => void;
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
@@ -5003,7 +5008,7 @@ export function RetroOffice3D({
           </div>
 
           {agentRosterVisible ? (
-            <div className="absolute left-1/2 top-full mt-2 w-[min(92vw,560px)] -translate-x-1/2 rounded-2xl border border-amber-900/25 bg-[#120e08]/96 p-3 shadow-2xl backdrop-blur-sm">
+            <div className="absolute left-1/2 top-full mt-2 w-[min(92vw,640px)] -translate-x-1/2 rounded-2xl border border-amber-900/25 bg-[#120e08]/96 p-3 shadow-2xl backdrop-blur-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
@@ -5013,130 +5018,223 @@ export function RetroOffice3D({
                     Compact view for larger fleets.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setAgentRosterOpen(false)}
-                  className="rounded-full border border-amber-900/25 p-2 text-amber-200 transition-colors hover:border-amber-500/35 hover:text-white"
-                  aria-label="Close roster"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <div className="rounded-full border border-amber-900/25 bg-black/20 p-1">
+                    {(["agents", "squads"] as const).map((tab) => {
+                      const active = rosterTab === tab;
+                      const count = tab === "agents" ? agents.length : squads.length;
+
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => setRosterTab(tab)}
+                          className={`rounded-full px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors ${
+                            active
+                              ? "border border-amber-400/20 bg-amber-300/14 text-amber-100"
+                              : "text-amber-400/70 hover:text-white"
+                          }`}
+                        >
+                          {tab}
+                          <span className="ml-1 text-[9px] opacity-70">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setAgentRosterOpen(false)}
+                    className="rounded-full border border-amber-900/25 p-2 text-amber-200 transition-colors hover:border-amber-500/35 hover:text-white"
+                    aria-label="Close roster"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
 
-              <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
-                {agents.map((agent) => {
-                  const status = agentStatusLookup[agent.id];
-                  const isError = status?.isError ?? agent.status === "error";
-                  const working = status?.working ?? agent.status === "working";
-                  const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
-                  const dotClass = isError
-                    ? "bg-red-400"
-                    : working
-                      ? "bg-green-400"
-                      : "bg-yellow-400";
-                  const runCount = runCountByAgentId[agent.id] ?? 0;
-                  return (
-                    <div
-                      key={agent.id}
-                      className="flex items-center gap-2 rounded-xl border border-amber-900/20 bg-black/20 px-3 py-2"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSpotlightAgentId(agent.id);
-                          if (!isRemoteAgent) {
-                            onAgentEdit?.(agent.id);
-                          }
-                          setAgentRosterOpen(false);
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              {rosterTab === "agents" ? (
+                <div className="grid max-h-[min(60vh,420px)] gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+                  {agents.map((agent) => {
+                    const status = agentStatusLookup[agent.id];
+                    const isError = status?.isError ?? agent.status === "error";
+                    const working = status?.working ?? agent.status === "working";
+                    const isRemoteAgent = isRemoteOfficeAgentId(agent.id);
+                    const dotClass = isError
+                      ? "bg-red-400"
+                      : working
+                        ? "bg-green-400"
+                        : "bg-yellow-400";
+                    const runCount = runCountByAgentId[agent.id] ?? 0;
+                    return (
+                      <div
+                        key={agent.id}
+                        className="flex items-center gap-2 rounded-xl border border-amber-900/20 bg-black/20 px-3 py-2"
                       >
-                        <div
-                          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[#120e08]"
-                          style={{ backgroundColor: agent.color }}
-                        >
-                          {getAgentInitials(agent.name)}
-                          <span
-                            className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-[#120e08] ${dotClass}`}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-amber-100">
-                            {agent.name}
-                          </div>
-                          <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
-                            {isError ? "error" : working ? "working" : "idle"}
-                            {isRemoteAgent ? " · remote" : ""}
-                            {runCount > 0 ? ` · ${runCount} runs` : ""}
-                          </div>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        title={
-                          followAgentId === agent.id
-                            ? "Exit follow cam"
-                            : "Follow cam"
-                        }
-                        onClick={() =>
-                          setFollowAgentId((prev) =>
-                            prev === agent.id ? null : agent.id,
-                          )
-                        }
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                          followAgentId === agent.id
-                            ? "border-amber-200/30 bg-amber-100/10 text-white"
-                            : "border-amber-900/20 text-white/60 hover:border-amber-500/35 hover:text-white"
-                        }`}
-                      >
-                        <Camera size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        title={
-                          isRemoteAgent
-                            ? "Remote office is view only"
-                            : monitorAgentId === agent.id
-                              ? "Close desk monitor"
-                              : "Open desk monitor"
-                        }
-                        disabled={isRemoteAgent}
-                        onClick={() => {
-                          if (!isRemoteAgent) {
-                            onMonitorSelect?.(
-                              monitorAgentId === agent.id ? null : agent.id,
-                            );
-                          }
-                        }}
-                        className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
-                          isRemoteAgent
-                            ? "cursor-not-allowed border-white/10 text-white/25"
-                            : monitorAgentId === agent.id
-                              ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
-                              : "border-amber-900/20 text-white/60 hover:border-emerald-400/30 hover:text-emerald-200"
-                        }`}
-                      >
-                        <Monitor size={12} />
-                      </button>
-                      {onAgentDelete && !isRemoteAgent ? (
                         <button
                           type="button"
-                          title="Delete agent"
                           onClick={() => {
-                            onAgentDelete(agent.id);
+                            setSpotlightAgentId(agent.id);
+                            if (!isRemoteAgent) {
+                              onAgentEdit?.(agent.id);
+                            }
                             setAgentRosterOpen(false);
                           }}
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-900/30 text-red-300/70 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200"
+                          className="flex min-w-0 flex-1 items-center gap-3 text-left"
                         >
-                          <Trash2 size={12} />
+                          <div
+                            className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[#120e08]"
+                            style={{ backgroundColor: agent.color }}
+                          >
+                            {getAgentInitials(agent.name)}
+                            <span
+                              className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-[#120e08] ${dotClass}`}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-amber-100">
+                              {agent.name}
+                            </div>
+                            <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
+                              {isError ? "error" : working ? "working" : "idle"}
+                              {isRemoteAgent ? " · remote" : ""}
+                              {runCount > 0 ? ` · ${runCount} runs` : ""}
+                            </div>
+                          </div>
                         </button>
-                      ) : null}
+                        <button
+                          type="button"
+                          title={
+                            followAgentId === agent.id
+                              ? "Exit follow cam"
+                              : "Follow cam"
+                          }
+                          onClick={() =>
+                            setFollowAgentId((prev) =>
+                              prev === agent.id ? null : agent.id,
+                            )
+                          }
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                            followAgentId === agent.id
+                              ? "border-amber-200/30 bg-amber-100/10 text-white"
+                              : "border-amber-900/20 text-white/60 hover:border-amber-500/35 hover:text-white"
+                          }`}
+                        >
+                          <Camera size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          title={
+                            isRemoteAgent
+                              ? "Remote office is view only"
+                              : monitorAgentId === agent.id
+                                ? "Close desk monitor"
+                                : "Open desk monitor"
+                          }
+                          disabled={isRemoteAgent}
+                          onClick={() => {
+                            if (!isRemoteAgent) {
+                              onMonitorSelect?.(
+                                monitorAgentId === agent.id ? null : agent.id,
+                              );
+                            }
+                          }}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition-colors ${
+                            isRemoteAgent
+                              ? "cursor-not-allowed border-white/10 text-white/25"
+                              : monitorAgentId === agent.id
+                                ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-200"
+                                : "border-amber-900/20 text-white/60 hover:border-emerald-400/30 hover:text-emerald-200"
+                          }`}
+                        >
+                          <Monitor size={12} />
+                        </button>
+                        {onAgentDelete && !isRemoteAgent ? (
+                          <button
+                            type="button"
+                            title="Delete agent"
+                            onClick={() => {
+                              onAgentDelete(agent.id);
+                              setAgentRosterOpen(false);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-900/30 text-red-300/70 transition-colors hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-200"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="max-h-[min(60vh,420px)] space-y-2 overflow-y-auto pr-1">
+                  {squads.length > 0 ? (
+                    squads.map((squad) => {
+                      const leader = squad.members.find((member) => member.isLeader) ?? null;
+                      const onlineMembers = squad.members.filter((member) => member.gatewayAgentId).length;
+
+                      return (
+                        <div
+                          key={squad.id}
+                          className="rounded-xl border border-amber-900/20 bg-black/20 px-3 py-3"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-amber-100">
+                                {squad.name}
+                              </div>
+                              <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
+                                {squad.executionMode} · {onlineMembers}/{squad.members.length} online
+                              </div>
+                              <div className="mt-2 text-xs text-white/65">
+                                Leader: <span className="text-amber-100">{leader?.name ?? "Not set"}</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                title="Open squad chat"
+                                onClick={() => {
+                                  onAgentChatSelect?.(`squad:${squad.id}`);
+                                  setAgentRosterOpen(false);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/20 text-white/70 transition-colors hover:border-amber-500/35 hover:text-white"
+                              >
+                                <Monitor size={12} />
+                              </button>
+
+                              <button
+                                type="button"
+                                title="Open Squad ops"
+                                onClick={() => {
+                                  onSquadOps?.(squad.id);
+                                  setAgentRosterOpen(false);
+                                }}
+                                className="inline-flex h-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-300/10 px-3 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-100 transition-colors hover:border-amber-400/45 hover:bg-amber-300/15 hover:text-white"
+                              >
+                                Squad ops
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-amber-900/25 bg-black/10 px-4 py-8 text-center">
+                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-amber-500/70">
+                        No squads yet
+                      </div>
+                      <div className="mt-2 text-sm text-white/65">
+                        Create a squad to route tasks and open Squad ops from here.
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : null}
+          ) : null}          ) : null}
         </div>
       ) : null}
 

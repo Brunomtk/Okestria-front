@@ -4530,6 +4530,10 @@ export function OfficeScreen({
           onAgentChatSelect={(agentId) => {
             handleOpenAgentChat(agentId);
           }}
+          squads={companySquads}
+          onSquadOps={(squadId) => {
+            handleOpenSquadOps(squadId);
+          }}
           onAddAgent={handleOpenCreateModal}
           onAgentEdit={(agentId) => {
             openAgentEditor(agentId, "avatar");
