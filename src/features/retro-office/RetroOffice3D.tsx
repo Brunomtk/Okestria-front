@@ -5046,24 +5046,24 @@ export function RetroOffice3D({
       ) : null}
 
       {!readOnly && !immersiveOverlayActive ? (
-        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col gap-2`}>
-          <div className="flex max-w-[min(92vw,760px)] flex-wrap items-center gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 px-3 py-2 shadow-2xl backdrop-blur-md">
-            <div className="min-w-0 pr-2">
-              <div className="truncate font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">
+        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col gap-1.5`}>
+          <div className="flex max-w-[min(92vw,520px)] flex-wrap items-center gap-1.5 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 px-2.5 py-2 shadow-2xl backdrop-blur-md">
+            <div className="min-w-0 pr-1.5">
+              <div className="truncate font-mono text-[9px] uppercase tracking-[0.16em] text-amber-500/70">
                 {officeTitleLoaded ? officeTitle : "Office HQ"}
               </div>
-              <div className="text-[11px] text-amber-100/55">
+              <div className="text-[10px] text-amber-100/50">
                 {agents.length} agents • {squads.length} squads
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1">
               <button
                 type="button"
                 onClick={() => {
                   setAgentRosterOpen(true);
                   setRosterTab("agents");
                 }}
-                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+                className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
               >
                 Agents {agents.length}
               </button>
@@ -5073,38 +5073,38 @@ export function RetroOffice3D({
                   setAgentRosterOpen(true);
                   setRosterTab("squads");
                 }}
-                className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+                className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
               >
                 Squads {squads.length}
               </button>
             </div>
-            <div className="ml-auto flex flex-wrap items-center gap-1.5">
-              {compactRosterAgents.map((agent) => (
+            <div className="ml-auto flex flex-wrap items-center gap-1">
+              {compactRosterAgents.slice(0, 2).map((agent) => (
                 <button
                   key={agent.id}
                   type="button"
                   onClick={() => onAgentChatSelect?.(agent.id)}
-                  className="rounded-full border border-amber-900/25 bg-[#1c1610]/75 px-2 py-1 text-[10px] text-amber-100/75 transition-all hover:border-amber-400/35 hover:text-white"
+                  className="max-w-[120px] truncate rounded-full border border-amber-900/25 bg-[#1c1610]/75 px-2 py-1 text-[9px] text-amber-100/70 transition-all hover:border-amber-400/35 hover:text-white"
                   title={agent.name}
                 >
                   {agent.name}
                 </button>
               ))}
-              {hiddenAgentCount > 0 ? (
-                <span className="rounded-full border border-amber-900/25 bg-black/20 px-2 py-1 text-[10px] text-amber-100/50">+{hiddenAgentCount}</span>
+              {(hiddenAgentCount > 0 || compactRosterAgents.length > 2) ? (
+                <span className="rounded-full border border-amber-900/25 bg-black/20 px-2 py-1 text-[9px] text-amber-100/50">+{hiddenAgentCount + Math.max(compactRosterAgents.length - 2, 0)}</span>
               ) : null}
             </div>
           </div>
 
           {/* Camera presets — top left. */}
-          <div className="w-[min(92vw,320px)] rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2 shadow-2xl backdrop-blur-md">
-            <div className="mb-2 flex items-start justify-between gap-3">
+          <div className="w-[min(92vw,270px)] rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-2 shadow-2xl backdrop-blur-md">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
               <div>
-                <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-amber-500/70">
-                  Office view
+                <div className="font-mono text-[8px] uppercase tracking-[0.16em] text-amber-500/70">
+                  Camera
                 </div>
-                <div className="mt-1 text-xs font-semibold leading-5 text-amber-100">
-                  Quick camera presets.
+                <div className="mt-0.5 text-[11px] font-semibold leading-4 text-amber-100">
+                  Quick view
                 </div>
               </div>
               {editMode ? (
@@ -5114,7 +5114,7 @@ export function RetroOffice3D({
               ) : null}
             </div>
 
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-3 gap-1">
               {(
                 [
                   {
@@ -5147,7 +5147,7 @@ export function RetroOffice3D({
                       setActiveCameraPresetKey(key);
                       cameraPresetRef.current = cameraPresetMap[key];
                     }}
-                    className={`group flex min-h-[50px] flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center transition-all active:scale-[0.98] ${
+                    className={`group flex min-h-[42px] flex-col items-center justify-center gap-0.5 rounded-xl border px-1 py-1.5 text-center transition-all active:scale-[0.98] ${
                       active
                         ? "border-amber-400/45 bg-amber-300/12 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
                         : "border-amber-900/25 bg-[#1c1610]/80 text-amber-500/70 hover:border-amber-500/35 hover:bg-[#261d15] hover:text-amber-200"
@@ -5155,7 +5155,7 @@ export function RetroOffice3D({
                     style={{ touchAction: "manipulation" }}
                   >
                     <span
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg border ${
+                      className={`flex h-6 w-6 items-center justify-center rounded-lg border ${
                         active
                           ? "border-amber-300/35 bg-amber-300/10"
                           : "border-amber-900/20 bg-black/20"
@@ -5163,10 +5163,10 @@ export function RetroOffice3D({
                     >
                       {icon}
                     </span>
-                    <span className="text-[9px] font-semibold uppercase tracking-[0.12em]">
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.1em]">
                       {title}
                     </span>
-                    <span className="text-[8px] text-white/45 group-hover:text-white/60">
+                    <span className="text-[7px] text-white/40 group-hover:text-white/55">
                       {subtitle}
                     </span>
                   </button>
@@ -5297,14 +5297,14 @@ export function RetroOffice3D({
                 <button
                   type="button"
                   onClick={() => setRosterTab("agents")}
-                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
                 >
                   Agents
                 </button>
                 <button
                   type="button"
                   onClick={() => setRosterTab("squads")}
-                  className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
                 >
                   Squads
                 </button>
