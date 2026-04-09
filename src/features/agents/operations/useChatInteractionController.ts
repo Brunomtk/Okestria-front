@@ -12,7 +12,7 @@ import {
   type ChatSendPayload,
 } from "@/features/agents/operations/chatSendOperation";
 import { mergePendingLivePatch } from "@/features/agents/state/livePatchQueue";
-import { buildClearChatOnlyAgentPatch, type AgentState } from "@/features/agents/state/store";
+import { buildNewSessionAgentPatch, type AgentState } from "@/features/agents/state/store";
 import type { GatewayStatus } from "@/lib/gateway/GatewayClient";
 
 type ChatInteractionDispatchAction =
@@ -423,9 +423,25 @@ export function useChatInteractionController(
         if (newSessionIntent.kind === "deny") {
           throw new Error(newSessionIntent.message);
         }
-        const patch = buildClearChatOnlyAgentPatch(agent);
+        const buildFreshSessionKey = (currentSessionKey: string) => {
+          const trimmed = currentSessionKey.trim();
+          if (!trimmed) return trimmed;
+          const parts = trimmed.split(":");
+          const stablePrefix = parts.length >= 3 ? parts.slice(0, 3).join(":") : trimmed;
+          return `${stablePrefix}:session-${Date.now().toString(36)}`;
+        };
+
+        try {
+          await params.client.call("chat.abort", {
+            sessionKey: newSessionIntent.sessionKey,
+          });
+        } catch {}
+
+        const nextSessionKey = buildFreshSessionKey(newSessionIntent.sessionKey);
+        const patch = buildNewSessionAgentPatch(agent, nextSessionKey);
         params.clearRunTracking(agent.runId);
         params.clearHistoryInFlight(newSessionIntent.sessionKey);
+        params.clearHistoryInFlight(nextSessionKey);
         params.clearSpecialUpdateMarker(agentId);
         params.clearSpecialLatestUpdateInFlight(agentId);
         params.dispatch({

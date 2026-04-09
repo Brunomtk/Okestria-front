@@ -74,9 +74,12 @@ export type AgentState = AgentStoreSeed & {
   lastAppliedHistoryRequestId?: string | null;
 };
 
-export const buildNewSessionAgentPatch = (agent: AgentState): Partial<AgentState> => {
+export const buildNewSessionAgentPatch = (
+  agent: AgentState,
+  nextSessionKey: string
+): Partial<AgentState> => {
   return {
-    sessionKey: agent.sessionKey,
+    sessionKey: nextSessionKey,
     status: "idle",
     runId: null,
     runStartedAt: null,
@@ -99,8 +102,8 @@ export const buildNewSessionAgentPatch = (agent: AgentState): Partial<AgentState
     historyMaybeTruncated: false,
     awaitingUserInput: false,
     hasUnseenActivity: false,
-    sessionCreated: true,
-    sessionSettingsSynced: true,
+    sessionCreated: false,
+    sessionSettingsSynced: false,
     transcriptEntries: [],
     transcriptRevision: (agent.transcriptRevision ?? 0) + 1,
     transcriptSequenceCounter: 0,

@@ -1903,7 +1903,7 @@ export const AgentChatPanel = ({
                   Clearing the chat removes the visible conversation and may cause the agent to lose chat learning and context from this thread.
                 </p>
                 <p className="mt-2 text-[11px] leading-5 text-cyan-200/75">
-                  Token usage will continue counting for the current session.
+                  A brand-new runtime session will be created and the previous conversation context will no longer be used.
                 </p>
               </div>
             </div>
@@ -1925,7 +1925,7 @@ export const AgentChatPanel = ({
                 }}
                 disabled={newSessionBusy}
               >
-                {newSessionBusy ? "Clearing..." : "Yes, clear chat"}
+                {newSessionBusy ? "Clearing..." : "Yes, start new session"}
               </button>
             </div>
           </div>
