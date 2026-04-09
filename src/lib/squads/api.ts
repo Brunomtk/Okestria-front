@@ -259,14 +259,16 @@ export const createCompanySquad = async (params: {
         `/api/Squads/${encodeURIComponent(squadId)}/members`,
         {
           method: "PUT",
-          body: JSON.stringify({
-            squadId,
-            companyId,
-            leaderAgentId: leaderBackendAgentId,
-            executionMode,
-            members: memberBackendIds.map((agentId) => ({ agentId })),
-            memberAgentIds: memberBackendIds,
-          }),
+          body: JSON.stringify(
+            normalizedMembers
+              .filter((member): member is typeof member & { backendAgentId: number } => typeof member.backendAgentId === "number")
+              .map((member, index) => ({
+                agentId: member.backendAgentId,
+                order: index,
+                isLeader: member.gatewayAgentId === leaderGatewayAgentId,
+                canReceiveTasks: true,
+              })),
+          ),
         },
         params.token,
       ).catch(() => null);
