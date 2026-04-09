@@ -862,6 +862,8 @@ export function OfficeScreen({
   const companyScopedAgentIdsRef = useRef<string[] | null>(null);
   const companyScopedAgentSlugsRef = useRef<string[] | null>(null);
   const lastCompanyScopedAgentIdsLoadAtRef = useRef(0);
+  const emptyFleetSinceRef = useRef<number | null>(null);
+  const [emptyFleetGraceElapsed, setEmptyFleetGraceElapsed] = useState(false);
   const [didAttemptGatewayConnect, setDidAttemptGatewayConnect] = useState(false);
   const [hasConnectedOnce, setHasConnectedOnce] = useState(false);
   const [showGatewayErrorModal, setShowGatewayErrorModal] = useState(false);
@@ -1338,10 +1340,39 @@ export function OfficeScreen({
     }
     try {
       const scope = await fetchCompanyAgentScope();
-      companyScopedAgentIdsRef.current = scope.gatewayAgentIds;
-      companyScopedAgentSlugsRef.current = scope.agentSlugs;
+      const nextGatewayAgentIds = scope.gatewayAgentIds;
+      const nextAgentSlugs = scope.agentSlugs;
+      const previousGatewayAgentIds = companyScopedAgentIdsRef.current;
+      const previousAgentSlugs = companyScopedAgentSlugsRef.current;
+      const shouldPreservePreviousScope =
+        Array.isArray(previousGatewayAgentIds) &&
+        Array.isArray(previousAgentSlugs) &&
+        (previousGatewayAgentIds.length > 0 || previousAgentSlugs.length > 0) &&
+        nextGatewayAgentIds.length === 0 &&
+        nextAgentSlugs.length === 0 &&
+        scope.hasAgentsInCompany !== false;
+
+      if (shouldPreservePreviousScope) {
+        console.warn(
+          "Company agent scope refresh returned empty after the office was already hydrated. Preserving the previous scope and retrying silently.",
+          scope,
+        );
+        window.setTimeout(() => {
+          void loadCompanyScopedAgentScope(true);
+        }, 3_000);
+        return {
+          gatewayAgentIds: previousGatewayAgentIds,
+          agentSlugs: previousAgentSlugs,
+          hasAgentsInCompany: true,
+          usedCachedScope: true,
+          isStale: true,
+        };
+      }
+
+      companyScopedAgentIdsRef.current = nextGatewayAgentIds;
+      companyScopedAgentSlugsRef.current = nextAgentSlugs;
       lastCompanyScopedAgentIdsLoadAtRef.current = now;
-      setCompanyScopedAgentIds(scope.gatewayAgentIds);
+      setCompanyScopedAgentIds(nextGatewayAgentIds);
       return scope;
     } catch (error) {
       if (
@@ -1352,6 +1383,9 @@ export function OfficeScreen({
         return {
           gatewayAgentIds: companyScopedAgentIdsRef.current,
           agentSlugs: companyScopedAgentSlugsRef.current,
+          hasAgentsInCompany: companyScopedAgentIdsRef.current.length > 0 || companyScopedAgentSlugsRef.current.length > 0,
+          usedCachedScope: true,
+          isStale: true,
         };
       }
       throw error;
@@ -2253,6 +2287,36 @@ export function OfficeScreen({
       lastGatewayActivityAtRef.current = 0;
     }
   }, [hydrateAgents, status]);
+
+  useEffect(() => {
+    if (status !== "connected" || !agentsLoaded || state.agents.length > 0) {
+      emptyFleetSinceRef.current = null;
+      setEmptyFleetGraceElapsed(false);
+      return;
+    }
+
+    if (emptyFleetSinceRef.current === null) {
+      emptyFleetSinceRef.current = Date.now();
+    }
+
+    const retryTimerId = window.setTimeout(() => {
+      void loadCompanyScopedAgentScope(true);
+      void loadAgents({
+        forceSettings: true,
+        silent: true,
+        minIntervalMs: 1_500,
+      });
+    }, 4_000);
+
+    const bannerTimerId = window.setTimeout(() => {
+      setEmptyFleetGraceElapsed(true);
+    }, 12_000);
+
+    return () => {
+      window.clearTimeout(retryTimerId);
+      window.clearTimeout(bannerTimerId);
+    };
+  }, [agentsLoaded, loadAgents, loadCompanyScopedAgentScope, state.agents.length, status]);
 
   useEffect(() => {
     if (!agentsLoaded) return;
@@ -4306,10 +4370,14 @@ export function OfficeScreen({
     (agent) => agent.hasUnseenActivity,
   ).length;
   const showEmptyFleetBanner =
-    status === "connected" && agentsLoaded && state.agents.length === 0;
+    status === "connected" &&
+    agentsLoaded &&
+    state.agents.length === 0 &&
+    emptyFleetGraceElapsed &&
+    !state.loading;
   const emptyFleetMessage =
     state.error?.trim() ||
-    "Connected to the gateway, but no agents were loaded into the office.";
+    "Connected to the gateway, but the office fleet is still resyncing. No agents were loaded after multiple retries.";
 
   return (
     <main className="h-full w-full overflow-hidden bg-black">

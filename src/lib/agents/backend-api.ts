@@ -47,6 +47,22 @@ export type BackendAgentDetails = BackendAgentSummary & {
 export type CompanyAgentScope = {
   gatewayAgentIds: string[];
   agentSlugs: string[];
+  hasAgentsInCompany?: boolean;
+  usedCachedScope?: boolean;
+  isStale?: boolean;
+  generatedAtUtc?: string | null;
+  cachedAtUtc?: string | null;
+};
+
+type BackendCompanyAgentScopeResponse = {
+  companyId?: number;
+  hasAgentsInCompany?: boolean;
+  usedCachedScope?: boolean;
+  isStale?: boolean;
+  generatedAtUtc?: string | null;
+  cachedAtUtc?: string | null;
+  gatewayAgentIds?: string[] | null;
+  agentSlugs?: string[] | null;
 };
 
 const parseCookieValue = (name: string) => {
@@ -196,25 +212,64 @@ export const fetchCompanyAgentScope = async (params?: {
   token?: string | null;
 }): Promise<CompanyAgentScope> => {
   const companyId = params?.companyId ?? getBrowserCompanyId();
-  if (!companyId) return { gatewayAgentIds: [], agentSlugs: [] };
+  if (!companyId) return { gatewayAgentIds: [], agentSlugs: [], hasAgentsInCompany: false };
   const token = params?.token;
-  const companyAgents = await fetchCompanyAgents(companyId, token);
-  const details = await Promise.all(
-    companyAgents.map(async (agent) => {
-      try {
-        return await fetchCompanyAgentDetails(agent.id, token);
-      } catch {
-        return null;
-      }
-    })
-  );
-  const gatewayAgentIds = details
-    .map((entry) => (entry ? extractGatewayAgentId(entry) : null))
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const agentSlugs = companyAgents
-    .map((agent) => (typeof agent.slug === "string" ? agent.slug.trim().toLowerCase() : ""))
-    .filter((value) => value.length > 0);
-  return { gatewayAgentIds, agentSlugs };
+
+  try {
+    const response = await requestBackendJson<BackendCompanyAgentScopeResponse>(
+      `/api/Agents/company-scope/${companyId}`,
+      undefined,
+      token,
+    );
+
+    const gatewayAgentIds = Array.isArray(response.gatewayAgentIds)
+      ? response.gatewayAgentIds
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter((value) => value.length > 0)
+      : [];
+    const agentSlugs = Array.isArray(response.agentSlugs)
+      ? response.agentSlugs
+          .map((value) => (typeof value === "string" ? value.trim().toLowerCase() : ""))
+          .filter((value) => value.length > 0)
+      : [];
+
+    return {
+      gatewayAgentIds,
+      agentSlugs,
+      hasAgentsInCompany: response.hasAgentsInCompany === true,
+      usedCachedScope: response.usedCachedScope === true,
+      isStale: response.isStale === true,
+      generatedAtUtc: response.generatedAtUtc ?? null,
+      cachedAtUtc: response.cachedAtUtc ?? null,
+    };
+  } catch (scopeError) {
+    const companyAgents = await fetchCompanyAgents(companyId, token);
+    const details = await Promise.all(
+      companyAgents.map(async (agent) => {
+        try {
+          return await fetchCompanyAgentDetails(agent.id, token);
+        } catch {
+          return null;
+        }
+      })
+    );
+    const gatewayAgentIds = details
+      .map((entry) => (entry ? extractGatewayAgentId(entry) : null))
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    const agentSlugs = companyAgents
+      .map((agent) => (typeof agent.slug === "string" ? agent.slug.trim().toLowerCase() : ""))
+      .filter((value) => value.length > 0);
+
+    if (companyAgents.length > 0) {
+      console.warn("Falling back to legacy company agent scope loading.", scopeError);
+    }
+
+    return {
+      gatewayAgentIds,
+      agentSlugs,
+      hasAgentsInCompany: companyAgents.length > 0,
+    };
+  }
 };
 
 export const fetchCompanyGatewayAgentIds = async (params?: {
