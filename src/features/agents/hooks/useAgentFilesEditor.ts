@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -6,12 +5,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentState } from "@/features/agents/state/store";
 import type { GatewayClient } from "@/lib/gateway/GatewayClient";
 import { readGatewayAgentFile, writeGatewayAgentFile } from "@/lib/gateway/agentFiles";
-import {
-  extractGatewayAgentId,
-  fetchCompanyAgentDetails,
-  fetchCompanyAgents,
-  getBrowserCompanyId,
-} from "@/lib/agents/backend-api";
 import {
   AGENT_FILE_NAMES,
   type AgentFileName,
@@ -50,8 +43,6 @@ const slugifyGatewayCandidate = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 
-const normalizeName = (value: string | null | undefined) => (typeof value === "string" ? value.trim().toLowerCase() : "");
-
 const isUnknownAgentIdError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return message.toLowerCase().includes("unknown agent id");
@@ -71,8 +62,6 @@ export const useAgentFilesEditor = (params: {
   const [agentFilesError, setAgentFilesError] = useState<string | null>(null);
   const [resolvedGatewayAgentId, setResolvedGatewayAgentId] = useState<string | null>(null);
   const savedAgentFilesRef = useRef<AgentFilesState>(createAgentFilesState());
-  const backendRecoveredAgentIdRef = useRef<string | null>(null);
-
   const candidateAgentIds = useMemo(() => {
     const candidates = new Set<string>();
     const push = (value: string | null | undefined) => {
@@ -93,12 +82,7 @@ export const useAgentFilesEditor = (params: {
   }, [agentId, agents, selectedAgent]);
 
   const resolveWorkingGatewayAgentId = useCallback(async () => {
-    const directAgentId =
-      resolvedGatewayAgentId?.trim() ||
-      backendRecoveredAgentIdRef.current?.trim() ||
-      agentId?.trim() ||
-      selectedAgent?.agentId?.trim() ||
-      "";
+    const directAgentId = resolvedGatewayAgentId?.trim() || agentId?.trim() || selectedAgent?.agentId?.trim() || "";
     if (!client) {
       throw new Error("Gateway client is not available.");
     }
@@ -112,60 +96,8 @@ export const useAgentFilesEditor = (params: {
     throw new Error("Agent ID is missing for this agent.");
   }, [agentId, client, resolvedGatewayAgentId, selectedAgent]);
 
-  const recoverGatewayAgentIdFromBackend = useCallback(async () => {
-    const companyId = getBrowserCompanyId();
-    if (!companyId) return null;
-
-    try {
-      const companyAgents = await fetchCompanyAgents(companyId);
-      const selectedName = normalizeName(selectedAgent?.name);
-      const selectedSlug = selectedAgent?.name ? slugifyGatewayCandidate(selectedAgent.name) : "";
-      const directCandidateSet = new Set(candidateAgentIds.map((value) => value.trim()).filter(Boolean));
-
-      for (const agent of companyAgents) {
-        try {
-          const details = await fetchCompanyAgentDetails(agent.id);
-          const gatewayId = extractGatewayAgentId(details)?.trim() ?? "";
-          if (!gatewayId) continue;
-
-          const backendName = normalizeName(details.name ?? agent.name ?? null);
-          const backendSlug = normalizeName(details.slug ?? agent.slug ?? null);
-
-          const matchesByGatewayId = directCandidateSet.has(gatewayId);
-          const matchesByName =
-            selectedName.length > 0 && (backendName === selectedName || normalizeName(gatewayId) === selectedName);
-          const matchesBySlug =
-            selectedSlug.length > 0 &&
-            (backendSlug === selectedSlug ||
-              slugifyGatewayCandidate(details.name ?? agent.name ?? "") === selectedSlug ||
-              slugifyGatewayCandidate(gatewayId) === selectedSlug);
-
-          if (!matchesByGatewayId && !matchesByName && !matchesBySlug) {
-            continue;
-          }
-
-          backendRecoveredAgentIdRef.current = gatewayId;
-          setResolvedGatewayAgentId(gatewayId);
-          return gatewayId;
-        } catch {
-          // ignore one broken record and continue
-        }
-      }
-    } catch {
-      // ignore backend lookup issues and fall back to gateway-only recovery
-    }
-
-    return null;
-  }, [candidateAgentIds, selectedAgent]);
-
   const recoverGatewayAgentId = useCallback(async () => {
     if (!client) return null;
-
-    const backendResolved = await recoverGatewayAgentIdFromBackend();
-    if (backendResolved) {
-      return backendResolved;
-    }
-
     try {
       const response = (await client.call("agents.list", {})) as AgentsListResult;
       const gatewayAgents = Array.isArray(response?.agents) ? response.agents : [];
@@ -197,7 +129,7 @@ export const useAgentFilesEditor = (params: {
     } catch {
       return null;
     }
-  }, [candidateAgentIds, client, recoverGatewayAgentIdFromBackend, selectedAgent]);
+  }, [candidateAgentIds, client, selectedAgent]);
 
   const cloneAgentFilesState = useCallback((source: AgentFilesState): AgentFilesState => {
     const next = createAgentFilesState();
@@ -241,7 +173,7 @@ export const useAgentFilesEditor = (params: {
         }
         const recoveredAgentId = await recoverGatewayAgentId();
         if (!recoveredAgentId) {
-          throw new Error("Não consegui localizar esse agente no gateway conectado. Atualize a lista de agents e tente novamente.");
+          throw new Error("This agent is not available in the connected gateway anymore. Refresh the office roster and try again.");
         }
         trimmedAgentId = recoveredAgentId;
         results = await Promise.all(
@@ -264,14 +196,13 @@ export const useAgentFilesEditor = (params: {
       savedAgentFilesRef.current = nextState;
       setAgentFiles(nextState);
       setAgentFilesDirty(false);
-      setResolvedGatewayAgentId(trimmedAgentId);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load agent files.";
       setAgentFilesError(message);
     } finally {
       setAgentFilesLoading(false);
     }
-  }, [client, recoverGatewayAgentId, resolveWorkingGatewayAgentId]);
+  }, [agentId, client, recoverGatewayAgentId, resolveWorkingGatewayAgentId]);
 
   const saveAgentFiles = useCallback(async () => {
     setAgentFilesSaving(true);
@@ -306,7 +237,7 @@ export const useAgentFilesEditor = (params: {
         }
         const recoveredAgentId = await recoverGatewayAgentId();
         if (!recoveredAgentId) {
-          throw new Error("Não consegui localizar esse agente no gateway conectado. Atualize a lista de agents e tente novamente.");
+          throw new Error("This agent is not available in the connected gateway anymore. Refresh the office roster and try again.");
         }
         trimmedAgentId = recoveredAgentId;
         await Promise.all(
@@ -332,7 +263,6 @@ export const useAgentFilesEditor = (params: {
       savedAgentFilesRef.current = nextState;
       setAgentFiles(nextState);
       setAgentFilesDirty(false);
-      setResolvedGatewayAgentId(trimmedAgentId);
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to save agent files.";
@@ -341,7 +271,7 @@ export const useAgentFilesEditor = (params: {
     } finally {
       setAgentFilesSaving(false);
     }
-  }, [agentFiles, client, recoverGatewayAgentId, resolveWorkingGatewayAgentId]);
+  }, [agentFiles, agentId, client, recoverGatewayAgentId, resolveWorkingGatewayAgentId]);
 
   const setAgentFileContent = useCallback((name: AgentFileName, value: string) => {
     if (!isAgentFileName(name)) return;
@@ -361,20 +291,14 @@ export const useAgentFilesEditor = (params: {
 
   useEffect(() => {
     setResolvedGatewayAgentId(null);
-    backendRecoveredAgentIdRef.current = null;
-  }, [agentId, selectedAgent?.agentId, selectedAgent?.name]);
+  }, [agentId, selectedAgent?.name]);
 
   useEffect(() => {
     void loadAgentFiles();
   }, [loadAgentFiles]);
 
   return {
-    activeGatewayAgentId:
-      resolvedGatewayAgentId?.trim() ||
-      backendRecoveredAgentIdRef.current?.trim() ||
-      agentId?.trim() ||
-      selectedAgent?.agentId?.trim() ||
-      null,
+    activeGatewayAgentId: resolvedGatewayAgentId?.trim() || agentId?.trim() || selectedAgent?.agentId?.trim() || null,
     agentFiles,
     agentFilesLoading,
     agentFilesSaving,

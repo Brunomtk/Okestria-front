@@ -1,9 +1,9 @@
 "use client";
 
-import { useGLTF } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { SCALE } from "@/features/retro-office/core/constants";
 import {
   FURNITURE_ROTATION,
@@ -162,6 +162,127 @@ const SHADOW_CASTING_FURNITURE_TYPES = new Set([
 
 const furnitureTemplateCache = new Map<string, THREE.Object3D>();
 
+const gltfSceneCache = new Map<string, THREE.Object3D | null>();
+const gltfLoadErrorCache = new Set<string>();
+
+const resolveFurnitureAssetPath = (path: string) => {
+  if (!path.startsWith("/")) return path;
+  if (typeof window === "undefined") return path;
+  const basePath = (process.env.NEXT_PUBLIC_BASE_PATH ?? "").trim();
+  const normalizedBasePath = basePath && basePath !== "/"
+    ? `${basePath.startsWith("/") ? basePath : `/${basePath}`}`.replace(/\/$/, "")
+    : "";
+  return `${normalizedBasePath}${path}`;
+};
+
+function useFurnitureScene(glbPath: string) {
+  const resolvedPath = useMemo(() => resolveFurnitureAssetPath(glbPath), [glbPath]);
+  const [scene, setScene] = useState<THREE.Object3D | null>(() => gltfSceneCache.get(resolvedPath) ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (gltfSceneCache.has(resolvedPath)) {
+      setScene(gltfSceneCache.get(resolvedPath) ?? null);
+      return;
+    }
+
+    const loader = new GLTFLoader();
+    loader.load(
+      resolvedPath,
+      (gltf) => {
+        if (cancelled) return;
+        gltfSceneCache.set(resolvedPath, gltf.scene);
+        gltfLoadErrorCache.delete(resolvedPath);
+        setScene(gltf.scene);
+      },
+      undefined,
+      (error) => {
+        if (cancelled) return;
+        gltfSceneCache.set(resolvedPath, null);
+        if (!gltfLoadErrorCache.has(resolvedPath)) {
+          gltfLoadErrorCache.add(resolvedPath);
+          console.error(`Could not load furniture model ${resolvedPath}. Rendering fallback geometry instead.`, error);
+        }
+        setScene(null);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedPath]);
+
+  return { scene, resolvedPath };
+}
+
+function FurnitureFallback({
+  itemType,
+  itemColor,
+  opacity = 1,
+}: {
+  itemType: string;
+  itemColor?: string | null;
+  opacity?: number;
+}) {
+  const tint = itemColor ?? FURNITURE_TINT[itemType] ?? "#64748b";
+  const [sx, sy, sz] = FURNITURE_SCALE[itemType] ?? [1, 1, 1];
+  const safeScale: [number, number, number] = [
+    Math.max(0.3, sx * 0.45),
+    Math.max(0.2, sy * 0.35),
+    Math.max(0.3, sz * 0.45),
+  ];
+
+  return (
+    <group>
+      <mesh castShadow receiveShadow scale={safeScale}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color={tint} transparent={opacity < 1} opacity={opacity} roughness={0.7} metalness={0.08} />
+      </mesh>
+    </group>
+  );
+}
+
+function InstancedFurnitureFallback({
+  itemType,
+  items,
+  onItemClick,
+}: {
+  itemType: string;
+  items: FurnitureItem[];
+  onItemClick?: (itemUid: string) => void;
+}) {
+  return (
+    <>
+      {items.map((item) => {
+        const [wx, , wz] = toWorld(item.x, item.y);
+        const yOffset = (FURNITURE_Y_OFFSET[itemType] ?? 0) + (item.elevation ?? 0);
+        const rotY = getItemRotationRadians(item);
+        const { width, height } = getItemBaseSize(item);
+        const pivotX = width * SCALE * 0.5;
+        const pivotZ = height * SCALE * 0.5;
+
+        return (
+          <group
+            key={item._uid}
+            position={[wx, yOffset, wz]}
+            onClick={(event) => {
+              event.stopPropagation();
+              onItemClick?.(item._uid);
+            }}
+          >
+            <group position={[pivotX, 0, pivotZ]} rotation={[0, rotY, 0]}>
+              <group position={[-pivotX, 0, -pivotZ]}>
+                <FurnitureFallback itemType={itemType} itemColor={item.color} />
+              </group>
+            </group>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
+
 type InstancedFurnitureMeshDef = {
   castShadow: boolean;
   geometry: THREE.BufferGeometry;
@@ -246,19 +367,22 @@ export function InstancedFurnitureItems({
   onItemClick?: (itemUid: string) => void;
 }) {
   const glbPath = FURNITURE_GLB[itemType] ?? FURNITURE_GLB.table_rect;
-  const { scene } = useGLTF(glbPath);
+  const { scene } = useFurnitureScene(glbPath);
   const template = useMemo(
     () =>
-      resolveFurnitureTemplate({
-        glbPath,
-        itemColor: undefined,
-        itemType,
-        scene,
-      }),
+      scene
+        ? resolveFurnitureTemplate({
+            glbPath,
+            itemColor: undefined,
+            itemType,
+            scene,
+          })
+        : null,
     [glbPath, itemType, scene],
   );
   const meshRefs = useRef<Array<THREE.InstancedMesh | null>>([]);
   const meshDefs = useMemo<InstancedFurnitureMeshDef[]>(() => {
+    if (!template) return [];
     template.updateMatrixWorld(true);
     const nextDefs: InstancedFurnitureMeshDef[] = [];
     template.traverse((child) => {
@@ -313,6 +437,9 @@ export function InstancedFurnitureItems({
   }, [itemMatrices, meshDefs]);
 
   if (items.length === 0) return null;
+  if (!template || meshDefs.length === 0) {
+    return <InstancedFurnitureFallback itemType={itemType} items={items} onItemClick={onItemClick} />;
+  }
 
   return (
     <>
@@ -344,18 +471,20 @@ export function FurnitureModel({
 }: InteractiveFurnitureModelProps) {
   const itemType = resolveItemTypeKey(item);
   const glbPath = FURNITURE_GLB[itemType] ?? FURNITURE_GLB.table_rect;
-  const { scene } = useGLTF(glbPath);
+  const { scene } = useFurnitureScene(glbPath);
   const template = useMemo(
     () =>
-      resolveFurnitureTemplate({
-        glbPath,
-        itemColor: item.color,
-        itemType,
-        scene,
-      }),
+      scene
+        ? resolveFurnitureTemplate({
+            glbPath,
+            itemColor: item.color,
+            itemType,
+            scene,
+          })
+        : null,
     [glbPath, item.color, itemType, scene],
   );
-  const cloned = useMemo(() => template.clone(true), [template]);
+  const cloned = useMemo(() => template?.clone(true) ?? null, [template]);
   const [wx, , wz] = toWorld(item.x, item.y);
   const yOffset = (FURNITURE_Y_OFFSET[itemType] ?? 0) + (item.elevation ?? 0);
   const scale = FURNITURE_SCALE[itemType] ?? [1, 1, 1];
@@ -365,6 +494,7 @@ export function FurnitureModel({
   const pivotZ = height * SCALE * 0.5;
 
   useEffect(() => {
+    if (!cloned) return;
     const highlightActive = isSelected || (isHovered && editMode);
     cloned.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
@@ -424,7 +554,7 @@ export function FurnitureModel({
     >
       <group position={[pivotX, 0, pivotZ]} rotation={[0, rotY, 0]}>
         <group position={[-pivotX, 0, -pivotZ]} scale={scale}>
-          <primitive object={cloned} />
+          {cloned ? <primitive object={cloned} /> : <FurnitureFallback itemType={itemType} itemColor={item.color} />}
         </group>
       </group>
     </group>
@@ -439,15 +569,17 @@ export function PlacementGhost({
   position: [number, number, number];
 }) {
   const glbPath = FURNITURE_GLB[itemType] ?? FURNITURE_GLB.table_rect;
-  const { scene } = useGLTF(glbPath);
+  const { scene } = useFurnitureScene(glbPath);
   const template = useMemo(
     () =>
-      resolveFurnitureTemplate({
-        glbPath,
-        itemColor: undefined,
-        itemType,
-        scene,
-      }),
+      scene
+        ? resolveFurnitureTemplate({
+            glbPath,
+            itemColor: undefined,
+            itemType,
+            scene,
+          })
+        : null,
     [glbPath, itemType, scene],
   );
   const cloned = useMemo(() => template.clone(true), [template]);
@@ -456,7 +588,7 @@ export function PlacementGhost({
 
   return (
     <group position={position} rotation={[0, rotY, 0]} scale={scale}>
-      <primitive object={cloned} />
+      {cloned ? <primitive object={cloned} /> : <FurnitureFallback itemType={itemType} opacity={0.5} />}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
         <planeGeometry args={[0.8, 0.8]} />
         <meshBasicMaterial color="#fbbf24" transparent opacity={0.25} />
@@ -465,4 +597,3 @@ export function PlacementGhost({
   );
 }
 
-[...new Set(Object.values(FURNITURE_GLB))].forEach((path) => useGLTF.preload(path));
