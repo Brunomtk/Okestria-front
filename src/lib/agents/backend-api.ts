@@ -49,6 +49,13 @@ export type CompanyAgentScope = {
   agentSlugs: string[];
 };
 
+const REQUIRED_UPLOAD_FILE_TYPES = ["SOUL", "AGENTS", "USER", "TOOLS", "MEMORY", "HEARTBEAT"] as const;
+const DEFAULT_UPLOAD_FILE_ORDER = [
+  "IDENTITY",
+  "AVATAR",
+  ...REQUIRED_UPLOAD_FILE_TYPES,
+] as const;
+
 const parseCookieValue = (name: string) => {
   if (typeof document === "undefined") return null;
   const needle = `${encodeURIComponent(name)}=`;
@@ -149,18 +156,41 @@ const buildProfilePayload = (
   profileJson: JSON.stringify({ gatewayAgentId, avatarProfile: profile, draft, isDefault }, null, 2),
 });
 
+const normalizeFilesPayload = (files: BackendAgentFile[]): BackendAgentFile[] => {
+  const map = new Map<string, string>();
+
+  for (const file of files) {
+    const type = typeof file.fileType === "string" ? file.fileType.trim().toUpperCase() : "";
+    if (!type) continue;
+    map.set(type, typeof file.content === "string" ? file.content : "");
+  }
+
+  for (const type of REQUIRED_UPLOAD_FILE_TYPES) {
+    if (!map.has(type)) {
+      map.set(type, "");
+    }
+  }
+
+  return DEFAULT_UPLOAD_FILE_ORDER
+    .filter((type) => map.has(type))
+    .map((type) => ({
+      fileType: type,
+      content: map.get(type) ?? "",
+    }));
+};
+
 const buildFilesPayload = (draft: PersonalityBuilderDraft, profile: AgentAvatarProfile): BackendAgentFile[] => {
   const serialized = serializePersonalityFiles(draft);
-  return [
-    { fileType: "IDENTITY", content: serialized["IDENTITY.md"] },
+  return normalizeFilesPayload([
+    { fileType: "IDENTITY", content: serialized["IDENTITY.md"] ?? "" },
     { fileType: "AVATAR", content: JSON.stringify(profile, null, 2) },
-    { fileType: "SOUL", content: serialized["SOUL.md"] },
-    { fileType: "AGENTS", content: serialized["AGENTS.md"] },
-    { fileType: "USER", content: serialized["USER.md"] },
-    { fileType: "TOOLS", content: serialized["TOOLS.md"] },
-    { fileType: "MEMORY", content: serialized["MEMORY.md"] },
-    { fileType: "HEARTBEAT", content: serialized["HEARTBEAT.md"] },
-  ];
+    { fileType: "SOUL", content: serialized["SOUL.md"] ?? "" },
+    { fileType: "AGENTS", content: serialized["AGENTS.md"] ?? "" },
+    { fileType: "USER", content: serialized["USER.md"] ?? "" },
+    { fileType: "TOOLS", content: serialized["TOOLS.md"] ?? "" },
+    { fileType: "MEMORY", content: serialized["MEMORY.md"] ?? "" },
+    { fileType: "HEARTBEAT", content: serialized["HEARTBEAT.md"] ?? "" },
+  ]);
 };
 
 export const extractGatewayAgentId = (agent: BackendAgentDetails) => {
