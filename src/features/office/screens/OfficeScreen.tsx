@@ -4627,7 +4627,8 @@ export function OfficeScreen({
             }
           }}
           onAgentChatSelect={(agentId) => {
-            handleOpenAgentChat(agentId);
+            dispatch({ type: "selectAgent", agentId });
+            openAgentEditor(agentId, "IDENTITY.md");
           }}
           squads={companySquads}
           onSquadOps={(squadId) => {

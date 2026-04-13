@@ -5365,31 +5365,31 @@ export function RetroOffice3D({
       ) : null}
       {agentRosterVisible ? (
         <div className="absolute inset-x-0 top-16 z-20 flex justify-center px-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-amber-700/20 bg-[#120e08]/94 p-3 shadow-2xl backdrop-blur-md">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-700/15 pb-3">
+          <div className="w-full max-w-3xl rounded-2xl border border-cyan-500/18 bg-[#0b0f14]/96 p-3 shadow-2xl backdrop-blur-md">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/8 pb-3">
               <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-500/70">Company overview</div>
-                <div className="mt-1 text-sm font-semibold text-amber-100">{officeTitleLoaded ? officeTitle : "Office HQ"}</div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-300/70">Company overview</div>
+                <div className="mt-1 text-sm font-semibold text-white">{officeTitleLoaded ? officeTitle : "Office HQ"}</div>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setRosterTab("agents")}
-                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-cyan-500/18 bg-[#0e141b]/90 text-cyan-100/60 hover:border-cyan-400/35 hover:text-cyan-100"}`}
                 >
                   Agents
                 </button>
                 <button
                   type="button"
                   onClick={() => setRosterTab("squads")}
-                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+                  className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "squads" ? "border-amber-400/45 bg-amber-500/14 text-amber-100" : "border-amber-500/18 bg-[#17120a]/90 text-amber-100/60 hover:border-amber-400/35 hover:text-amber-100"}`}
                 >
                   Squads
                 </button>
                 <button
                   type="button"
                   onClick={() => setAgentRosterOpen(false)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-900/25 bg-black/20 text-amber-100/70 transition-all hover:border-amber-400/35 hover:text-white"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/70 transition-all hover:border-white/20 hover:text-white"
                   aria-label="Close company overview"
                 >
                   <X size={12} />
@@ -5406,10 +5406,10 @@ export function RetroOffice3D({
                       onAgentChatSelect?.(agent.id);
                       setAgentRosterOpen(false);
                     }}
-                    className="rounded-xl border border-amber-900/25 bg-[#1c1610]/75 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#241a12]"
+                    className="rounded-xl border border-cyan-500/18 bg-[#0e141b]/90 p-3 text-left transition-all hover:border-cyan-400/35 hover:bg-[#111b24]"
                   >
-                    <div className="truncate text-sm font-semibold text-amber-100">{agent.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{agent.status ?? "online"}</div>
+                    <div className="truncate text-sm font-semibold text-cyan-50">{agent.name}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/45">{agent.status ?? "online"}</div>
                   </button>
                 ))}
               </div>
@@ -5423,13 +5423,13 @@ export function RetroOffice3D({
                       onSquadOps?.(String(squad.id));
                       setAgentRosterOpen(false);
                     }}
-                    className="rounded-xl border border-violet-900/25 bg-[#15101c]/75 p-3 text-left transition-all hover:border-violet-400/35 hover:bg-[#1b1324]"
+                    className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
                   >
-                    <div className="truncate text-sm font-semibold text-violet-100">{squad.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-violet-100/45">{squad.members?.length ?? 0} members</div>
+                    <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{squad.members?.length ?? 0} members</div>
                   </button>
                 ))}
-                {squads.length === 0 ? <div className="rounded-xl border border-amber-900/25 bg-black/20 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
+                {squads.length === 0 ? <div className="rounded-xl border border-amber-500/18 bg-[#17120a]/70 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
               </div>
             )}
           </div>

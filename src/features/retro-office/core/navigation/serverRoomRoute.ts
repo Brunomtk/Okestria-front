@@ -1,20 +1,20 @@
 import type { ServerRoomRoute } from "@/features/retro-office/core/types";
 
 export const SERVER_ROOM_TARGET = {
-  x: 172,
-  y: 622,
-  facing: 270,
+  x: 100,
+  y: 720,
+  facing: 0,
 };
 
 const SERVER_ROOM_DOOR_OUTER_TARGET = {
-  x: 276,
-  y: 628,
+  x: 250,
+  y: 720,
   facing: 180,
 };
 
 const SERVER_ROOM_DOOR_INNER_TARGET = {
-  x: 198,
-  y: 628,
+  x: 170,
+  y: 720,
   facing: 180,
 };
 
