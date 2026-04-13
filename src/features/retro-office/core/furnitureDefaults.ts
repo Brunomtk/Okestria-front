@@ -38,8 +38,8 @@ const DEFAULT_PINGPONG_TABLE: FurnitureSeed = {
 const DEFAULT_ATM_MACHINE: FurnitureSeed = {
   type: "atm",
   x: 330,
-  y: 8,
-  facing: 180,
+  y: 10,
+  facing: 0,
 };
 
 
@@ -327,13 +327,12 @@ const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
 
 
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
-  { type: "round_table", x: 180, y: 140, r: 68 },
-  { type: "chair", x: 180, y: 66, facing: 0, elevation: 0 },
-  { type: "chair", x: 254, y: 140, facing: 270, elevation: 0 },
-  { type: "chair", x: 180, y: 214, facing: 180, elevation: 0 },
-  { type: "chair", x: 106, y: 140, facing: 90, elevation: 0 },
-  { type: "trash", x: 286, y: 42 },
-  { type: "atm", x: 330, y: 8, facing: 180 },
+  { type: "round_table", x: 50, y: 40, r: 68 },
+  { type: "chair", x: 110, y: 40, facing: 0, elevation: 0 },
+  { type: "chair", x: 160, y: 90, facing: 270, elevation: 0 },
+  { type: "chair", x: 100, y: 150, facing: 180, elevation: 0 },
+  { type: "chair", x: 50, y: 100, facing: 90, elevation: 0 },
+  { type: "atm", x: 330, y: 10, facing: 0 },
   { type: "vending", x: 790, y: 12 },
   { type: "trash", x: 828, y: 26 },
   { type: "cabinet", x: 836, y: 28, w: 80, h: 40, elevation: 0 },
@@ -346,7 +345,7 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "fridge", x: 1052, y: 18, w: 40, h: 80 },
   { type: "wall_cabinet", x: 878, y: 10, w: 80, h: 20, elevation: 0.9 },
   { type: "wall_cabinet", x: 960, y: 10, w: 80, h: 20, elevation: 0.9 },
-  { type: "round_table", x: 875, y: 168, r: 52 },
+  { type: "round_table", x: 830, y: 140, r: 52 },
   { type: "chair", x: 875, y: 96, facing: 0 },
   { type: "chair", x: 875, y: 240, facing: 180 },
   { type: "chair", x: 803, y: 168, facing: 90 },
@@ -375,8 +374,6 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "keyboard", x: 732, y: 302 },
   { type: "mouse", x: 753, y: 302 },
   { type: "trash", x: 772, y: 298 },
-  { type: "plant", x: 610, y: 228 },
-  { type: "plant", x: 676, y: 228 },
   { type: "desk_cubicle", x: 110, y: 500, id: "desk_4" },
   { type: "chair", x: 132, y: 488, facing: 180 },
   { type: "computer", x: 132, y: 485 },
@@ -408,7 +405,6 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "server_rack", x: 42, y: 590, facing: 0 },
   { type: "server_rack", x: 102, y: 590, facing: 0 },
   { type: "pingpong", x: 872, y: 598, w: 108, h: 60 },
-  { type: "plant", x: 1016, y: 600 },
   { type: "wall", x: 1075, y: 0, w: 8, h: 150 },
   { type: "door", x: 1059, y: 166, w: 40, h: 8, facing: 90 },
   { type: "wall", x: 1075, y: 190, w: 8, h: 170 },
