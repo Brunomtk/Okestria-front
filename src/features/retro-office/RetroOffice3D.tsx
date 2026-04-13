@@ -1284,6 +1284,33 @@ const clampFurnitureItemToCanvas = (item: FurnitureItem): FurnitureItem => {
 const sanitizeFurnitureLayout = (items: FurnitureItem[]) =>
   items.map(clampFurnitureItemToCanvas);
 
+const buildCanonicalOfficeLayout = (items: FurnitureItem[]) =>
+  sanitizeFurnitureLayout(
+    ensureOfficeNoPlants(
+      ensureOfficeNoLamps(
+        ensureOfficeArtRoomRemoved(
+          ensureOfficeJukebox(
+            ensureOfficeQaLab(
+              ensureOfficeGymRoom(
+                ensureOfficeServerRoom(
+                  ensureOfficePhoneBooth(
+                    ensureOfficeSmsBooth(
+                      ensureOfficeAtm(
+                        ensureOfficePingPongTable(
+                          items.filter((item) => !isRetiredPingPongLamp(item)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
 export function RetroOffice3D({
   agents,
   companyId = null,
@@ -1490,40 +1517,18 @@ export function RetroOffice3D({
 
   const resolvedInitialFurniture = useMemo(
     () =>
-      ensureOfficeNoPlants(
-        ensureOfficeNoLamps(
-          ensureOfficeArtRoomRemoved(
-            ensureOfficeJukebox(
-              ensureOfficeQaLab(
-                ensureOfficeGymRoom(
-                  ensureOfficeServerRoom(
-                    ensureOfficePhoneBooth(
-                      ensureOfficeSmsBooth(
-                        ensureOfficeAtm(
-                          ensureOfficePingPongTable(
-                            (
-                              initialFurniture ??
-                              (companyId ? materializeDefaults() : loadFurniture(storageNamespace)) ??
-                              materializeDefaults()
-                            ).filter((item) => !isRetiredPingPongLamp(item)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
+      buildCanonicalOfficeLayout(
+        initialFurniture ??
+          (companyId ? materializeDefaults() : loadFurniture(storageNamespace)) ??
+          materializeDefaults(),
       ),
     [companyId, initialFurniture, storageNamespace],
   );
-  const [furniture, setFurniture] = useState<FurnitureItem[]>(sanitizeFurnitureLayout(resolvedInitialFurniture));
+  const [furniture, setFurniture] = useState<FurnitureItem[]>(resolvedInitialFurniture);
 
   useEffect(() => {
     if (!companyId || storageNamespace !== "default" || readOnly) return;
-    setFurniture(sanitizeFurnitureLayout(resolvedInitialFurniture));
+    setFurniture(resolvedInitialFurniture);
   }, [companyId, readOnly, resolvedInitialFurniture, storageNamespace]);
   useEffect(() => {
     setFurniture((prev) => sanitizeFurnitureLayout(prev));
@@ -1555,33 +1560,7 @@ export function RetroOffice3D({
         const parsed = parseCompanyOfficeLayoutJson(payload.layout?.layoutJson);
         if (!parsed?.furniture?.length || cancelled) return;
 
-        setFurniture(
-          sanitizeFurnitureLayout(
-            ensureOfficeNoPlants(
-              ensureOfficeNoLamps(
-                ensureOfficeArtRoomRemoved(
-                  ensureOfficeJukebox(
-                    ensureOfficeQaLab(
-                      ensureOfficeGymRoom(
-                        ensureOfficeServerRoom(
-                          ensureOfficePhoneBooth(
-                            ensureOfficeSmsBooth(
-                              ensureOfficeAtm(
-                                ensureOfficePingPongTable(
-                                  parsed.furniture.filter((item) => !isRetiredPingPongLamp(item)),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
+        setFurniture(buildCanonicalOfficeLayout(parsed.furniture));
       } catch (error) {
         console.error("Failed to load office layout from backend.", error);
       }
@@ -3923,18 +3902,51 @@ export function RetroOffice3D({
     setDrawerOpen(false);
   }, [onDeskAssignmentChange, selectedItem, selectedUid]);
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!window.confirm("Reset the office to the default layout?")) return;
+
+    const nextFurniture = buildCanonicalOfficeLayout(materializeDefaults());
+
     onDeskAssignmentsReset?.(
-      furniture
+      nextFurniture
         .filter((item) => item.type === "desk_cubicle")
         .map((item) => item._uid),
     );
-    setFurniture(ensureOfficeNoPlants(ensureOfficeNoLamps(materializeDefaults())));
+    setFurniture(nextFurniture);
     setSelectedUid(null);
+    setDrawerOpen(false);
     setDrag({ kind: "idle" });
     setGhostPos(null);
     setWallDrawStart(null);
+
+    if (readOnly) return;
+
+    try {
+      if (companyId && storageNamespace === "default") {
+        await fetch("/api/office/company-layout", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: "Company office layout",
+            workspaceId,
+            version: 1,
+            layoutJson: serializeCompanyOfficeLayout({
+              width: LOCAL_OFFICE_CANVAS_WIDTH,
+              height: LOCAL_OFFICE_CANVAS_HEIGHT,
+              furniture: nextFurniture,
+              savedAt: new Date().toISOString(),
+              storageNamespace,
+            }),
+          }),
+        });
+      } else {
+        saveFurniture(nextFurniture, storageNamespace);
+      }
+    } catch (error) {
+      console.error("Failed to persist reset office layout.", error);
+    }
   };
 
   const closeEditMode = useCallback(() => {
