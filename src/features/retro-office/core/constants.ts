@@ -5,9 +5,9 @@ export const ATM_MIGRATION_KEY = "openclaw-office-atm-migration-v2";
 export const ART_ROOM_REMOVAL_MIGRATION_KEY =
   "openclaw-office-art-room-removal-migration-v1";
 export const SERVER_ROOM_MIGRATION_KEY =
-  "openclaw-office-server-room-migration-v5";
-export const GYM_ROOM_MIGRATION_KEY = "openclaw-office-gym-room-migration-v16";
-export const QA_LAB_MIGRATION_KEY = "openclaw-office-qa-lab-migration-v15";
+  "openclaw-office-server-room-migration-v4";
+export const GYM_ROOM_MIGRATION_KEY = "openclaw-office-gym-room-migration-v15";
+export const QA_LAB_MIGRATION_KEY = "openclaw-office-qa-lab-migration-v14";
 export const PHONE_BOOTH_MIGRATION_KEY_V2 = "openclaw-office-phone-booth-migration-v3";
 export const PHONE_BOOTH_MIGRATION_KEY = "openclaw-office-phone-booth-migration-v1";
 export const SMS_BOOTH_MIGRATION_KEY = "openclaw-office-sms-booth-migration-v1";

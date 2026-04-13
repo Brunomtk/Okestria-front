@@ -61,83 +61,71 @@ export const resolvePingPongTargets = (
 };
 
 export const AGENT_SPAWN_POINTS: FacingPoint[] = [
-  // Área de trabalho principal
-  { x: 150, y: 350, facing: 0.3 },
-  { x: 300, y: 350, facing: 0.45 },
-  { x: 450, y: 350, facing: -0.15 },
-  { x: 150, y: 490, facing: -0.4 },
-  { x: 300, y: 490, facing: -0.8 },
-  { x: 450, y: 490, facing: -1.2 },
-  // Área de descanso
-  { x: 800, y: 330, facing: -1.7 },
-  { x: 900, y: 330, facing: -2.2 },
-  // Área de jogos
-  { x: 800, y: 520, facing: 2.6 },
-  // Recepção
-  { x: 150, y: 100, facing: 2.3 },
-  // Cozinha
-  { x: 900, y: 80, facing: 0.2 },
-  // Corredor
-  { x: 650, y: 200, facing: -0.9 },
-  { x: 650, y: 450, facing: -1.9 },
-  { x: 650, y: 600, facing: -0.2 },
+  { x: 180, y: 560, facing: 0.3 },
+  { x: 260, y: 460, facing: 0.45 },
+  { x: 360, y: 560, facing: -0.15 },
+  { x: 540, y: 520, facing: -0.4 },
+  { x: 700, y: 560, facing: -0.8 },
+  { x: 920, y: 520, facing: -1.2 },
+  { x: 1120, y: 500, facing: -1.7 },
+  { x: 1260, y: 420, facing: -2.2 },
+  { x: 980, y: 300, facing: 2.6 },
+  { x: 720, y: 320, facing: 2.3 },
+  { x: 520, y: 350, facing: 0.2 },
+  { x: 860, y: 410, facing: -0.9 },
+  { x: 1080, y: 620, facing: -1.9 },
+  { x: 380, y: 650, facing: -0.2 },
 ];
 
 export const AGENT_PAUSE_EXCLUSION_ZONES = [
-  // Entrada da sala de servidores (canto inferior esquerdo)
-  { x: 190, y: 720, radius: 80 },
+  // North entrance / corridor door clusters.
+  { x: 420, y: 150, radius: 110 },
+  { x: 455, y: 165, radius: 95 },
+  { x: 330, y: 92, radius: 90 },
+  { x: 700, y: 92, radius: 82 },
 
-  // Entrada do Gym (ala leste)
-  { x: GYM_ROOM_X + 20, y: EAST_WING_DOOR_Y + 20, radius: 70 },
+  // East wing room thresholds.
+  { x: 1268, y: 280, radius: 78 },
+  { x: 1324, y: 280, radius: 78 },
 
-  // Entrada do QA Lab (ala leste)
-  { x: QA_LAB_X + 20, y: QA_LAB_DOOR_Y + 20, radius: 70 },
+  // Server room / lower entry thresholds.
+  { x: 210, y: 630, radius: 96 },
+  { x: 230, y: 630, radius: 82 },
 
-  // Área da cozinha (não bloquear passagem)
-  { x: 850, y: 50, radius: 60 },
-
-  // Corredores principais
-  { x: 650, y: 220, radius: 60 },
-  { x: 650, y: 600, radius: 60 },
+  // Pantry / lower-left doorway and vending choke point.
+  { x: 142, y: 548, radius: 96 },
+  { x: 170, y: 520, radius: 88 },
+  { x: 188, y: 500, radius: 72 },
 ];
 
 export const isInAgentPauseExclusionZone = (x: number, y: number) =>
   AGENT_PAUSE_EXCLUSION_ZONES.some((zone) => Math.hypot(x - zone.x, y - zone.y) <= zone.radius);
 
 export const ROAM_POINTS = [
-  // Corredores entre as mesas
-  { x: 180, y: 350 },
-  { x: 350, y: 350 },
-  { x: 500, y: 350 },
-  { x: 180, y: 490 },
-  { x: 350, y: 490 },
-  { x: 500, y: 490 },
-  // Área de recepção
-  { x: 200, y: 120 },
-  { x: 240, y: 180 },
-  // Área executiva
-  { x: 400, y: 120 },
-  // Área da cozinha
-  { x: 850, y: 150 },
-  { x: 950, y: 180 },
-  // Área de descanso
-  { x: 800, y: 330 },
-  { x: 900, y: 400 },
-  // Área de jogos
-  { x: 800, y: 550 },
-  { x: 950, y: 520 },
-  // Corredor central
-  { x: 650, y: 200 },
-  { x: 650, y: 350 },
-  { x: 650, y: 500 },
-  { x: 650, y: 620 },
-  // Área do server room
-  { x: 280, y: 680 },
-  // Ala leste (Gym e QA)
-  { x: 1150, y: 180 },
-  { x: 1350, y: 250 },
-  { x: 1150, y: 480 },
-  { x: 1350, y: 550 },
+  { x: 780, y: 230 },
+  { x: 880, y: 500 },
+  { x: 860, y: 590 },
+  { x: 740, y: 360 },
+  { x: 640, y: 280 },
+  { x: 560, y: 520 },
+  { x: 470, y: 430 },
+  { x: 340, y: 320 },
+  { x: 250, y: 450 },
+  { x: 670, y: 430 },
+  { x: 220, y: 590 },
+  { x: 430, y: 620 },
+  { x: 980, y: 380 },
+  { x: 1140, y: 540 },
+  { x: 1240, y: 230 },
+  { x: 1060, y: 250 },
+  { x: 900, y: 640 },
+  { x: 620, y: 610 },
+  { x: 300, y: 560 },
+  { x: 530, y: 610 },
+  { x: 690, y: 470 },
+  { x: 1040, y: 430 },
+  { x: 1180, y: 610 },
+  { x: 360, y: 500 },
 ].filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
 
 
@@ -155,104 +143,104 @@ export type RoamRouteModel =
 
 export const ROAM_ROUTE_MODELS: Record<RoamRouteModel, FacingPoint[]> = {
   loop: [
-    { x: 200, y: 200, facing: 0.55 },
-    { x: 500, y: 180, facing: 1.0 },
-    { x: 850, y: 180, facing: 1.8 },
-    { x: 950, y: 330, facing: 2.2 },
-    { x: 900, y: 500, facing: -2.4 },
-    { x: 650, y: 620, facing: -1.7 },
-    { x: 350, y: 600, facing: -0.9 },
-    { x: 200, y: 420, facing: -0.25 },
+    { x: 230, y: 250, facing: 0.55 },
+    { x: 560, y: 210, facing: 1.0 },
+    { x: 920, y: 220, facing: 1.8 },
+    { x: 1180, y: 330, facing: 2.2 },
+    { x: 1130, y: 560, facing: -2.4 },
+    { x: 760, y: 620, facing: -1.7 },
+    { x: 380, y: 590, facing: -0.9 },
+    { x: 200, y: 400, facing: -0.25 },
   ],
   focus_shift: [
-    { x: 300, y: 520, facing: -0.2 },
-    { x: 450, y: 400, facing: 0.25 },
-    { x: 650, y: 300, facing: 0.75 },
-    { x: 850, y: 250, facing: 1.55 },
-    { x: 900, y: 400, facing: 2.7 },
-    { x: 800, y: 520, facing: -2.4 },
-    { x: 550, y: 480, facing: -1.8 },
-    { x: 380, y: 380, facing: -1.1 },
+    { x: 310, y: 540, facing: -0.2 },
+    { x: 500, y: 420, facing: 0.25 },
+    { x: 690, y: 300, facing: 0.75 },
+    { x: 930, y: 270, facing: 1.55 },
+    { x: 1030, y: 450, facing: 2.7 },
+    { x: 840, y: 560, facing: -2.4 },
+    { x: 600, y: 520, facing: -1.8 },
+    { x: 430, y: 390, facing: -1.1 },
   ],
   cross_current: [
-    { x: 200, y: 600, facing: 0.2 },
-    { x: 400, y: 470, facing: 0.55 },
-    { x: 650, y: 330, facing: 0.95 },
-    { x: 900, y: 200, facing: 1.4 },
-    { x: 1000, y: 350, facing: 2.5 },
-    { x: 900, y: 480, facing: -2.8 },
-    { x: 700, y: 560, facing: -2.05 },
-    { x: 450, y: 600, facing: -1.2 },
+    { x: 190, y: 620, facing: 0.2 },
+    { x: 430, y: 490, facing: 0.55 },
+    { x: 700, y: 350, facing: 0.95 },
+    { x: 1000, y: 220, facing: 1.4 },
+    { x: 1240, y: 300, facing: 2.5 },
+    { x: 1060, y: 490, facing: -2.8 },
+    { x: 770, y: 590, facing: -2.05 },
+    { x: 480, y: 640, facing: -1.2 },
   ],
   north_bypass: [
-    { x: 200, y: 200, facing: 0.45 },
-    { x: 380, y: 200, facing: 0.7 },
-    { x: 600, y: 180, facing: 1.0 },
-    { x: 850, y: 180, facing: 1.4 },
-    { x: 1000, y: 250, facing: 2.1 },
-    { x: 900, y: 350, facing: -2.7 },
-    { x: 700, y: 320, facing: -2.1 },
-    { x: 450, y: 280, facing: -1.3 },
+    { x: 210, y: 240, facing: 0.45 },
+    { x: 410, y: 230, facing: 0.7 },
+    { x: 690, y: 220, facing: 1.0 },
+    { x: 980, y: 230, facing: 1.4 },
+    { x: 1230, y: 260, facing: 2.1 },
+    { x: 1040, y: 360, facing: -2.7 },
+    { x: 760, y: 340, facing: -2.1 },
+    { x: 470, y: 300, facing: -1.3 },
   ],
   south_sweep: [
-    { x: 200, y: 600, facing: 0.2 },
-    { x: 350, y: 600, facing: 0.1 },
-    { x: 550, y: 620, facing: -0.2 },
-    { x: 750, y: 580, facing: -0.6 },
-    { x: 950, y: 550, facing: -1.2 },
-    { x: 1000, y: 450, facing: -2.0 },
-    { x: 850, y: 480, facing: 2.8 },
-    { x: 650, y: 530, facing: 2.2 },
+    { x: 170, y: 610, facing: 0.2 },
+    { x: 340, y: 620, facing: 0.1 },
+    { x: 590, y: 630, facing: -0.2 },
+    { x: 850, y: 630, facing: -0.6 },
+    { x: 1110, y: 590, facing: -1.2 },
+    { x: 1240, y: 500, facing: -2.0 },
+    { x: 990, y: 520, facing: 2.8 },
+    { x: 700, y: 560, facing: 2.2 },
   ],
   zigzag: [
-    { x: 250, y: 500, facing: 0.35 },
-    { x: 450, y: 280, facing: 0.9 },
-    { x: 650, y: 500, facing: -0.9 },
-    { x: 850, y: 280, facing: 0.95 },
-    { x: 950, y: 500, facing: -1.3 },
-    { x: 1000, y: 320, facing: 2.2 },
-    { x: 800, y: 400, facing: -2.8 },
-    { x: 450, y: 450, facing: -2.1 },
+    { x: 260, y: 540, facing: 0.35 },
+    { x: 520, y: 260, facing: 0.9 },
+    { x: 690, y: 540, facing: -0.9 },
+    { x: 900, y: 280, facing: 0.95 },
+    { x: 1100, y: 540, facing: -1.3 },
+    { x: 1240, y: 320, facing: 2.2 },
+    { x: 820, y: 420, facing: -2.8 },
+    { x: 460, y: 470, facing: -2.1 },
   ],
   orbit: [
-    { x: 480, y: 350, facing: 0.3 },
-    { x: 600, y: 250, facing: 0.9 },
-    { x: 780, y: 250, facing: 1.5 },
-    { x: 900, y: 350, facing: 2.1 },
-    { x: 880, y: 480, facing: 2.9 },
-    { x: 720, y: 550, facing: -2.2 },
-    { x: 560, y: 520, facing: -1.5 },
-    { x: 460, y: 430, facing: -0.7 },
+    { x: 520, y: 360, facing: 0.3 },
+    { x: 650, y: 260, facing: 0.9 },
+    { x: 840, y: 250, facing: 1.5 },
+    { x: 970, y: 360, facing: 2.1 },
+    { x: 940, y: 520, facing: 2.9 },
+    { x: 780, y: 580, facing: -2.2 },
+    { x: 610, y: 550, facing: -1.5 },
+    { x: 500, y: 460, facing: -0.7 },
   ],
   perimeter_drift: [
-    { x: 180, y: 180, facing: 0.25 },
-    { x: 450, y: 150, facing: 0.85 },
-    { x: 850, y: 150, facing: 1.35 },
-    { x: 1000, y: 250, facing: 2.0 },
-    { x: 1000, y: 500, facing: 2.8 },
-    { x: 850, y: 600, facing: -2.6 },
-    { x: 500, y: 620, facing: -1.8 },
-    { x: 200, y: 540, facing: -0.35 },
+    { x: 180, y: 220, facing: 0.25 },
+    { x: 520, y: 170, facing: 0.85 },
+    { x: 930, y: 170, facing: 1.35 },
+    { x: 1260, y: 250, facing: 2.0 },
+    { x: 1250, y: 520, facing: 2.8 },
+    { x: 980, y: 620, facing: -2.6 },
+    { x: 560, y: 645, facing: -1.8 },
+    { x: 220, y: 560, facing: -0.35 },
   ],
   serpentine: [
-    { x: 250, y: 550, facing: 0.15 },
-    { x: 430, y: 400, facing: 0.65 },
-    { x: 600, y: 530, facing: -0.7 },
-    { x: 780, y: 350, facing: 0.95 },
-    { x: 900, y: 500, facing: -1.1 },
-    { x: 1000, y: 320, facing: 1.8 },
-    { x: 880, y: 260, facing: -2.9 },
-    { x: 580, y: 300, facing: -2.2 },
+    { x: 250, y: 580, facing: 0.15 },
+    { x: 470, y: 430, facing: 0.65 },
+    { x: 650, y: 560, facing: -0.7 },
+    { x: 820, y: 360, facing: 0.95 },
+    { x: 980, y: 540, facing: -1.1 },
+    { x: 1150, y: 330, facing: 1.8 },
+    { x: 960, y: 270, facing: -2.9 },
+    { x: 620, y: 320, facing: -2.2 },
   ],
   diagonal_weave: [
-    { x: 220, y: 600, facing: 0.2 },
-    { x: 380, y: 450, facing: 0.55 },
-    { x: 550, y: 320, facing: 0.95 },
-    { x: 750, y: 200, facing: 1.4 },
-    { x: 920, y: 300, facing: 2.2 },
-    { x: 980, y: 500, facing: -2.3 },
-    { x: 780, y: 580, facing: -2.7 },
-    { x: 430, y: 550, facing: -1.8 },
+    { x: 220, y: 620, facing: 0.2 },
+    { x: 400, y: 470, facing: 0.55 },
+    { x: 600, y: 330, facing: 0.95 },
+    { x: 820, y: 220, facing: 1.4 },
+    { x: 1060, y: 310, facing: 2.2 },
+    { x: 1180, y: 520, facing: -2.3 },
+    { x: 840, y: 610, facing: -2.7 },
+    { x: 460, y: 580, facing: -1.8 },
   ],
 };
 
@@ -830,11 +818,10 @@ export const getQaLabStations = (
     });
 
 export const MEETING_OVERFLOW_LOCATIONS = [
-  // Posições ao redor da mesa de reunião redonda (x: 120, y: 100, r: 70)
-  { x: 30, y: 100, facing: Math.PI / 2 },
-  { x: 210, y: 100, facing: -Math.PI / 2 },
-  { x: 120, y: 10, facing: Math.PI },
-  { x: 120, y: 190, facing: 0 },
+  { x: 18, y: 118, facing: Math.PI / 2 },
+  { x: 270, y: 118, facing: -Math.PI / 2 },
+  { x: 145, y: 24, facing: Math.PI },
+  { x: 145, y: 220, facing: 0 },
 ];
 
 export const resolveDeskIndexForItem = (

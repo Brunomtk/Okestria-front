@@ -10,6 +10,7 @@ import {
   QA_LAB_BOTTOM_Y,
   QA_LAB_END_X,
   QA_LAB_TOP_Y,
+  QA_LAB_WIDTH,
   QA_LAB_X,
   WALL_THICKNESS,
 } from "@/features/retro-office/core/constants";
@@ -29,15 +30,15 @@ import type {
 
 const DEFAULT_PINGPONG_TABLE: FurnitureSeed = {
   type: "pingpong",
-  x: 720,
-  y: 500,
-  w: 120,
-  h: 70,
+  x: 950,
+  y: 600,
+  w: 100,
+  h: 60,
 };
 
 const DEFAULT_ATM_MACHINE: FurnitureSeed = {
   type: "atm",
-  x: 250,
+  x: 328,
   y: 8,
   facing: 180,
 };
@@ -53,8 +54,8 @@ const DEFAULT_SMS_BOOTH: FurnitureSeed = {
 
 const DEFAULT_JUKEBOX: FurnitureSeed = {
   type: "jukebox",
-  x: 880,
-  y: 480,
+  x: 20,
+  y: 380,
   facing: 90,
 };
 
@@ -93,31 +94,45 @@ const PREVIOUS_SERVER_ROOM_ITEMS_TOP_RIGHT: FurnitureSeed[] = [
 ];
 
 const DEFAULT_DINING_ITEMS: FurnitureSeed[] = [
-  // Mesa de refeições na área da cozinha
-  { type: "round_table", x: 920, y: 120, r: 50 },
-  { type: "chair", x: 970, y: 100, facing: 0 },
-  { type: "chair", x: 970, y: 150, facing: 180 },
-  { type: "chair", x: 870, y: 100, facing: 90 },
-  { type: "chair", x: 870, y: 150, facing: 270 },
+  // Rebuilt kitchen + dining zone with a cleaner galley and a centered collaboration table.
+  { type: "wall_cabinet", x: 792, y: 18, facing: 0 },
+  { type: "wall_cabinet", x: 878, y: 18, facing: 0 },
+  { type: "wall_cabinet", x: 964, y: 18, facing: 0 },
+  { type: "sink", x: 798, y: 50, facing: 0 },
+  { type: "dishwasher", x: 846, y: 50, facing: 0 },
+  { type: "stove", x: 894, y: 50, facing: 0 },
+  { type: "microwave", x: 934, y: 98, facing: 0 },
+  { type: "fridge", x: 968, y: 38, facing: 0 },
+  { type: "coffee_machine", x: 804, y: 112, facing: 0 },
+  { type: "water_cooler", x: 852, y: 106, facing: 0 },
+  { type: "vending", x: 968, y: 124, facing: 0 },
+  { type: "round_table", x: 822, y: 182, r: 50 },
+  { type: "chair", x: 862, y: 182, facing: 0 },
+  { type: "chair", x: 862, y: 262, facing: 180 },
+  { type: "chair", x: 812, y: 212, facing: 90 },
+  { type: "chair", x: 902, y: 212, facing: 270 },
+  { type: "speaker", x: 1008, y: 214, facing: 0 },
 ];
 
 const DEFAULT_SERVER_ROOM_ITEMS: FurnitureSeed[] = [
-  // Paredes da sala de servidores (canto inferior esquerdo)
-  { type: "wall", x: 0, y: 640, w: 200, h: WALL_THICKNESS },
-  { type: "wall", x: 192, y: 640, w: WALL_THICKNESS, h: 50 },
+  { type: "wall", x: 0, y: 560, w: 230, h: WALL_THICKNESS },
+  { type: "wall", x: 220, y: 560, w: WALL_THICKNESS, h: 60 },
   {
     type: "door",
-    x: 182,
-    y: 700,
+    x: 210,
+    y: 630,
     w: DOOR_LENGTH,
     h: DOOR_THICKNESS,
     facing: 90,
   },
-  { type: "wall", x: 192, y: 730, w: WALL_THICKNESS, h: 70 },
-  // Racks de servidor
-  { type: "server_rack", x: 30, y: 680, facing: 0 },
-  { type: "server_rack", x: 90, y: 680, facing: 0 },
-  { type: "server_rack", x: 150, y: 680, facing: 0 },
+  { type: "wall", x: 220, y: 670, w: WALL_THICKNESS, h: 50 },
+  { type: "server_rack", x: 34, y: 592, facing: 180 },
+  { type: "server_rack", x: 94, y: 592, facing: 180 },
+  { type: "server_rack", x: 154, y: 592, facing: 180 },
+  { type: "server_terminal", x: 52, y: 666, facing: 0 },
+  { type: "router_station", x: 118, y: 674, facing: 0 },
+  { type: "locker", x: 170, y: 668, facing: 0 },
+  { type: "first_aid", x: 18, y: 688, facing: 0 },
 ];
 
 const LEGACY_GYM_ROOM_ITEMS: FurnitureSeed[] = [
@@ -264,222 +279,117 @@ const PREVIOUS_QA_LAB_ITEMS: FurnitureSeed[] = [
 ];
 
 const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
-  // === PAREDES DO GYM - Parede frontal com porta ===
   { type: "wall", x: GYM_ROOM_X, y: EAST_WING_ROOM_TOP_Y, w: WALL_THICKNESS, h: GYM_TOP_WALL_HEIGHT },
   createVerticalWallDoor(GYM_ROOM_X, EAST_WING_DOOR_Y),
   { type: "wall", x: GYM_ROOM_X, y: GYM_DOOR_BOTTOM_Y, w: WALL_THICKNESS, h: GYM_BOTTOM_WALL_HEIGHT },
-  // Parede divisória entre Gym e QA Lab
+  { type: "wall", x: GYM_ROOM_X, y: EAST_WING_ROOM_TOP_Y, w: GYM_ROOM_WIDTH, h: WALL_THICKNESS },
   { type: "wall", x: GYM_ROOM_X, y: GYM_ROOM_BOTTOM_Y - WALL_THICKNESS, w: GYM_ROOM_WIDTH, h: WALL_THICKNESS },
-  
-  // === EQUIPAMENTOS DE CARDIO (Fileira superior) ===
-  { type: "treadmill", x: GYM_ROOM_X + 80, y: EAST_WING_ROOM_TOP_Y + 40, facing: 90 },
-  { type: "treadmill", x: GYM_ROOM_X + 180, y: EAST_WING_ROOM_TOP_Y + 40, facing: 90 },
-  { type: "exercise_bike", x: GYM_ROOM_X + 280, y: EAST_WING_ROOM_TOP_Y + 40, facing: 90 },
-  { type: "exercise_bike", x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 40, facing: 90 },
-  { type: "rowing_machine", x: GYM_ROOM_X + 500, y: EAST_WING_ROOM_TOP_Y + 40, facing: 90 },
-  
-  // === ÁREA DE MUSCULAÇÃO (Fileira central) ===
-  { type: "weight_bench", x: GYM_ROOM_X + 80, y: EAST_WING_ROOM_TOP_Y + 140, facing: 90 },
-  { type: "weight_bench", x: GYM_ROOM_X + 180, y: EAST_WING_ROOM_TOP_Y + 140, facing: 90 },
-  { type: "dumbbell_rack", x: GYM_ROOM_X + 300, y: EAST_WING_ROOM_TOP_Y + 140, facing: 180 },
-  { type: "kettlebell_rack", x: GYM_ROOM_X + 420, y: EAST_WING_ROOM_TOP_Y + 140, facing: 180 },
-  { type: "punching_bag", x: GYM_ROOM_X + 550, y: EAST_WING_ROOM_TOP_Y + 120, facing: 0 },
-  
-  // === ÁREA DE FLEXIBILIDADE (Fileira inferior) ===
-  { type: "yoga_mat", x: GYM_ROOM_X + 80, y: EAST_WING_ROOM_TOP_Y + 260, facing: 0, color: "#0f766e" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 180, y: EAST_WING_ROOM_TOP_Y + 260, facing: 0, color: "#7c3aed" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 280, y: EAST_WING_ROOM_TOP_Y + 260, facing: 0, color: "#0891b2" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 260, facing: 0, color: "#ec4899" },
+  { type: "wall", x: GYM_ROOM_END_X - WALL_THICKNESS, y: EAST_WING_ROOM_TOP_Y, w: WALL_THICKNESS, h: EAST_WING_ROOM_HEIGHT },
+  { type: "treadmill", x: 1184, y: 56, facing: 90 },
+  { type: "treadmill", x: 1184, y: 146, facing: 90 },
+  { type: "rowing_machine", x: 1174, y: 246, facing: 90 },
+  { type: "weight_bench", x: 1310, y: 72, facing: 90 },
+  { type: "weight_bench", x: 1310, y: 188, facing: 90 },
+  { type: "dumbbell_rack", x: 1456, y: 66, facing: 180 },
+  { type: "kettlebell_rack", x: 1456, y: 124, facing: 180 },
+  { type: "exercise_bike", x: 1436, y: 232, facing: 90 },
+  { type: "exercise_bike", x: 1516, y: 232, facing: 90 },
+  { type: "yoga_mat", x: 1604, y: 236, facing: 0, color: "#0f766e" },
+  { type: "yoga_mat", x: 1604, y: 286, facing: 0, color: "#7c3aed" },
+  { type: "punching_bag", x: 1714, y: 102, facing: 0 },
+  { type: "punching_bag", x: 1714, y: 228, facing: 0 },
+  { type: "water_cooler", x: 1118, y: 294, facing: 0 },
+  { type: "speaker", x: 1756, y: 24, facing: 0 },
+  { type: "speaker", x: 1756, y: 320, facing: 0 },
+  { type: "locker", x: 1228, y: 300, facing: 0 },
 ];
 
 const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
-  // === PAREDES DO QA LAB - Parede frontal com porta ===
   { type: "wall", x: QA_LAB_X, y: QA_LAB_TOP_Y, w: WALL_THICKNESS, h: QA_LAB_TOP_WALL_HEIGHT },
   createVerticalWallDoor(QA_LAB_X, QA_LAB_DOOR_Y),
   { type: "wall", x: QA_LAB_X, y: QA_LAB_DOOR_BOTTOM_Y, w: WALL_THICKNESS, h: QA_LAB_BOTTOM_WALL_HEIGHT_CALC },
-  
-  // === TERMINAIS DE QA (Fileira superior) ===
-  { type: "qa_terminal", x: QA_LAB_X + 80, y: QA_LAB_TOP_Y + 40, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 180, y: QA_LAB_TOP_Y + 40, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 280, y: QA_LAB_TOP_Y + 40, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 380, y: QA_LAB_TOP_Y + 40, facing: 90 },
-  
-  // === RACKS DE DISPOSITIVOS (Lado direito) ===
-  { type: "device_rack", x: QA_LAB_X + 520, y: QA_LAB_TOP_Y + 40, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 620, y: QA_LAB_TOP_Y + 40, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 520, y: QA_LAB_TOP_Y + 140, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 620, y: QA_LAB_TOP_Y + 140, facing: 180 },
-  
-  // === BANCADAS DE TESTE (Fileira inferior) ===
-  { type: "test_bench", x: QA_LAB_X + 80, y: QA_LAB_TOP_Y + 150, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 180, y: QA_LAB_TOP_Y + 150, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 80, y: QA_LAB_TOP_Y + 260, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 180, y: QA_LAB_TOP_Y + 260, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 280, y: QA_LAB_TOP_Y + 260, facing: 90 },
+  { type: "wall", x: QA_LAB_X, y: QA_LAB_TOP_Y, w: QA_LAB_WIDTH, h: WALL_THICKNESS },
+  { type: "wall", x: QA_LAB_X, y: QA_LAB_BOTTOM_Y - WALL_THICKNESS, w: QA_LAB_WIDTH, h: WALL_THICKNESS },
+  { type: "wall", x: QA_LAB_END_X - WALL_THICKNESS, y: QA_LAB_TOP_Y, w: WALL_THICKNESS, h: EAST_WING_ROOM_HEIGHT },
+  { type: "qa_terminal", x: 1506, y: 416, facing: 90 },
+  { type: "qa_terminal", x: 1598, y: 416, facing: 90 },
+  { type: "device_rack", x: 1710, y: 404, facing: 180 },
+  { type: "device_rack", x: 1710, y: 470, facing: 180 },
+  { type: "test_bench", x: 1498, y: 530, facing: 90 },
+  { type: "test_bench", x: 1616, y: 530, facing: 90 },
+  { type: "camera_tripod", x: 1460, y: 462, facing: 0 },
+  { type: "camera_tripod", x: 1688, y: 606, facing: 0 },
+  { type: "toolbox", x: 1478, y: 646, facing: 0 },
+  { type: "locker", x: 1740, y: 628, facing: 0 },
+  { type: "first_aid", x: 1458, y: 690, facing: 0 },
 ];
 
-
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
-  // ============================================================
-  // ZONA DE RECEPÇÃO E ENTRADA (Canto superior esquerdo)
-  // ============================================================
-  // Mesa de reunião redonda com cadeiras
-  { type: "round_table", x: 120, y: 100, r: 70 },
-  { type: "chair", x: 190, y: 100, facing: 0 },
-  { type: "chair", x: 120, y: 170, facing: 180 },
-  { type: "chair", x: 50, y: 100, facing: 90 },
-  { type: "chair", x: 120, y: 30, facing: 270 },
-  // Quadro branco para brainstorming
-  { type: "whiteboard", x: 10, y: 180, w: 10, h: 80 },
+  // Welcome + office identity zone
+  { type: "reception_desk", x: 70, y: 90, facing: 0 },
+  { type: "bench_seat", x: 60, y: 170, facing: 0 },
+  { type: "coat_rack", x: 166, y: 176, facing: 0 },
+  { type: "floor_sign", x: 204, y: 122, facing: 0 },
+  { type: "whiteboard", x: 250, y: 72, facing: 90 },
+  { type: "first_aid", x: 246, y: 152, facing: 0 },
+  { type: "charging_station", x: 210, y: 186, facing: 0 },
+  { type: "mail_cart", x: 80, y: 220, facing: 0 },
 
-  // ============================================================
-  // ESCRITÓRIO EXECUTIVO (Área central superior)
-  // ============================================================
-  { type: "executive_desk", x: 320, y: 50, w: 140, h: 70 },
-  { type: "chair", x: 460, y: 60, facing: 0 },
-  { type: "bookshelf", x: 480, y: 10, w: 80, h: 100 },
-  { type: "clock", x: 540, y: 8 },
-  { type: "trash", x: 300, y: 40 },
+  // Strategy / leadership corner
+  { type: "executive_desk", x: 320, y: 90, facing: 180 },
+  { type: "chair", x: 374, y: 166, facing: 0 },
+  { type: "bookshelf", x: 470, y: 40, facing: 180 },
+  { type: "side_table", x: 480, y: 184, facing: 0 },
+  { type: "round_table", x: 580, y: 90, r: 50 },
+  { type: "chair", x: 620, y: 90, facing: 0 },
+  { type: "chair", x: 620, y: 170, facing: 180 },
+  { type: "chair", x: 570, y: 120, facing: 90 },
+  { type: "chair", x: 660, y: 120, facing: 270 },
+  { type: "whiteboard", x: 710, y: 90, facing: 90 },
+  { type: "projector", x: 780, y: 90, facing: 0 },
+  { type: "tv_stand", x: 710, y: 170, facing: 270 },
 
-  // ============================================================
-  // ATM (Acesso rápido)
-  // ============================================================
-  { type: "atm", x: 250, y: 8, facing: 180 },
+  // Focus booths and quiet work edge
+  { type: "phone_booth", x: 50, y: 340, facing: 0 },
+  { type: "sms_booth", x: 145, y: 350, facing: 0 },
 
-  // ============================================================
-  // COZINHA E REFEITÓRIO (Canto superior direito)
-  // ============================================================
-  // Bancada de cozinha
-  { type: "cabinet", x: 780, y: 10, w: 100, h: 40, elevation: 0 },
-  { type: "coffee_machine", x: 790, y: 15, elevation: 0.56 },
-  { type: "stove", x: 830, y: 15 },
-  { type: "sink", x: 870, y: 15 },
-  { type: "dishwasher", x: 910, y: 15, w: 40, h: 40 },
-  { type: "microwave", x: 960, y: 10, facing: 0 },
-  { type: "fridge", x: 1000, y: 10, w: 40, h: 80 },
-  { type: "wall_cabinet", x: 780, y: 5, w: 100, h: 20, elevation: 0.9 },
-  { type: "wall_cabinet", x: 900, y: 5, w: 80, h: 20, elevation: 0.9 },
-  // Máquina de venda
-  { type: "vending", x: 720, y: 12 },
-  { type: "trash", x: 760, y: 50 },
-  // Mesa de refeições
-  ...DEFAULT_DINING_ITEMS,
+  // Main work floor - clean 2x4 desk grid with better aisles
+  { type: "desk_cubicle", x: 240, y: 280, facing: 180 },
+  { type: "chair", x: 280, y: 335, facing: 0 },
+  { type: "desk_cubicle", x: 380, y: 280, facing: 180 },
+  { type: "chair", x: 420, y: 335, facing: 0 },
+  { type: "desk_cubicle", x: 520, y: 280, facing: 180 },
+  { type: "chair", x: 560, y: 335, facing: 0 },
+  { type: "desk_cubicle", x: 660, y: 280, facing: 180 },
+  { type: "chair", x: 700, y: 335, facing: 0 },
+  { type: "desk_cubicle", x: 240, y: 430, facing: 180 },
+  { type: "chair", x: 280, y: 485, facing: 0 },
+  { type: "desk_cubicle", x: 380, y: 430, facing: 180 },
+  { type: "chair", x: 420, y: 485, facing: 0 },
+  { type: "desk_cubicle", x: 520, y: 430, facing: 180 },
+  { type: "chair", x: 560, y: 485, facing: 0 },
+  { type: "desk_cubicle", x: 660, y: 430, facing: 180 },
+  { type: "chair", x: 700, y: 485, facing: 0 },
+  { type: "printer", x: 820, y: 300, facing: 0 },
+  { type: "copier", x: 820, y: 360, facing: 0 },
+  { type: "locker", x: 820, y: 430, facing: 0 },
+  { type: "router_station", x: 820, y: 500, facing: 0 },
 
-  // ============================================================
-  // ÁREA DE TRABALHO - FILEIRA 1 (4 estações)
-  // ============================================================
-  { type: "desk_cubicle", x: 60, y: 280, id: "desk_0" },
-  { type: "chair", x: 82, y: 268, facing: 180 },
-  { type: "computer", x: 82, y: 265 },
-  { type: "keyboard", x: 94, y: 272 },
-  { type: "mouse", x: 115, y: 272 },
+  // Lounge / game zone in the lower center
+  { type: "couch", x: 300, y: 610, facing: 0 },
+  { type: "couch", x: 420, y: 600, facing: 0, vertical: true },
+  { type: "side_table", x: 470, y: 660, facing: 0 },
+  { type: "ottoman", x: 488, y: 650, facing: 0 },
+  { type: "beanbag", x: 540, y: 620, facing: 0 },
+  { type: "beanbag", x: 598, y: 656, facing: 0 },
+  { type: "jukebox", x: 300, y: 710, facing: 0 },
+  { type: "foosball", x: 620, y: 635, facing: 0 },
+  { type: "air_hockey", x: 740, y: 630, facing: 0 },
 
-  { type: "desk_cubicle", x: 220, y: 280, id: "desk_1" },
-  { type: "chair", x: 242, y: 268, facing: 180 },
-  { type: "computer", x: 242, y: 265 },
-  { type: "keyboard", x: 254, y: 272 },
-  { type: "mouse", x: 275, y: 272 },
-
-  { type: "desk_cubicle", x: 380, y: 280, id: "desk_2" },
-  { type: "chair", x: 402, y: 268, facing: 180 },
-  { type: "computer", x: 402, y: 265 },
-  { type: "keyboard", x: 414, y: 272 },
-  { type: "mouse", x: 435, y: 272 },
-
-  { type: "desk_cubicle", x: 540, y: 280, id: "desk_3" },
-  { type: "chair", x: 562, y: 268, facing: 180 },
-  { type: "computer", x: 562, y: 265 },
-  { type: "keyboard", x: 574, y: 272 },
-  { type: "mouse", x: 595, y: 272 },
-
-  // ============================================================
-  // ÁREA DE TRABALHO - FILEIRA 2 (4 estações)
-  // ============================================================
-  { type: "desk_cubicle", x: 60, y: 420, id: "desk_4" },
-  { type: "chair", x: 82, y: 408, facing: 180 },
-  { type: "computer", x: 82, y: 405 },
-  { type: "keyboard", x: 94, y: 412 },
-  { type: "mouse", x: 115, y: 412 },
-
-  { type: "desk_cubicle", x: 220, y: 420, id: "desk_5" },
-  { type: "chair", x: 242, y: 408, facing: 180 },
-  { type: "computer", x: 242, y: 405 },
-  { type: "keyboard", x: 254, y: 412 },
-  { type: "mouse", x: 275, y: 412 },
-
-  { type: "desk_cubicle", x: 380, y: 420, id: "desk_6" },
-  { type: "chair", x: 402, y: 408, facing: 180 },
-  { type: "computer", x: 402, y: 405 },
-  { type: "keyboard", x: 414, y: 412 },
-  { type: "mouse", x: 435, y: 412 },
-
-  { type: "desk_cubicle", x: 540, y: 420, id: "desk_7" },
-  { type: "chair", x: 562, y: 408, facing: 180 },
-  { type: "computer", x: 562, y: 405 },
-  { type: "keyboard", x: 574, y: 412 },
-  { type: "mouse", x: 595, y: 412 },
-
-  // ============================================================
-  // ÁREA DE TRABALHO - FILEIRA 3 (4 estações)
-  // ============================================================
-  { type: "desk_cubicle", x: 60, y: 560, id: "desk_8" },
-  { type: "chair", x: 82, y: 548, facing: 180 },
-  { type: "computer", x: 82, y: 545 },
-  { type: "keyboard", x: 94, y: 552 },
-  { type: "mouse", x: 115, y: 552 },
-
-  { type: "desk_cubicle", x: 220, y: 560, id: "desk_9" },
-  { type: "chair", x: 242, y: 548, facing: 180 },
-  { type: "computer", x: 242, y: 545 },
-  { type: "keyboard", x: 254, y: 552 },
-  { type: "mouse", x: 275, y: 552 },
-
-  { type: "desk_cubicle", x: 380, y: 560, id: "desk_10" },
-  { type: "chair", x: 402, y: 548, facing: 180 },
-  { type: "computer", x: 402, y: 545 },
-  { type: "keyboard", x: 414, y: 552 },
-  { type: "mouse", x: 435, y: 552 },
-
-  { type: "desk_cubicle", x: 540, y: 560, id: "desk_11" },
-  { type: "chair", x: 562, y: 548, facing: 180 },
-  { type: "computer", x: 562, y: 545 },
-  { type: "keyboard", x: 574, y: 552 },
-  { type: "mouse", x: 595, y: 552 },
-
-  // ============================================================
-  // ÁREA DE DESCANSO E LAZER (Lado direito central)
-  // ============================================================
-  // Lounge com sofás
-  { type: "couch", x: 720, y: 280, w: 120, h: 45 },
-  { type: "couch", x: 720, y: 380, w: 120, h: 45 },
-  { type: "table_rect", x: 750, y: 330, w: 60, h: 40, facing: 0 },
-  // Puffs coloridos
-  { type: "beanbag", x: 870, y: 290, color: "#e65100", facing: 90 },
-  { type: "beanbag", x: 870, y: 370, color: "#1565c0", facing: 90 },
-  { type: "beanbag", x: 930, y: 330, color: "#7c3aed", facing: 0 },
-
-  // ============================================================
-  // ÁREA DE JOGOS (Parte inferior direita)
-  // ============================================================
-  // Mesa de ping pong
-  { type: "pingpong", x: 720, y: 500, w: 120, h: 70 },
-  // Jukebox para música
-  { type: "jukebox", x: 880, y: 480, facing: 90 },
-
-  // ============================================================
-  // SERVER ROOM (Canto inferior esquerdo)
-  // ============================================================
   ...DEFAULT_SERVER_ROOM_ITEMS,
-
-  // ============================================================
-  // GYM ROOM (Ala leste - parte superior)
-  // ============================================================
-  ...DEFAULT_GYM_ITEMS,
-
-  // ============================================================
-  // QA LAB (Ala leste - parte inferior)
-  // ============================================================
+  ...DEFAULT_DINING_ITEMS,
   ...DEFAULT_QA_LAB_ITEMS,
+  ...DEFAULT_GYM_ITEMS,
 ];
 
 const PREVIOUS_ART_ROOM_ITEMS: FurnitureSeed[] = [
@@ -637,8 +547,7 @@ const stripServerRoomItems = (items: FurnitureItem[]) =>
       return false;
     }
     if (item.type === "door" || item.type === "wall") {
-      // Nova posição da server room (canto inferior esquerdo): y: 632-800, x: -8-208
-      const insideDefaultServerRoom = intersectsRect(item, -8, 632, 208, 808);
+      const insideDefaultServerRoom = intersectsRect(item, -8, 552, 238, 732);
       const insidePreviousBottomRight = intersectsRect(item, 812, 532, 1108, 728);
       const insidePreviousTopRight = intersectsRect(item, 812, -8, 1108, 238);
       return !insideDefaultServerRoom && !insidePreviousBottomRight && !insidePreviousTopRight;
@@ -742,7 +651,7 @@ export const ensureOfficeServerRoom = (
       PREVIOUS_SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)) ||
       SERVER_ROOM_SIGNATURES.has(createFurnitureSignature(item)) ||
       ((item.type === "wall" || item.type === "door") &&
-        (intersectsRect(item, -8, 632, 208, 808) ||
+        (intersectsRect(item, -8, 552, 238, 732) ||
           intersectsRect(item, 812, 532, 1108, 728) ||
           intersectsRect(item, 812, -8, 1108, 238))),
   );
