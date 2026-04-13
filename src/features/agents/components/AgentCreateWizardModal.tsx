@@ -60,7 +60,7 @@ const wizardSteps: Array<{ id: WizardStepId; label: string; hint: string }> = [
   {
     id: "identity",
     label: "Identity",
-    hint: "Create the live agent first, then fill in the rest step by step.",
+    hint: "Fill the identity first, then complete the profile before sending the agent to the gateway.",
   },
   {
     id: "avatar",
@@ -278,6 +278,7 @@ export function AgentCreateWizardModal({
     buildInitialDraft(suggestedName),
   );
   const [createdAgentId, setCreatedAgentId] = useState<string | null>(null);
+  const [localAvatarAgentId] = useState<string>(() => randomUUID());
   const [draftAvatarProfile, setDraftAvatarProfile] = useState<AgentAvatarProfile>(() =>
     createDefaultAgentAvatarProfile(randomUUID()),
   );
@@ -291,7 +292,7 @@ export function AgentCreateWizardModal({
   const activeStep = wizardSteps[activeStepIndex] ?? wizardSteps[0];
   const isWorking = busy || finishing;
   const isFinalStep = step === "HEARTBEAT.md";
-  const statusCopy = finishing ? "Saving the agent files and avatar." : statusLine;
+  const statusCopy = finishing ? "Creating the agent and sending the completed profile to the gateway." : statusLine;
 
   const updateDraft = <K extends keyof PersonalityBuilderDraft>(
     key: K,
@@ -332,23 +333,7 @@ export function AgentCreateWizardModal({
         throw new Error("The imported template needs an agent name before it can be created.");
       }
 
-      setTemplateStatus(`Creating ${importedName} from ${selectedFile.name}.`);
-      const agentId = createdAgentId ?? (await onCreateAgent({
-        name: importedName,
-        creature: mergedDraft.identity.creature,
-        vibe: mergedDraft.identity.vibe,
-        emoji: mergedDraft.identity.emoji,
-      }));
-      if (!agentId) return;
-
-      setCreatedAgentId(agentId);
-      setTemplateStatus(`Saving ${importedName} and closing the wizard.`);
-      await onFinishWizard({
-        agentId,
-        draft: mergedDraft,
-        profile: draftAvatarProfile,
-      });
-      onClose(agentId);
+      setTemplateStatus(`Template loaded from ${selectedFile.name}. Review the fields and finish when ready.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not import the selected file.";
       setTemplateStatus(null);
@@ -361,28 +346,27 @@ export function AgentCreateWizardModal({
   const advanceStep = async () => {
     if (step === "identity") {
       if (!canCreate || isWorking) return;
-      if (!createdAgentId) {
-        const agentId = await onCreateAgent({
-          name: draft.identity.name,
-          creature: draft.identity.creature,
-          vibe: draft.identity.vibe,
-          emoji: draft.identity.emoji,
-        });
-        if (!agentId) return;
-        setCreatedAgentId(agentId);
-      }
       setStep("avatar");
       return;
     }
     if (isFinalStep) {
-      if (!createdAgentId || isWorking) return;
+      if (!canCreate || isWorking) return;
       setFinishing(true);
       try {
+        const agentId = createdAgentId ?? (await onCreateAgent({
+          name: draft.identity.name,
+          creature: draft.identity.creature,
+          vibe: draft.identity.vibe,
+          emoji: draft.identity.emoji,
+        }));
+        if (!agentId) return;
+        setCreatedAgentId(agentId);
         await onFinishWizard({
-          agentId: createdAgentId,
+          agentId,
           draft,
           profile: draftAvatarProfile,
         });
+        onClose(agentId);
       } finally {
         setFinishing(false);
       }
@@ -395,10 +379,8 @@ export function AgentCreateWizardModal({
   };
 
   const stepActionLabel =
-    step === "identity" && !createdAgentId
-      ? busy
-        ? "Creating..."
-        : "Create and continue"
+    step === "identity"
+      ? "Continue"
       : isFinalStep
         ? isWorking
           ? "Saving..."
@@ -433,7 +415,7 @@ export function AgentCreateWizardModal({
                 Create an agent step by step
               </div>
               <div className="mt-1 text-sm text-muted-foreground">
-                Start with identity, then build the rest of the profile before finishing.
+                Fill the fields first. The agent is only created in the gateway when you finish the wizard.
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -583,7 +565,7 @@ export function AgentCreateWizardModal({
                 <div>
                   <h3 className="text-sm font-medium text-foreground">Identity</h3>
                   <div className="mt-1 text-xs text-muted-foreground">
-                    Confirm the live agent name first, then fill in the rest of `IDENTITY.md`.
+                    Fill the agent identity now. Nothing is sent to the gateway until you finish the wizard.
                   </div>
                 </div>
                 <AgentIdentityFields
@@ -599,16 +581,15 @@ export function AgentCreateWizardModal({
               </section>
 
               <div className="mt-6 rounded-xl border border-border/45 bg-muted/20 p-4 text-sm text-muted-foreground">
-                Creating the agent in this step now provisions it in both OpenClaw and the backend
-                right away, then the wizard completes the full profile in the next steps.
+                This wizard now keeps everything local while you edit. The gateway agent is only created after you finish all steps.
               </div>
             </div>
           </div>
-        ) : createdAgentId ? (
+        ) : (
           <>
             {step === "avatar" ? (
               <AgentAvatarEditorPanel
-                agentId={createdAgentId}
+                agentId={createdAgentId ?? localAvatarAgentId}
                 agentName={draft.identity.name.trim() || "New Agent"}
                 initialProfile={draftAvatarProfile}
                 showActions={false}
