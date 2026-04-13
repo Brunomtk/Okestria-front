@@ -549,7 +549,7 @@ const PALETTE: PaletteEntry[] = [
   {
     type: "kettlebell_rack",
     label: "Kettlebells",
-    icon: "🏋️",
+    icon: "��️",
     defaults: { facing: 180 },
   },
   {
@@ -4933,7 +4933,7 @@ export function RetroOffice3D({
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => moveSelectedItem(-SNAP_GRID, 0)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">← Move</button>
                     <button type="button" onClick={() => moveSelectedItem(SNAP_GRID, 0)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Move →</button>
-                    <button type="button" onClick={() => moveSelectedItem(0, -SNAP_GRID)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">↑ Forward</button>
+                    <button type="button" onClick={() => moveSelectedItem(0, -SNAP_GRID)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">�� Forward</button>
                     <button type="button" onClick={() => moveSelectedItem(0, SNAP_GRID)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Back ↓</button>
                     <button type="button" onClick={() => rotateSelectedItem(-ROTATION_STEP_DEG)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Rotate -</button>
                     <button type="button" onClick={() => rotateSelectedItem(ROTATION_STEP_DEG)} className="rounded-xl border border-cyan-500/18 bg-black/20 px-3 py-2 text-xs font-semibold text-cyan-100/80 transition hover:border-cyan-400/35 hover:text-cyan-50">Rotate +</button>
@@ -5046,26 +5046,49 @@ export function RetroOffice3D({
       ) : null}
 
       {!readOnly && !immersiveOverlayActive ? (
-        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-1.5`}>
-          <div className="flex max-w-[min(92vw,520px)] flex-wrap items-center gap-1.5 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 px-2.5 py-2 shadow-2xl backdrop-blur-md">
-            <div className="min-w-0 pr-1.5">
-              <div className="truncate font-mono text-[9px] uppercase tracking-[0.16em] text-amber-500/70">
-                {officeTitleLoaded ? officeTitle : "Office HQ"}
-              </div>
-              <div className="text-[10px] text-amber-100/50">
-                {agents.length} agents • {squads.length} squads
+        <div className={`absolute top-3 left-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2`}>
+          {/* Main HQ Panel - Redesigned */}
+          <div className="flex items-stretch gap-0 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 shadow-2xl backdrop-blur-xl">
+            {/* Company Info Section */}
+            <div className="flex items-center gap-3 border-r border-white/[0.06] px-3 py-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[11px] font-medium text-white/90">
+                    {officeTitleLoaded ? officeTitle : "Office HQ"}
+                  </span>
+                </div>
+                <div className="mt-0.5 text-[10px] text-white/40">
+                  {agents.length} agents • {squads.length} squads
+                </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-1">
+
+            {/* Tabs Section */}
+            <div className="flex items-center border-r border-white/[0.06]">
               <button
                 type="button"
                 onClick={() => {
                   setAgentRosterOpen(true);
                   setRosterTab("agents");
                 }}
-                className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "agents" ? "border-cyan-400/45 bg-cyan-500/14 text-cyan-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-cyan-400/35 hover:text-cyan-100"}`}
+                className={`group relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-all ${
+                  rosterTab === "agents"
+                    ? "bg-white/[0.04] text-white"
+                    : "text-white/50 hover:bg-white/[0.02] hover:text-white/80"
+                }`}
               >
-                Agents {agents.length}
+                <Users size={12} className={rosterTab === "agents" ? "text-cyan-400" : "text-white/40 group-hover:text-white/60"} />
+                <span>Agents</span>
+                <span className={`ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  rosterTab === "agents"
+                    ? "bg-cyan-500/20 text-cyan-300"
+                    : "bg-white/[0.06] text-white/50"
+                }`}>
+                  {agents.length}
+                </span>
+                {rosterTab === "agents" && (
+                  <span className="absolute bottom-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-t-full bg-cyan-400" />
+                )}
               </button>
               <button
                 type="button"
@@ -5073,12 +5096,28 @@ export function RetroOffice3D({
                   setAgentRosterOpen(true);
                   setRosterTab("squads");
                 }}
-                className={`rounded-full border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] transition-all ${rosterTab === "squads" ? "border-violet-400/45 bg-violet-500/14 text-violet-100" : "border-amber-900/25 bg-[#1c1610]/75 text-amber-200/70 hover:border-violet-400/35 hover:text-violet-100"}`}
+                className={`group relative flex items-center gap-1.5 px-3 py-2.5 text-[11px] font-medium transition-all ${
+                  rosterTab === "squads"
+                    ? "bg-white/[0.04] text-white"
+                    : "text-white/50 hover:bg-white/[0.02] hover:text-white/80"
+                }`}
               >
-                Squads {squads.length}
+                <span>Squads</span>
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                  rosterTab === "squads"
+                    ? "bg-violet-500/20 text-violet-300"
+                    : "bg-white/[0.06] text-white/50"
+                }`}>
+                  {squads.length}
+                </span>
+                {rosterTab === "squads" && (
+                  <span className="absolute bottom-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-t-full bg-violet-400" />
+                )}
               </button>
             </div>
-            <div className="ml-auto flex items-center gap-1">
+
+            {/* Agent Avatars */}
+            <div className="flex items-center gap-0.5 px-2">
               {compactRosterAgents.slice(0, 4).map((agent, index) => {
                 const initials = agent.name
                   .split(/\s+/)
@@ -5086,194 +5125,200 @@ export function RetroOffice3D({
                   .slice(0, 2)
                   .map((part) => part[0]?.toUpperCase() ?? "")
                   .join("") || "A";
+                const colors = ["bg-cyan-500/80", "bg-amber-500/80", "bg-emerald-500/80", "bg-violet-500/80"];
                 return (
                   <button
                     key={agent.id}
                     type="button"
                     onClick={() => onAgentChatSelect?.(agent.id)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-amber-700/30 bg-[#1c1610]/85 text-[9px] font-semibold text-amber-100/80 transition-all hover:-translate-y-0.5 hover:border-amber-400/45 hover:text-white"
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-lg ring-2 ring-[#0a0a0a] transition-all hover:scale-110 hover:ring-cyan-500/50 ${colors[index % colors.length]}`}
                     title={agent.name}
-                    style={{ marginLeft: index === 0 ? 0 : -6 }}
+                    style={{ marginLeft: index === 0 ? 0 : -8, zIndex: 10 - index }}
                   >
                     {initials}
                   </button>
                 );
               })}
-              {hiddenAgentCount > 0 ? (
-                <span className="rounded-full border border-amber-900/25 bg-black/20 px-1.5 py-1 text-[9px] text-amber-100/50">+{hiddenAgentCount}</span>
-              ) : null}
+              {hiddenAgentCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAgentRosterOpen(true);
+                    setRosterTab("agents");
+                  }}
+                  className="ml-1 flex h-6 items-center justify-center rounded-full bg-white/[0.08] px-2 text-[10px] font-medium text-white/60 transition-all hover:bg-white/[0.12] hover:text-white/80"
+                >
+                  +{hiddenAgentCount}
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Camera presets — top left. */}
-          <div className="w-auto self-start rounded-2xl border border-amber-700/20 bg-[#120e08]/92 p-1.5 shadow-2xl backdrop-blur-md">
-            <div className="flex items-center gap-1">
-              {(
-                [
-                  {
-                    key: "overview",
-                    icon: <Camera size={12} />,
-                    title: "Overview",
-                    subtitle: "Full office",
-                  },
-                  {
-                    key: "frontDesk",
-                    icon: <Monitor size={12} />,
-                    title: "Front desk",
-                    subtitle: "Entry area",
-                  },
-                  {
-                    key: "lounge",
-                    icon: <Armchair size={12} />,
-                    title: "Lounge",
-                    subtitle: "Social space",
-                  },
-                ] as const
-              ).map(({ key, icon, title }) => {
-                const active = activeCameraPresetKey === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    title={title}
-                    onClick={() => {
-                      setActiveCameraPresetKey(key);
-                      cameraPresetRef.current = cameraPresetMap[key];
-                    }}
-                    className={`group flex h-10 w-10 items-center justify-center rounded-xl border transition-all active:scale-[0.98] ${
-                      active
-                        ? "border-amber-400/45 bg-amber-300/12 text-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
-                        : "border-amber-900/25 bg-[#1c1610]/80 text-amber-500/70 hover:border-amber-500/35 hover:bg-[#261d15] hover:text-amber-200"
-                    }`}
-                    style={{ touchAction: "manipulation" }}
-                  >
-                    <span
-                      className={`flex h-6 w-6 items-center justify-center rounded-lg border ${
-                        active
-                          ? "border-amber-300/35 bg-amber-300/10"
-                          : "border-amber-900/20 bg-black/20"
-                      }`}
-                    >
-                      {icon}
-                    </span>
-                  </button>
-                );
-              })}
-              {editMode ? (
-                <span className="ml-1 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.16em] text-emerald-200">
-                  editing
-                </span>
-              ) : null}
-            </div>
+          {/* Camera Controls - Redesigned */}
+          <div className="flex items-center gap-1 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 p-1 shadow-2xl backdrop-blur-xl">
+            {(
+              [
+                { key: "overview", icon: <Camera size={14} />, title: "Overview" },
+                { key: "frontDesk", icon: <Monitor size={14} />, title: "Front desk" },
+                { key: "lounge", icon: <Armchair size={14} />, title: "Lounge" },
+              ] as const
+            ).map(({ key, icon, title }) => {
+              const active = activeCameraPresetKey === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  title={title}
+                  onClick={() => {
+                    setActiveCameraPresetKey(key);
+                    cameraPresetRef.current = cameraPresetMap[key];
+                  }}
+                  className={`flex h-9 w-9 items-center justify-center rounded-lg transition-all ${
+                    active
+                      ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30"
+                      : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                  }`}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {icon}
+                </button>
+              );
+            })}
+            {editMode && (
+              <span className="ml-1 flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2 py-1.5 text-[10px] font-medium text-emerald-400">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                Editing
+              </span>
+            )}
           </div>
         </div>
       ) : null}
 
-      {/* Toolbar — top right. */}
+      {/* Toolbar — top right - Redesigned */}
       {!readOnly && !immersiveOverlayActive ? (
-        <div className={`absolute top-3 right-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-amber-700/20 bg-[#120e08]/88 p-2 shadow-2xl backdrop-blur-md`}>
+        <div className={`absolute top-3 right-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2`}>
+          {/* Remote Office Badge */}
           {remoteOfficeEnabled &&
           (remoteOfficeSourceKind === "presence_endpoint"
             ? remoteOfficePresenceUrl.trim().length > 0
-            : remoteOfficeGatewayUrl.trim().length > 0) ? (
+            : remoteOfficeGatewayUrl.trim().length > 0) && (
             <button
               onClick={() => setSettingsModalOpen(true)}
               title={remoteOfficeStatusText}
-              className="flex h-7 items-center justify-center gap-1 rounded-md border border-white/15 bg-[#120e08]/92 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/75 transition-all backdrop-blur-sm hover:border-cyan-400/45 hover:text-cyan-100"
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0a0a0a]/95 px-3 text-[11px] font-medium text-white/70 shadow-xl backdrop-blur-xl transition-all hover:border-cyan-500/30 hover:text-cyan-300"
             >
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
               <span>{remoteOfficeLabel}</span>
             </button>
-          ) : null}
-          {onAddAgent ? (
+          )}
+
+          {/* Primary Action - Add Agent */}
+          {onAddAgent && (
             <button
               onClick={onAddAgent}
               title="Add agent"
-              className="flex h-7 items-center justify-center gap-1 rounded-md border border-cyan-500/35 bg-[#071018]/92 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-200 transition-all backdrop-blur-sm hover:border-cyan-400/55 hover:text-white"
+              className="group flex h-8 items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-3.5 text-[11px] font-semibold text-white shadow-lg shadow-cyan-500/25 transition-all hover:from-cyan-500 hover:to-cyan-400 hover:shadow-cyan-500/40 active:scale-[0.98]"
             >
-              <UserPlus size={12} />
-              <span>Add agent</span>
+              <UserPlus size={14} className="transition-transform group-hover:scale-110" />
+              <span>Add Agent</span>
             </button>
-          ) : null}
-          {onOpenProfile ? (
-            <button
-              onClick={onOpenProfile}
-              title="Open profile"
-              className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${profileButtonActive ? "bg-cyan-500/24 text-cyan-100 border-cyan-400/45" : "bg-[#1c1610]/80 text-amber-500/52 border-amber-900/20 hover:text-cyan-100 hover:border-cyan-400/40"}`}
-            >
-              <UserRound size={12} />
-            </button>
-          ) : null}
-          {/* New Idea 7: Heatmap toggle. */}
-          <button
-            onClick={() => setHeatmapMode((p) => !p)}
-            title="Toggle heatmap"
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border shadow-sm ${heatmapMode ? "bg-red-500/22 text-red-100 border-red-400/70 shadow-red-900/40 ring-2 ring-red-500/55" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-red-200 hover:border-red-400/50"}`}
-          >
-            <MapIcon size={12} />
-          </button>
-          {/* Edit office toggle. */}
-          <button
-            onClick={() => {
-              void toggleEdit();
-            }}
-            disabled={isSavingOfficeLayout}
-            title={editMode ? (isSavingOfficeLayout ? "Saving office layout..." : "Save office layout") : "Edit office"}
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${editMode ? "bg-amber-500/30 text-amber-300 border-amber-500/50" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-amber-400"} ${isSavingOfficeLayout ? "cursor-wait opacity-70" : ""}`}
-          >
-            {editMode ? (
-              <Check size={12} strokeWidth={2.5} />
-            ) : (
-              <Pencil size={12} strokeWidth={2} />
+          )}
+
+          {/* Icon Actions Group */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 p-1 shadow-xl backdrop-blur-xl">
+            {onOpenProfile && (
+              <button
+                onClick={onOpenProfile}
+                title="Open profile"
+                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                  profileButtonActive
+                    ? "bg-cyan-500/20 text-cyan-300"
+                    : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                }`}
+              >
+                <UserRound size={14} />
+              </button>
             )}
-          </button>
-          <button
-            onClick={() => setSettingsModalOpen(true)}
-            title="Voice reply settings"
-            className={`w-7 h-7 flex items-center justify-center rounded-md transition-all backdrop-blur-sm border ${settingsModalOpen ? "bg-amber-500/30 text-amber-300 border-amber-500/50" : "bg-[#1c1610]/80 text-amber-500/40 border-amber-900/20 hover:text-amber-400"}`}
-          >
-            <Settings2 size={12} />
-          </button>
-          {onLogout ? (
             <button
-              onClick={onLogout}
-              title="Logout"
-              className="w-7 h-7 flex items-center justify-center rounded-md border border-red-400/20 bg-[#1b0a0a]/86 text-red-200/80 transition-all backdrop-blur-sm hover:border-red-300/40 hover:text-red-100"
+              onClick={() => setHeatmapMode((p) => !p)}
+              title="Toggle heatmap"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                heatmapMode
+                  ? "bg-red-500/20 text-red-300 ring-1 ring-red-500/30"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+              }`}
             >
-              <LogOut size={12} />
+              <MapIcon size={14} />
             </button>
-          ) : null}
+            <button
+              onClick={() => {
+                void toggleEdit();
+              }}
+              disabled={isSavingOfficeLayout}
+              title={editMode ? (isSavingOfficeLayout ? "Saving office layout..." : "Save office layout") : "Edit office"}
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                editMode
+                  ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+              } ${isSavingOfficeLayout ? "cursor-wait opacity-50" : ""}`}
+            >
+              {editMode ? <Check size={14} strokeWidth={2.5} /> : <Pencil size={14} strokeWidth={2} />}
+            </button>
+            <button
+              onClick={() => setSettingsModalOpen(true)}
+              title="Settings"
+              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                settingsModalOpen
+                  ? "bg-amber-500/20 text-amber-300"
+                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+              }`}
+            >
+              <Settings2 size={14} />
+            </button>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                title="Logout"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 transition-all hover:bg-red-500/15 hover:text-red-400"
+              >
+                <LogOut size={14} />
+              </button>
+            )}
+          </div>
+
+          {/* Edit Mode Actions */}
           {editMode && (
-            <>
+            <div className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 p-1.5 shadow-xl backdrop-blur-xl">
               {drag.kind === "placing" && (
-                <span className="text-[10px] text-amber-400/70">
+                <span className="px-2 text-[10px] text-amber-400/80">
                   {drag.itemType === "wall"
                     ? wallDrawStart
-                      ? "Click the end point to finish the wall."
-                      : "Click a start point, then click again to finish the wall."
-                    : "Click floor to place. Esc cancels."}
+                      ? "Click end point"
+                      : "Click start point"
+                    : "Click to place"}
                 </span>
               )}
               <button
                 onClick={handleReset}
-                className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider bg-[#2a1e14]/90 text-amber-400/60 border border-amber-800/20 hover:bg-[#3a2a1a] backdrop-blur-sm"
+                className="flex h-7 items-center rounded-lg bg-white/[0.04] px-2.5 text-[10px] font-medium text-white/60 transition-all hover:bg-white/[0.08] hover:text-white/80"
               >
                 Reset
               </button>
               {selectedUid && (
                 <button
                   onClick={handleDelete}
-                  className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider bg-red-900/40 text-red-400 border border-red-800/30 hover:bg-red-900/60 backdrop-blur-sm"
+                  className="flex h-7 items-center rounded-lg bg-red-500/15 px-2.5 text-[10px] font-medium text-red-400 transition-all hover:bg-red-500/25"
                 >
                   Delete
                 </button>
               )}
               <button
                 onClick={() => setDrawerOpen((p) => !p)}
-                className="px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider bg-[#2a1e14]/90 text-amber-400 border border-amber-800/30 hover:bg-[#3a2a1a] backdrop-blur-sm"
+                className="flex h-7 items-center rounded-lg bg-amber-500/15 px-2.5 text-[10px] font-medium text-amber-300 transition-all hover:bg-amber-500/25"
               >
-                {drawerOpen ? "Hide builder" : "Open builder"}
+                {drawerOpen ? "Hide" : "Builder"}
               </button>
-            </>
+            </div>
           )}
         </div>
       ) : null}
