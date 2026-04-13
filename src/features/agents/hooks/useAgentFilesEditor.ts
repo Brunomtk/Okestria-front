@@ -11,6 +11,13 @@ import {
   createAgentFilesState,
   isAgentFileName,
 } from "@/lib/agents/agentFiles";
+import {
+  extractGatewayAgentId,
+  fetchCompanyAgentDetails,
+  fetchCompanyAgents,
+  getBrowserCompanyId,
+  type BackendAgentSummary,
+} from "@/lib/agents/backend-api";
 
 type AgentFilesState = ReturnType<typeof createAgentFilesState>;
 
@@ -46,6 +53,71 @@ const slugifyGatewayCandidate = (value: string) =>
 const isUnknownAgentIdError = (error: unknown) => {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return message.toLowerCase().includes("unknown agent id");
+};
+
+
+const findGatewayAgentIdFromBackend = async (params: {
+  candidateAgentIds: string[];
+  selectedAgent?: AgentState | null;
+}) => {
+  const companyId = getBrowserCompanyId();
+  if (!companyId) return null;
+
+  try {
+    const companyAgents = await fetchCompanyAgents(companyId);
+    const normalizedSelectedName = params.selectedAgent?.name?.trim().toLowerCase() ?? "";
+    const slugCandidates = new Set(
+      [
+        ...params.candidateAgentIds.map((value) => slugifyGatewayCandidate(value)),
+        normalizedSelectedName ? slugifyGatewayCandidate(normalizedSelectedName) : "",
+      ].filter((value) => value.length > 0),
+    );
+    const rawCandidates = new Set(
+      params.candidateAgentIds
+        .map((value) => value.trim().toLowerCase())
+        .filter((value) => value.length > 0),
+    );
+
+    const summaryMatch =
+      companyAgents.find((agent) => {
+        const name = (agent.name ?? "").trim().toLowerCase();
+        const slug = (agent.slug ?? "").trim().toLowerCase();
+        return (
+          (normalizedSelectedName.length > 0 && name === normalizedSelectedName) ||
+          rawCandidates.has(name) ||
+          rawCandidates.has(slug) ||
+          slugCandidates.has(slug) ||
+          (typeof params.selectedAgent?.agentId === "string" &&
+            params.selectedAgent.agentId.trim().length > 0 &&
+            params.selectedAgent.agentId.trim().toLowerCase() === slug)
+        );
+      }) ?? null;
+
+    const detailCandidates: BackendAgentSummary[] = summaryMatch ? [summaryMatch] : companyAgents;
+    for (const agent of detailCandidates) {
+      try {
+        const detail = await fetchCompanyAgentDetails(agent.id);
+        const gatewayAgentId = extractGatewayAgentId(detail);
+        if (!gatewayAgentId) continue;
+        const detailName = (detail.name ?? agent.name ?? "").trim().toLowerCase();
+        const detailSlug = (detail.slug ?? agent.slug ?? "").trim().toLowerCase();
+        const matches =
+          rawCandidates.has(gatewayAgentId.toLowerCase()) ||
+          (normalizedSelectedName.length > 0 && detailName === normalizedSelectedName) ||
+          rawCandidates.has(detailName) ||
+          rawCandidates.has(detailSlug) ||
+          slugCandidates.has(detailSlug);
+        if (matches) {
+          return gatewayAgentId;
+        }
+      } catch {
+        // ignore one broken record and continue
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 };
 
 export const useAgentFilesEditor = (params: {
@@ -97,6 +169,15 @@ export const useAgentFilesEditor = (params: {
   }, [agentId, client, resolvedGatewayAgentId, selectedAgent]);
 
   const recoverGatewayAgentId = useCallback(async () => {
+    const backendResolved = await findGatewayAgentIdFromBackend({
+      candidateAgentIds,
+      selectedAgent,
+    });
+    if (backendResolved) {
+      setResolvedGatewayAgentId(backendResolved);
+      return backendResolved;
+    }
+
     if (!client) return null;
     try {
       const response = (await client.call("agents.list", {})) as AgentsListResult;
@@ -173,7 +254,7 @@ export const useAgentFilesEditor = (params: {
         }
         const recoveredAgentId = await recoverGatewayAgentId();
         if (!recoveredAgentId) {
-          throw new Error("This agent is not available in the connected gateway anymore. Refresh the office roster and try again.");
+          throw new Error("Não foi possível localizar o agent no gateway. Atualize a lista de agents e tente novamente.");
         }
         trimmedAgentId = recoveredAgentId;
         results = await Promise.all(
@@ -237,7 +318,7 @@ export const useAgentFilesEditor = (params: {
         }
         const recoveredAgentId = await recoverGatewayAgentId();
         if (!recoveredAgentId) {
-          throw new Error("This agent is not available in the connected gateway anymore. Refresh the office roster and try again.");
+          throw new Error("Não foi possível localizar o agent no gateway. Atualize a lista de agents e tente novamente.");
         }
         trimmedAgentId = recoveredAgentId;
         await Promise.all(
