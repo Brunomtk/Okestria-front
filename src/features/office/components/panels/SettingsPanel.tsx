@@ -30,6 +30,8 @@ type SettingsPanelProps = {
   onVoiceRepliesVoiceChange: (voiceId: string | null) => void;
   onVoiceRepliesSpeedChange: (speed: number) => void;
   onVoiceRepliesPreview: (voiceId: string | null, voiceName: string) => void;
+  onOpenAgentSkills?: () => void;
+  skillsButtonLabel?: string;
 };
 
 export function SettingsPanel({
@@ -44,6 +46,8 @@ export function SettingsPanel({
   onVoiceRepliesVoiceChange,
   onVoiceRepliesSpeedChange,
   onVoiceRepliesPreview,
+  onOpenAgentSkills,
+  skillsButtonLabel,
 }: SettingsPanelProps) {
   return (
     <div className="px-4 py-4">
@@ -94,6 +98,26 @@ export function SettingsPanel({
         <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
           {voiceRepliesLoaded ? (voiceRepliesEnabled ? "On" : "Off") : "Loading"}
         </span>
+      </div>
+
+
+      <div className="mt-3 rounded-lg border border-cyan-500/10 bg-black/20 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-medium text-white">Agent skills</div>
+            <div className="mt-1 text-[10px] text-white/75">
+              Open the agents screen directly on the skills setup view.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onOpenAgentSkills?.()}
+            className="rounded-md border border-cyan-400/25 bg-cyan-500/12 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-500/18 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!onOpenAgentSkills}
+          >
+            {skillsButtonLabel?.trim() || "Open skills"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 rounded-lg border border-cyan-500/10 bg-black/20 px-4 py-3">

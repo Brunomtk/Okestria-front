@@ -115,8 +115,10 @@ import { useChatInteractionController } from "@/features/agents/operations/useCh
 import type { ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import {
   SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM,
+  SETTINGS_ROUTE_TAB_QUERY_PARAM,
   parseSettingsRouteAgentIdFromQueryParam,
   parseSettingsRouteAgentIdFromPathname,
+  parseSettingsRouteTabFromQueryParam,
   type InspectSidebarState,
   type SettingsRouteTab,
 } from "@/features/agents/operations/settingsRouteWorkflow";
@@ -218,6 +220,10 @@ const AgentsPageScreen = () => {
         searchParams.get(SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM)
       ) ?? parseSettingsRouteAgentIdFromPathname(pathname ?? ""),
     [pathname, searchParams]
+  );
+  const settingsRouteRequestedTab = useMemo(
+    () => parseSettingsRouteTabFromQueryParam(searchParams.get(SETTINGS_ROUTE_TAB_QUERY_PARAM)),
+    [searchParams]
   );
   const settingsRouteActive = settingsRouteAgentId !== null;
   const [settingsCoordinator] = useState(() => createStudioSettingsCoordinator());
@@ -337,6 +343,16 @@ const AgentsPageScreen = () => {
   useEffect(() => {
     setSettingsSidebarItem(effectiveSettingsTab);
   }, [effectiveSettingsTab]);
+  useEffect(() => {
+    if (!settingsRouteAgentId) return;
+    setInspectSidebar((current) => {
+      const nextTab = settingsRouteRequestedTab ?? current?.tab ?? "personality";
+      if (current?.agentId === settingsRouteAgentId && current?.tab === nextTab) {
+        return current;
+      }
+      return { agentId: settingsRouteAgentId, tab: nextTab };
+    });
+  }, [settingsRouteAgentId, settingsRouteRequestedTab]);
   const inspectSidebarAgent = useMemo(() => {
     if (!inspectSidebarAgentId) return null;
     return agents.find((entry) => entry.agentId === inspectSidebarAgentId) ?? null;

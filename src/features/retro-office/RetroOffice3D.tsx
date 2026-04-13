@@ -5474,7 +5474,7 @@ export function RetroOffice3D({
       ) : null}
 
       {!readOnly && settingsModalOpen ? (
-        <div className="absolute inset-0 z-30 flex items-start justify-end overflow-y-auto bg-black/35 p-4 backdrop-blur-[1px]">
+        <div className="absolute inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/35 px-4 pb-4 pt-3 backdrop-blur-[1px]">
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-sm flex-col overflow-hidden rounded-xl border border-cyan-500/20 bg-[#05090d]/95 shadow-2xl">
             <div className="flex items-start justify-between border-b border-cyan-500/10 px-4 py-3">
               <div>

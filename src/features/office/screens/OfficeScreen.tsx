@@ -11,6 +11,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { MessageSquare, ChevronDown, Mic, Radar, PanelsTopLeft, Users2 } from "lucide-react";
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
+import { buildSettingsRouteHref } from "@/features/agents/operations/settingsRouteWorkflow";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
 import { useAgentStore, type AgentState } from "@/features/agents/state/store";
@@ -4637,6 +4638,14 @@ export function OfficeScreen({
           onAddAgent={handleOpenCreateModal}
           onAgentEdit={(agentId) => {
             openAgentEditor(agentId, "avatar");
+          }}
+          onOpenAgentSkills={(agentId) => {
+            const resolvedAgentId = (agentId ?? selectedChatAgentId ?? state.selectedAgentId ?? "").trim();
+            if (!resolvedAgentId) {
+              router.push("/agents");
+              return;
+            }
+            router.push(buildSettingsRouteHref(resolvedAgentId, "skills"));
           }}
           onAgentDelete={(agentId) => {
             void handleDeleteAgent(agentId);

@@ -20,6 +20,7 @@ export type SettingsRouteNavCommand =
   | { kind: "replace"; href: string };
 
 export const SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM = "settingsAgentId";
+export const SETTINGS_ROUTE_TAB_QUERY_PARAM = "settingsTab";
 
 export const parseSettingsRouteAgentIdFromPathname = (pathname: string): string | null => {
   const match = pathname.match(/^\/agents\/([^/]+)\/settings\/?$/);
@@ -34,6 +35,22 @@ export const parseSettingsRouteAgentIdFromPathname = (pathname: string): string 
   }
 };
 
+
+export const parseSettingsRouteTabFromQueryParam = (value: string | null | undefined): SettingsRouteTab | null => {
+  const trimmed = (value ?? "").trim().toLowerCase();
+  if (
+    trimmed === "personality" ||
+    trimmed === "capabilities" ||
+    trimmed === "skills" ||
+    trimmed === "system" ||
+    trimmed === "automations" ||
+    trimmed === "advanced"
+  ) {
+    return trimmed;
+  }
+  return null;
+};
+
 export const parseSettingsRouteAgentIdFromQueryParam = (value: string | null | undefined): string | null => {
   const trimmed = (value ?? "").trim();
   if (!trimmed) return null;
@@ -45,12 +62,17 @@ export const parseSettingsRouteAgentIdFromQueryParam = (value: string | null | u
   }
 };
 
-export const buildSettingsRouteHref = (agentId: string): string => {
+export const buildSettingsRouteHref = (agentId: string, tab?: SettingsRouteTab | null): string => {
   const resolved = agentId.trim();
   if (!resolved) {
     throw new Error("Cannot build settings route href: agent id is empty.");
   }
-  return `/agents?${SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM}=${encodeURIComponent(resolved)}`;
+  const params = new URLSearchParams();
+  params.set(SETTINGS_ROUTE_AGENT_ID_QUERY_PARAM, resolved);
+  if (tab) {
+    params.set(SETTINGS_ROUTE_TAB_QUERY_PARAM, tab);
+  }
+  return `/agents?${params.toString()}`;
 };
 
 export const shouldConfirmDiscardPersonalityChanges = (params: {
