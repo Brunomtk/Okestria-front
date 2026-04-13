@@ -159,7 +159,6 @@ import type {
 import type { NavGrid } from "@/features/retro-office/core/navigation";
 import type { OfficeLayoutSnapshot } from "@/lib/office/layoutSnapshot";
 import {
-  OFFICE_LAYOUT_SCHEMA_VERSION,
   parseCompanyOfficeLayoutJson,
   serializeCompanyOfficeLayout,
 } from "@/lib/office/companyLayout";
@@ -2275,7 +2274,7 @@ export function RetroOffice3D({
         body: JSON.stringify({
           name: "Company office layout",
           workspaceId,
-          version: OFFICE_LAYOUT_SCHEMA_VERSION,
+          version: 1,
           layoutJson: serializeCompanyOfficeLayout({
             width: LOCAL_OFFICE_CANVAS_WIDTH,
             height: LOCAL_OFFICE_CANVAS_HEIGHT,
