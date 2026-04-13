@@ -327,11 +327,11 @@ const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
 
 
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
-  { type: "round_table", x: 180, y: 140, r: 80 },
-  { type: "chair", x: 180, y: 54, facing: 0, elevation: 0 },
-  { type: "chair", x: 266, y: 140, facing: 270, elevation: 0 },
-  { type: "chair", x: 180, y: 226, facing: 180, elevation: 0 },
-  { type: "chair", x: 94, y: 140, facing: 90, elevation: 0 },
+  { type: "round_table", x: 180, y: 140, r: 68 },
+  { type: "chair", x: 180, y: 66, facing: 0, elevation: 0 },
+  { type: "chair", x: 254, y: 140, facing: 270, elevation: 0 },
+  { type: "chair", x: 180, y: 214, facing: 180, elevation: 0 },
+  { type: "chair", x: 106, y: 140, facing: 90, elevation: 0 },
   { type: "trash", x: 286, y: 42 },
   { type: "atm", x: 330, y: 8, facing: 180 },
   { type: "vending", x: 790, y: 12 },
