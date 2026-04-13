@@ -8,7 +8,7 @@
     "dev": "node server/index.js --dev",
     "dev:next": "next dev --turbopack",
     "dev:https": "node server/index.js --dev --https",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "node server/index.js",
     "lint": "eslint .",
     "cleanup:ux-artifacts": "node scripts/cleanup-ux-artifacts.mjs",
