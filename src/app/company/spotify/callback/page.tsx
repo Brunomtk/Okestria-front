@@ -12,7 +12,7 @@ export default function CompanySpotifyCallbackPage() {
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage(
         {
-          type: "okestria-spotify-auth",
+          type: "soundclaw-spotify-auth",
           code,
           state,
           error,
