@@ -4523,11 +4523,23 @@ export function OfficeScreen({
   const unseenInboxCount = state.agents.filter(
     (agent) => agent.hasUnseenActivity,
   ).length;
+  const companyScopedAgentCount = Array.isArray(companyScopedAgentIds)
+    ? companyScopedAgentIds.length
+    : null;
+  const hasScopedFleetExpectation =
+    companyScopedAgentCount !== null && companyScopedAgentCount > 0;
   const showEmptyFleetBanner =
-    status === "connected" && agentsLoaded && state.agents.length === 0;
+    status === "connected" &&
+    agentsLoaded &&
+    state.agents.length === 0 &&
+    !!state.error?.trim() ||
+    (status === "connected" &&
+      agentsLoaded &&
+      state.agents.length === 0 &&
+      hasScopedFleetExpectation);
   const emptyFleetMessage =
     state.error?.trim() ||
-    "Connected to the gateway, but no agents were loaded into the office.";
+    `Connected to the gateway, but ${companyScopedAgentCount === 1 ? "1 expected agent was" : `${companyScopedAgentCount ?? 0} expected agents were`} not loaded into the office yet.`;
 
   return (
     <main className="h-full w-full overflow-hidden bg-black">
