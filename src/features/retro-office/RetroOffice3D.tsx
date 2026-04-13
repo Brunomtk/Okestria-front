@@ -1284,20 +1284,45 @@ const clampFurnitureItemToCanvas = (item: FurnitureItem): FurnitureItem => {
 const sanitizeFurnitureLayout = (items: FurnitureItem[]) =>
   items.map(clampFurnitureItemToCanvas);
 
+const REQUIRED_EAST_WING_WALLS: FurnitureItem[] = [
+  { type: "wall", x: 1075, y: 0, w: 8, h: 150, _uid: "required_wall_gym_left_top" },
+  { type: "wall", x: 1075, y: 190, w: 8, h: 170, _uid: "required_wall_gym_left_bottom" },
+  { type: "wall", x: 1075, y: 352, w: 720, h: 8, _uid: "required_wall_gym_qa_divider" },
+];
+
+const hasSameRect = (item: FurnitureItem, required: FurnitureItem) =>
+  item.type === required.type &&
+  item.x === required.x &&
+  item.y === required.y &&
+  ((item as { w?: number }).w ?? null) === (((required as { w?: number }).w) ?? null) &&
+  ((item as { h?: number }).h ?? null) === (((required as { h?: number }).h) ?? null);
+
+const ensureOfficeEastWingWalls = (items: FurnitureItem[]) => {
+  const next = [...items];
+  for (const required of REQUIRED_EAST_WING_WALLS) {
+    if (!next.some((item) => hasSameRect(item, required))) {
+      next.push(required);
+    }
+  }
+  return next;
+};
+
 const buildCanonicalOfficeLayout = (items: FurnitureItem[]) =>
   sanitizeFurnitureLayout(
     ensureOfficeNoPlants(
-      ensureOfficeNoLamps(
-        ensureOfficeArtRoomRemoved(
-          ensureOfficeJukebox(
-            ensureOfficeQaLab(
-              ensureOfficeGymRoom(
-                ensureOfficeServerRoom(
-                  ensureOfficePhoneBooth(
-                    ensureOfficeSmsBooth(
-                      ensureOfficeAtm(
-                        ensureOfficePingPongTable(
-                          items.filter((item) => !isRetiredPingPongLamp(item)),
+      ensureOfficeEastWingWalls(
+        ensureOfficeNoLamps(
+          ensureOfficeArtRoomRemoved(
+            ensureOfficeJukebox(
+              ensureOfficeQaLab(
+                ensureOfficeGymRoom(
+                  ensureOfficeServerRoom(
+                    ensureOfficePhoneBooth(
+                      ensureOfficeSmsBooth(
+                        ensureOfficeAtm(
+                          ensureOfficePingPongTable(
+                            items.filter((item) => !isRetiredPingPongLamp(item)),
+                          ),
                         ),
                       ),
                     ),
