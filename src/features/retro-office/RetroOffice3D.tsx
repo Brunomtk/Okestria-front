@@ -1405,6 +1405,7 @@ export function RetroOffice3D({
   onLogout,
   onAgentEdit,
   onAgentDelete,
+  onOpenAgentSkills,
   onDeskAssignmentChange,
   onDeskAssignmentsReset,
   onGithubReviewDismiss,
@@ -1498,6 +1499,7 @@ export function RetroOffice3D({
   onLogout?: () => void;
   onAgentEdit?: (agentId: string) => void;
   onAgentDelete?: (agentId: string) => void;
+  onOpenAgentSkills?: (agentId?: string | null) => void;
   onDeskAssignmentChange?: (deskUid: string, agentId: string | null) => void;
   onDeskAssignmentsReset?: (deskUids: string[]) => void;
   onGithubReviewDismiss?: () => void;
@@ -5549,6 +5551,10 @@ export function RetroOffice3D({
                 onVoiceRepliesPreview={(voiceId, voiceName) =>
                   onVoiceRepliesPreview?.(voiceId, voiceName)
                 }
+                onOpenAgentSkills={() => {
+                  onOpenAgentSkills?.();
+                  setSettingsModalOpen(false);
+                }}
               />
             </div>
           </div>
