@@ -5130,13 +5130,7 @@ export function RetroOffice3D({
                   <button
                     key={agent.id}
                     type="button"
-                    onClick={() => {
-                      if (onAgentEdit) {
-                        onAgentEdit(agent.id);
-                        return;
-                      }
-                      onAgentChatSelect?.(agent.id);
-                    }}
+                    onClick={() => onAgentChatSelect?.(agent.id)}
                     className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-lg ring-2 ring-[#0a0a0a] transition-all hover:scale-110 hover:ring-cyan-500/50 ${colors[index % colors.length]}`}
                     title={agent.name}
                     style={{ marginLeft: index === 0 ? 0 : -8, zIndex: 10 - index }}
@@ -5409,11 +5403,7 @@ export function RetroOffice3D({
                     key={agent.id}
                     type="button"
                     onClick={() => {
-                      if (onAgentEdit) {
-                        onAgentEdit(agent.id);
-                      } else {
-                        onAgentChatSelect?.(agent.id);
-                      }
+                      onAgentChatSelect?.(agent.id);
                       setAgentRosterOpen(false);
                     }}
                     className="rounded-xl border border-amber-900/25 bg-[#1c1610]/75 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#241a12]"

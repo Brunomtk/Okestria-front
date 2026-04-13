@@ -52,6 +52,43 @@ const isContextWindowError = (message: string): boolean => {
   );
 };
 
+const isMissingSessionError = (message: string): boolean => {
+  const normalized = message.trim().toLowerCase();
+  if (!normalized) return false;
+  return (
+    normalized.includes("session not found") ||
+    normalized.includes("unknown session") ||
+    normalized.includes("missing session") ||
+    normalized.includes("not found") && normalized.includes("session")
+  );
+};
+
+const clearGatewaySessionHistory = async (
+  client: GatewayClientLike,
+  sessionKey: string
+): Promise<void> => {
+  try {
+    await client.call("sessions.delete", { sessionKey });
+    return;
+  } catch (deleteError) {
+    const deleteMessage = normalizeErrorMessage(deleteError, "Failed to delete gateway session.");
+    if (isMissingSessionError(deleteMessage)) {
+      return;
+    }
+
+    try {
+      await client.call("sessions.reset", { sessionKey });
+      return;
+    } catch (resetError) {
+      const resetMessage = normalizeErrorMessage(resetError, "Failed to reset gateway session.");
+      if (isMissingSessionError(resetMessage)) {
+        return;
+      }
+      throw new Error(`${deleteMessage} ${resetMessage}`.trim());
+    }
+  }
+};
+
 export type UseChatInteractionControllerParams = {
   client: GatewayClientLike;
   status: GatewayStatus;
@@ -436,6 +473,8 @@ export function useChatInteractionController(
             sessionKey: newSessionIntent.sessionKey,
           });
         } catch {}
+
+        await clearGatewaySessionHistory(params.client, newSessionIntent.sessionKey);
 
         const nextSessionKey = buildFreshSessionKey(newSessionIntent.sessionKey);
         const patch = buildNewSessionAgentPatch(agent, nextSessionKey);

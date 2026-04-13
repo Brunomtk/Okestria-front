@@ -1900,10 +1900,10 @@ export const AgentChatPanel = ({
                   Clear this conversation?
                 </h3>
                 <p className="mt-2 text-[12px] leading-5 text-white/70">
-                  Clearing the chat removes the visible conversation and may cause the agent to lose chat learning and context from this thread.
+                  Clearing the chat removes the visible conversation, deletes the current thread from the gateway, and may cause the agent to lose chat learning and context from this thread.
                 </p>
                 <p className="mt-2 text-[11px] leading-5 text-cyan-200/75">
-                  A brand-new runtime session will be created and the previous conversation context will no longer be used.
+                  A brand-new runtime session will be created after the current gateway session is cleared, and the previous conversation context will no longer be used.
                 </p>
               </div>
             </div>
