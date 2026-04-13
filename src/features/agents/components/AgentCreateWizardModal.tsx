@@ -771,7 +771,7 @@ export function AgentCreateWizardModal({
               </div>
             )}
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );
