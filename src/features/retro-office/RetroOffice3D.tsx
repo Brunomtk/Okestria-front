@@ -3920,7 +3920,7 @@ export function RetroOffice3D({
     }
     setFurniture((prev) => prev.filter((i) => i._uid !== selectedUid));
     setSelectedUid(null);
-    setDrawerOpen(true);
+    setDrawerOpen(false);
   }, [onDeskAssignmentChange, selectedItem, selectedUid]);
 
   const handleReset = () => {
