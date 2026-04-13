@@ -9,6 +9,28 @@ import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
 
 export type SquadExecutionMode = "manual" | "leader" | "all" | "workflow";
 
+export type SquadCatalogAgent = {
+  agentId: number;
+  agentName: string;
+  agentSlug: string;
+  gatewayAgentId: string | null;
+  role: string;
+  status: boolean;
+  isDefault: boolean;
+};
+
+export type SquadCatalogWorkspace = {
+  workspaceId: number;
+  workspaceName: string;
+  status: boolean;
+};
+
+export type SquadCatalog = {
+  companyId: number;
+  agents: SquadCatalogAgent[];
+  workspaces: SquadCatalogWorkspace[];
+};
+
 export type SquadMember = {
   backendAgentId: number | null;
   gatewayAgentId: string | null;
@@ -62,29 +84,31 @@ const requestBackendJson = async <T>(
   return (await response.json()) as T;
 };
 
-const getLocalStorageKey = (companyId: number) => `okestria.company-squads.${companyId}`;
-
-const readLocalSquads = (companyId: number): SquadSummary[] => {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(getLocalStorageKey(companyId));
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(Boolean) as SquadSummary[];
-  } catch {
-    return [];
-  }
-};
-
-const writeLocalSquads = (companyId: number, squads: SquadSummary[]) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(getLocalStorageKey(companyId), JSON.stringify(squads, null, 2));
-};
-
 const normalizeExecutionMode = (value: unknown): SquadExecutionMode => {
   if (value === "leader" || value === "all" || value === "workflow") return value;
   return "manual";
+};
+
+const normalizeCatalogAgent = (raw: unknown): SquadCatalogAgent => {
+  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
+  return {
+    agentId: typeof record.agentId === "number" ? record.agentId : 0,
+    agentName: typeof record.agentName === "string" && record.agentName.trim() ? record.agentName.trim() : "Agent",
+    agentSlug: typeof record.agentSlug === "string" ? record.agentSlug.trim() : "",
+    gatewayAgentId: typeof record.gatewayAgentId === "string" && record.gatewayAgentId.trim() ? record.gatewayAgentId.trim() : null,
+    role: typeof record.role === "string" ? record.role.trim() : "",
+    status: record.status === true,
+    isDefault: record.isDefault === true,
+  };
+};
+
+const normalizeCatalogWorkspace = (raw: unknown): SquadCatalogWorkspace => {
+  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
+  return {
+    workspaceId: typeof record.workspaceId === "number" ? record.workspaceId : 0,
+    workspaceName: typeof record.workspaceName === "string" && record.workspaceName.trim() ? record.workspaceName.trim() : "Workspace",
+    status: record.status === true,
+  };
 };
 
 const buildBackendAgentLinks = async (
@@ -172,6 +196,26 @@ const normalizeBackendSquad = (
   };
 };
 
+export const fetchSquadCatalog = async (params?: {
+  companyId?: number | null;
+  token?: string | null;
+}): Promise<SquadCatalog> => {
+  const companyId = params?.companyId ?? getBrowserCompanyId();
+  if (!companyId) {
+    return { companyId: 0, agents: [], workspaces: [] };
+  }
+  const payload = await requestBackendJson<Record<string, unknown>>(
+    `/api/Squads/by-company/${companyId}/catalog`,
+    undefined,
+    params?.token,
+  );
+  return {
+    companyId,
+    agents: Array.isArray(payload.agents) ? payload.agents.map(normalizeCatalogAgent).filter((agent) => agent.agentId > 0) : [],
+    workspaces: Array.isArray(payload.workspaces) ? payload.workspaces.map(normalizeCatalogWorkspace).filter((workspace) => workspace.workspaceId > 0) : [],
+  };
+};
+
 export const fetchCompanySquads = async (params?: {
   companyId?: number | null;
   token?: string | null;
@@ -180,123 +224,98 @@ export const fetchCompanySquads = async (params?: {
   if (!companyId) return [];
   const token = params?.token;
 
-  try {
-    const backendLinks = await buildBackendAgentLinks(companyId, token);
-    const payload = await requestBackendJson<unknown[]>(`/api/Squads/by-company/${companyId}`, undefined, token);
-    if (!Array.isArray(payload)) {
-      return readLocalSquads(companyId);
-    }
-    const normalized = payload.map((entry) =>
-      normalizeBackendSquad(
-        typeof entry === "object" && entry ? (entry as Record<string, unknown>) : {},
-        companyId,
-        backendLinks,
-      ),
-    );
-    writeLocalSquads(companyId, normalized);
-    return normalized;
-  } catch {
-    return readLocalSquads(companyId);
+  const backendLinks = await buildBackendAgentLinks(companyId, token);
+  const payload = await requestBackendJson<unknown[]>(`/api/Squads/by-company/${companyId}`, undefined, token);
+  if (!Array.isArray(payload)) {
+    return [];
   }
+  return payload.map((entry) =>
+    normalizeBackendSquad(
+      typeof entry === "object" && entry ? (entry as Record<string, unknown>) : {},
+      companyId,
+      backendLinks,
+    ),
+  );
 };
 
 export const createCompanySquad = async (params: {
   name: string;
   description?: string;
-  memberGatewayAgentIds: string[];
-  leaderGatewayAgentId?: string | null;
+  memberAgentIds: number[];
+  leaderAgentId?: number | null;
   executionMode?: SquadExecutionMode;
-  companyId?: number | null;
+  workspaceId?: number | null;
   token?: string | null;
+  companyId?: number | null;
 }): Promise<SquadSummary> => {
   const companyId = params.companyId ?? getBrowserCompanyId();
   if (!companyId) {
     throw new Error("CompanyId is missing in the current browser session.");
   }
 
-  const backendLinks = await buildBackendAgentLinks(companyId, params.token);
-  const normalizedMembers = params.memberGatewayAgentIds
-    .map((gatewayAgentId) => {
-      const trimmedGatewayAgentId = gatewayAgentId.trim();
-      const backendLink =
-        backendLinks.find((candidate) => candidate.gatewayAgentId === trimmedGatewayAgentId) ?? null;
-      return {
-        backendAgentId: backendLink?.backendAgentId ?? null,
-        gatewayAgentId: trimmedGatewayAgentId,
-        name: backendLink?.name ?? trimmedGatewayAgentId,
-        isLeader: trimmedGatewayAgentId === (params.leaderGatewayAgentId ?? ""),
-      };
-    })
-    .filter((member) => member.gatewayAgentId.length > 0);
+  const catalog = await fetchSquadCatalog({ companyId, token: params.token });
+  const dedupedMemberAgentIds = [...new Set(params.memberAgentIds.filter((value) => Number.isFinite(value) && value > 0))];
+  const selectedCatalogAgents = catalog.agents.filter((agent) => dedupedMemberAgentIds.includes(agent.agentId));
 
-  const executionMode = normalizeExecutionMode(params.executionMode);
-  const leaderGatewayAgentId = params.leaderGatewayAgentId?.trim() || normalizedMembers[0]?.gatewayAgentId || null;
-
-  try {
-    const leaderBackendAgentId =
-      normalizedMembers.find((member) => member.gatewayAgentId === leaderGatewayAgentId)?.backendAgentId ?? null;
-    const created = await requestBackendJson<Record<string, unknown>>(
-      "/api/Squads/create",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          companyId,
-          name: params.name.trim(),
-          description: params.description?.trim() || null,
-          leaderAgentId: leaderBackendAgentId,
-          defaultExecutionMode: executionMode,
-          isActive: true,
-        }),
-      },
-      params.token,
-    );
-    const squadId = String(created.id ?? created.squadId ?? "").trim();
-    if (squadId) {
-      const memberBackendIds = normalizedMembers
-        .map((member) => member.backendAgentId)
-        .filter((value): value is number => typeof value === "number");
-      await requestBackendJson<unknown>(
-        `/api/Squads/${encodeURIComponent(squadId)}/members`,
-        {
-          method: "PUT",
-          body: JSON.stringify(
-            normalizedMembers
-              .filter((member): member is typeof member & { backendAgentId: number } => typeof member.backendAgentId === "number")
-              .map((member, index) => ({
-                agentId: member.backendAgentId,
-                order: index,
-                isLeader: member.gatewayAgentId === leaderGatewayAgentId,
-                canReceiveTasks: true,
-              })),
-          ),
-        },
-        params.token,
-      ).catch(() => null);
-    }
-    const refreshed = await fetchCompanySquads({ companyId, token: params.token });
-    const matched = refreshed.find((entry) => entry.id === squadId);
-    if (matched) return matched;
-  } catch {
-    // Fall back to local cache when the backend route is unavailable.
+  if (selectedCatalogAgents.length === 0) {
+    throw new Error("Select at least one company agent for the squad.");
   }
 
-  const fallback: SquadSummary = {
-    id: crypto.randomUUID(),
-    companyId,
-    name: params.name.trim(),
-    description: params.description?.trim() || "",
-    executionMode,
-    leaderGatewayAgentId,
-    members: normalizedMembers.map((member) => ({
-      ...member,
-      isLeader: member.gatewayAgentId === leaderGatewayAgentId,
-    })),
-  };
-  const nextLocalSquads = [...readLocalSquads(companyId), fallback];
-  writeLocalSquads(companyId, nextLocalSquads);
-  return fallback;
-};
+  const leaderAgentId =
+    params.leaderAgentId && dedupedMemberAgentIds.includes(params.leaderAgentId)
+      ? params.leaderAgentId
+      : selectedCatalogAgents[0]?.agentId ?? null;
 
+  if (!leaderAgentId) {
+    throw new Error("Choose a leader for the squad.");
+  }
+
+  const created = await requestBackendJson<Record<string, unknown>>(
+    "/api/Squads/create",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        companyId,
+        workspaceId: params.workspaceId ?? null,
+        name: params.name.trim(),
+        description: params.description?.trim() || null,
+        leaderAgentId,
+        defaultExecutionMode: normalizeExecutionMode(params.executionMode),
+        isActive: true,
+      }),
+    },
+    params.token,
+  );
+
+  const squadId = Number(created.id ?? created.squadId ?? 0);
+  if (!Number.isFinite(squadId) || squadId <= 0) {
+    throw new Error("The backend created the squad but did not return a valid squad id.");
+  }
+
+  await requestBackendJson<unknown>(
+    `/api/Squads/${encodeURIComponent(String(squadId))}/members`,
+    {
+      method: "PUT",
+      body: JSON.stringify(
+        selectedCatalogAgents.map((agent, index) => ({
+          agentId: agent.agentId,
+          order: index,
+          isLeader: agent.agentId === leaderAgentId,
+          canReceiveTasks: agent.status === true,
+          role: agent.role || null,
+        })),
+      ),
+    },
+    params.token,
+  );
+
+  const refreshed = await fetchCompanySquads({ companyId, token: params.token });
+  const matched = refreshed.find((entry) => Number(entry.id) === squadId);
+  if (!matched) {
+    throw new Error("The squad was created, but the refreshed list did not return it.");
+  }
+  return matched;
+};
 
 export type SquadTaskRun = {
   id: number;
@@ -325,6 +344,7 @@ export type SquadTaskSummary = {
   squadName: string;
   title: string;
   executionMode: string;
+  preferredModel: string | null;
   status: string;
   runCount: number;
   startedAtUtc: string | null;
@@ -340,6 +360,7 @@ export type SquadTask = SquadTaskSummary & {
   targetAgentId: number | null;
   targetAgentName: string;
   prompt: string;
+  preferredModel: string | null;
   summary: string;
   finalResponse: string;
   runs: SquadTaskRun[];
@@ -428,6 +449,7 @@ const normalizeTaskSummary = (raw: unknown): SquadTaskSummary => {
     squadName: readString(record.squadName),
     title: readString(record.title, `Task #${readNumber(record.id, 0)}`),
     executionMode: readString(record.executionMode, "leader"),
+    preferredModel: readNullableString(record.preferredModel),
     status: readString(record.status, "draft"),
     runCount: readNumber(record.runCount, Array.isArray(record.runs) ? record.runs.length : 0),
     startedAtUtc: readNullableString(record.startedAtUtc),
@@ -449,6 +471,7 @@ const normalizeTask = (raw: unknown): SquadTask => {
     targetAgentId: readNullableNumber(record.targetAgentId),
     targetAgentName: readString(record.targetAgentName),
     prompt: readString(record.prompt),
+    preferredModel: readNullableString(record.preferredModel),
     summary: readString(record.summary),
     finalResponse: readString(record.finalResponse),
     startedAtUtc: readNullableString(record.startedAtUtc),
@@ -486,6 +509,7 @@ export const createSquadTask = async (params: {
   title: string;
   prompt: string;
   executionMode?: string | null;
+  preferredModel?: string | null;
   targetAgentId?: number | null;
   token?: string | null;
 }): Promise<SquadTask> => {
@@ -503,6 +527,7 @@ export const createSquadTask = async (params: {
         title: params.title.trim(),
         prompt: params.prompt.trim(),
         executionMode: params.executionMode ?? "leader",
+        preferredModel: params.preferredModel ?? null,
         targetAgentId: params.targetAgentId ?? null,
       }),
     },

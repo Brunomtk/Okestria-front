@@ -124,8 +124,10 @@ import {
   dispatchSquadTask,
   estimateSquadTaskDispatch,
   fetchCompanySquads,
+  fetchSquadCatalog,
   fetchSquadTask,
   fetchSquadTasks,
+  type SquadCatalog,
   type SquadExecutionMode,
   type SquadSummary,
   type SquadTask,
@@ -959,6 +961,7 @@ export function OfficeScreen({
   const [createSquadModalOpen, setCreateSquadModalOpen] = useState(false);
   const [createSquadBusy, setCreateSquadBusy] = useState(false);
   const [createSquadError, setCreateSquadError] = useState<string | null>(null);
+  const [createSquadCatalog, setCreateSquadCatalog] = useState<SquadCatalog | null>(null);
   const [squadOpsModalOpen, setSquadOpsModalOpen] = useState(false);
   const [squadOpsSquadId, setSquadOpsSquadId] = useState<string | null>(null);
   const [squadOpsTasks, setSquadOpsTasks] = useState<SquadTaskSummary[]>([]);
@@ -1395,6 +1398,17 @@ export function OfficeScreen({
     }
   }, [companySquads.length]);
 
+  const loadCreateSquadCatalog = useCallback(async () => {
+    try {
+      const catalog = await fetchSquadCatalog();
+      setCreateSquadCatalog(catalog);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to load the squad catalog right now.";
+      setCreateSquadError(message);
+      setCreateSquadCatalog(null);
+    }
+  }, []);
+
   useEffect(() => {
     void loadCompanySquads(false);
   }, [loadCompanySquads, state.agents.length]);
@@ -1658,8 +1672,10 @@ export function OfficeScreen({
     setCreateAgentWizardOpen(false);
     setCreateAgentModalError(null);
     setCreateSquadError(null);
+    setCreateSquadCatalog(null);
     setCreateSquadModalOpen(true);
-  }, []);
+    void loadCreateSquadCatalog();
+  }, [loadCreateSquadCatalog]);
   const clearDeletedAgentUiState = useCallback((agentId: string) => {
     setSelectedChatAgentId((current) => (current === agentId ? null : current));
     setAgentEditorAgentId((current) => (current === agentId ? null : current));
@@ -1874,9 +1890,10 @@ export function OfficeScreen({
     async (payload: {
       name: string;
       description: string;
-      memberGatewayAgentIds: string[];
-      leaderGatewayAgentId: string | null;
+      memberAgentIds: number[];
+      leaderAgentId: number | null;
       executionMode: SquadExecutionMode;
+      workspaceId: number | null;
     }) => {
       setCreateSquadBusy(true);
       setCreateSquadError(null);
@@ -1943,7 +1960,7 @@ export function OfficeScreen({
         setSquadOpsLoading(false);
       }
     },
-    [],
+    [squadOpsSelectedTask?.preferredModel],
   );
 
   const handleOpenSquadOps = useCallback(
@@ -1981,7 +1998,7 @@ export function OfficeScreen({
   }, []);
 
   const handleCreateSquadTask = useCallback(
-    async (payload: { title: string; prompt: string }) => {
+    async (payload: { title: string; prompt: string; preferredModel: string | null }) => {
       const numericSquadId = Number(squadOpsSquadId);
       if (!Number.isFinite(numericSquadId)) return;
       setSquadOpsCreateBusy(true);
@@ -1994,6 +2011,7 @@ export function OfficeScreen({
           title: payload.title,
           prompt: payload.prompt,
           executionMode: activeSquadOpsSquad?.executionMode ?? "leader",
+          preferredModel: payload.preferredModel,
         });
         await loadSquadOpsTasks(String(numericSquadId), created.id);
       } catch (error) {
@@ -2011,11 +2029,12 @@ export function OfficeScreen({
       onlyPendingRuns: mode === "pending",
       retryFailedRuns: mode !== "redispatchAll",
       forceRedispatchCompletedRuns: mode === "redispatchAll",
+      model: squadOpsSelectedTask?.preferredModel ?? null,
       thinking: "medium",
       deliveryMode: "none",
       wakeMode: "now",
     }),
-    [],
+    [squadOpsSelectedTask?.preferredModel],
   );
 
   const handlePreviewDispatchSquadTask = useCallback(
@@ -5420,15 +5439,13 @@ export function OfficeScreen({
         open={createSquadModalOpen}
         busy={createSquadBusy}
         error={createSquadError}
-        agents={state.agents.map((agent) => ({
-          id: agent.agentId,
-          name: agent.name || agent.agentId,
-          isDefault: agent.agentId === MAIN_AGENT_ID || agent.agentId === state.selectedAgentId,
-        }))}
+        agents={createSquadCatalog?.agents ?? []}
+        workspaces={createSquadCatalog?.workspaces ?? []}
         preferredAgentId={state.selectedAgentId}
         onClose={() => {
           setCreateSquadModalOpen(false);
           setCreateSquadError(null);
+          setCreateSquadCatalog(null);
         }}
         onSubmit={(payload) => {
           void handleCreateSquad(payload);
@@ -5450,6 +5467,7 @@ export function OfficeScreen({
         dispatchApprovalMode={squadOpsDispatchApprovalMode}
         error={squadOpsError}
         hooksConfigured={squadOpsRuntimeStatus?.hooksConfigured === true}
+        availableModels={gatewayModels}
         hooksMessage={
           squadOpsRuntimeStatus
             ? squadOpsRuntimeStatus.hooksConfigured

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, Clock3, Play, RefreshCcw, Rocket, Users2, XCircle } from "lucide-react";
 import type { SquadSummary, SquadTask, SquadTaskDispatchEstimate, SquadTaskSummary } from "@/lib/squads/api";
+import type { GatewayModelChoice } from "@/lib/gateway/models";
 
 type SquadOpsModalProps = {
   open: boolean;
@@ -19,11 +20,12 @@ type SquadOpsModalProps = {
   error: string | null;
   hooksConfigured: boolean;
   hooksMessage: string | null;
+  availableModels: GatewayModelChoice[];
   onClose: () => void;
   onRefresh: () => void;
   onSelectSquad: (squadId: string) => void;
   onSelectTask: (taskId: number) => void;
-  onCreateTask: (payload: { title: string; prompt: string }) => void;
+  onCreateTask: (payload: { title: string; prompt: string; preferredModel: string | null }) => void;
   onPreviewDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
   onConfirmDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
   onCancelDispatchApproval: () => void;
@@ -91,6 +93,7 @@ export function SquadOpsModal({
   error,
   hooksConfigured,
   hooksMessage,
+  availableModels,
   onClose,
   onRefresh,
   onSelectSquad,
@@ -102,11 +105,13 @@ export function SquadOpsModal({
 }: SquadOpsModalProps) {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [preferredModel, setPreferredModel] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setTitle("");
     setPrompt("");
+    setPreferredModel("");
   }, [open, squad?.id]);
 
   const submitDisabled = createBusy || !title.trim() || !prompt.trim() || !selectedSquadId;
@@ -199,6 +204,24 @@ export function SquadOpsModal({
                 placeholder="Review the landing page and suggest improvements"
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
               />
+              <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">AI model</label>
+              <select
+                value={preferredModel}
+                onChange={(event) => setPreferredModel(event.target.value)}
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/45"
+              >
+                <option value="" className="bg-[#07090c] text-white">
+                  Use default squad / OpenClaw model
+                </option>
+                {availableModels.map((model) => (
+                  <option key={`${model.provider}/${model.id}`} value={`${model.provider}/${model.id}`} className="bg-[#07090c] text-white">
+                    {model.name || model.id} · {model.provider}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-white/45">
+                Pick a cheaper or faster model for this task when you only need a lean answer. Leave blank to use the squad default.
+              </div>
               <label className="mt-4 block text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Instructions</label>
               <textarea
                 value={prompt}
@@ -212,7 +235,7 @@ export function SquadOpsModal({
               <button
                 type="button"
                 disabled={submitDisabled}
-                onClick={() => onCreateTask({ title: title.trim(), prompt: prompt.trim() })}
+                onClick={() => onCreateTask({ title: title.trim(), prompt: prompt.trim(), preferredModel: preferredModel || null })}
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/35 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 <Play className="h-4 w-4" />
@@ -406,7 +429,7 @@ export function SquadOpsModal({
                             </div>
                           </div>
                           <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs leading-6 text-white/55">
-                            {dispatchEstimate.notes} Thinking: <span className="text-white/80">{dispatchEstimate.thinking}</span>.
+                            {dispatchEstimate.notes} Thinking: <span className="text-white/80">{dispatchEstimate.thinking}</span>. Model: <span className="text-white/80">{dispatchEstimate.model || selectedTask.preferredModel || "default"}</span>.
                           </div>
                           <div className="mt-4 flex flex-wrap gap-3">
                             <button
@@ -494,7 +517,16 @@ export function SquadOpsModal({
                             </div>
                           ) : null}
 
-                          <div className="mt-3 grid gap-3 text-xs text-white/45 sm:grid-cols-3">
+                          <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100">
+                        Model: {selectedTask.preferredModel || "default"}
+                      </span>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/65">
+                        Mode: {modeLabel(selectedTask.executionMode)}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 text-xs text-white/45 sm:grid-cols-3">
                             <div>
                               <div className="text-white/35">Started</div>
                               <div className="mt-1 text-white/70">{formatDateTime(run.startedAtUtc)}</div>
