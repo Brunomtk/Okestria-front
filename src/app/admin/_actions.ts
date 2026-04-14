@@ -148,7 +148,14 @@ export async function saveWorkspaceAction(formData: FormData) {
 export async function deleteSquadAction(formData: FormData) {
   const token = await requireToken();
   const squadId = Number(formData.get('squadId'));
-  if (Number.isFinite(squadId) && squadId > 0) await deleteSquad(squadId, token).catch(() => null);
+  if (Number.isFinite(squadId) && squadId > 0) {
+    try {
+      await deleteSquad(squadId, token);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao excluir o squad.';
+      redirect(`/admin/squads?error=${encodeURIComponent(message)}`);
+    }
+  }
   revalidatePath('/admin'); revalidatePath('/admin/squads'); redirect('/admin/squads');
 }
 
@@ -163,12 +170,25 @@ export async function saveSquadAction(formData: FormData) {
     .map((value) => Number(value))
     .filter((value) => Number.isFinite(value) && value > 0);
 
+  const name = asString(formData, 'name');
+  if (!name) {
+    redirect(squadId > 0
+      ? `/admin/squads/${squadId}/edit?error=${encodeURIComponent('O nome do squad é obrigatório.')}`
+      : `/admin/squads/new?error=${encodeURIComponent('O nome do squad é obrigatório.')}`);
+  }
+
   const uniqueMemberIds = Array.from(new Set(selectedMembers));
   if (leaderAgentId > 0 && !uniqueMemberIds.includes(leaderAgentId)) uniqueMemberIds.unshift(leaderAgentId);
 
+  if (uniqueMemberIds.length === 0) {
+    redirect(squadId > 0
+      ? `/admin/squads/${squadId}/edit?error=${encodeURIComponent('Selecione pelo menos um membro para o squad.')}`
+      : `/admin/squads/new?error=${encodeURIComponent('Selecione pelo menos um membro para o squad.')}`);
+  }
+
   const payload = {
     companyId,
-    name: asString(formData, 'name'),
+    name,
     slug: asNullableString(formData, 'slug'),
     description: asNullableString(formData, 'description'),
     leaderAgentId: leaderAgentId > 0 ? leaderAgentId : null,
@@ -183,8 +203,15 @@ export async function saveSquadAction(formData: FormData) {
     })),
   };
 
-  if (squadId > 0) await updateSquad(squadId, payload, token).catch(() => null);
-  else await createSquad(payload, token).catch(() => null);
+  try {
+    if (squadId > 0) await updateSquad(squadId, payload, token);
+    else await createSquad(payload, token);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao salvar o squad.';
+    redirect(squadId > 0
+      ? `/admin/squads/${squadId}/edit?error=${encodeURIComponent(message)}`
+      : `/admin/squads/new?error=${encodeURIComponent(message)}`);
+  }
 
   revalidatePath('/admin');
   revalidatePath('/admin/squads');

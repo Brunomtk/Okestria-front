@@ -122,20 +122,29 @@ export type OkestriaSquad = {
   defaultExecutionMode?: string | null;
   memberCount?: number | null;
   activeMemberCount?: number | null;
+  taskCount?: number | null;
   createdDate?: string | null;
   updatedDate?: string | null;
   members?: OkestriaSquadMember[];
 };
 
+export type OkestriaSquadTaskSummary = {
+  id?: number;
+  squadId?: number;
+  squadName?: string | null;
+  title?: string | null;
+  executionMode?: string | null;
+  preferredModel?: string | null;
+  status?: string | null;
+  runCount?: number | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+  createdDate?: string | null;
+  updatedDate?: string | null;
+};
+
 export type OkestriaSquadDetails = OkestriaSquad & {
-  taskCount?: number | null;
-  recentTasks?: Array<{
-    id?: number;
-    title?: string | null;
-    status?: string | null;
-    createdDate?: string | null;
-    updatedDate?: string | null;
-  }>;
+  recentTasks?: OkestriaSquadTaskSummary[];
 };
 
 export type OkestriaSquadCatalog = {
@@ -423,6 +432,10 @@ export async function deleteAgent(agentId: number, token: string) {
 
 export async function deleteSquad(squadId: number, token: string) {
   return requestJson<unknown>(`/api/Squads/delete/${squadId}`, { method: 'DELETE' }, token);
+}
+
+export async function deleteSquadTask(taskId: number, token: string) {
+  return requestJson<unknown>(`/api/Squads/tasks/delete/${taskId}`, { method: 'DELETE' }, token);
 }
 
 export async function generateLeadInsights(leadId: number, token: string) {
