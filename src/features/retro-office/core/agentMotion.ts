@@ -129,6 +129,9 @@ const ROAM_MODEL_ORDER: RoamRouteModel[] = [
   "perimeter_drift",
   "serpentine",
   "diagonal_weave",
+  "meeting_circuit",
+  "east_explorer",
+  "left_wall_patrol",
 ];
 
 const resolveAgentMotionZone = (agentId: string) =>

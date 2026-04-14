@@ -1715,6 +1715,7 @@ export function RetroOffice3D({
   const prevGithubViewRef = useRef<string | null>(null);
   const prevQaViewRef = useRef<string | null>(null);
   const currentCameraSnapshotRef = useRef<CameraPreset | null>(null);
+  const cameraInstantRef = useRef(false);
   const preservedOfficeCameraRef = useRef<CameraPreset | null>(null);
   const previousFocusedViewActiveRef = useRef(false);
   const initialCameraStorageKeyRef = useRef<string | null>(null);
@@ -1765,6 +1766,7 @@ export function RetroOffice3D({
     const preservedCamera = preservedOfficeCameraRef.current;
     if (preservedCamera) {
       cameraPresetRef.current = preservedCamera;
+      cameraInstantRef.current = true;
       persistCameraPreset(cameraPersistenceKey, preservedCamera);
       initialPersistedCameraRef.current = preservedCamera;
       lastPersistedCameraJsonRef.current = JSON.stringify(preservedCamera);
@@ -1772,6 +1774,7 @@ export function RetroOffice3D({
     }
     if (currentCameraSnapshotRef.current) {
       cameraPresetRef.current = currentCameraSnapshotRef.current;
+      cameraInstantRef.current = true;
       persistCameraPreset(cameraPersistenceKey, currentCameraSnapshotRef.current);
       initialPersistedCameraRef.current = currentCameraSnapshotRef.current;
       lastPersistedCameraJsonRef.current = JSON.stringify(currentCameraSnapshotRef.current);
@@ -4351,6 +4354,13 @@ export function RetroOffice3D({
             {/* New Idea 2: Camera preset animator. */}
             <CameraPresetAnimator
               presetRef={cameraPresetRef}
+              orbitRef={orbitRef}
+              instantRef={cameraInstantRef}
+            />
+
+            {/* Camera snapshot tracker — captures camera state every frame for restoration. */}
+            <CameraSnapshotTracker
+              snapshotRef={currentCameraSnapshotRef}
               orbitRef={orbitRef}
             />
 

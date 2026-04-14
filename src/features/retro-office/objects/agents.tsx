@@ -97,7 +97,7 @@ export const AgentModel = memo(function AgentModel({
   const motionTimeRef = useRef(0);
   // Idle animation state
   const idleAnimRef = useRef({
-    type: 0 as number, // 0=breathe, 1=lookAround, 2=scratchHead, 3=crossArms, 4=stretch, 5=wave, 6=think, 7=tap
+    type: 0 as number, // 0=breathe, 1=lookAround, 2=scratchHead, 3=crossArms, 4=stretch, 5=wave, 6=think, 7=tap, 8=nod, 9=shrug, 10=checkPhone, 11=yawn
     startFrame: 0,
     duration: 300,
     nextChange: 180,
@@ -150,14 +150,18 @@ export const AgentModel = memo(function AgentModel({
       if (agent.frame >= idleAnim.nextChange) {
         // Pick a new random idle animation (weighted towards subtle ones)
         const rand = Math.random();
-        if (rand < 0.35) idleAnim.type = 0; // breathe (most common)
-        else if (rand < 0.50) idleAnim.type = 1; // lookAround
-        else if (rand < 0.60) idleAnim.type = 2; // scratchHead
-        else if (rand < 0.70) idleAnim.type = 3; // crossArms
-        else if (rand < 0.80) idleAnim.type = 4; // stretch
-        else if (rand < 0.88) idleAnim.type = 5; // wave
-        else if (rand < 0.94) idleAnim.type = 6; // think
-        else idleAnim.type = 7; // tap foot
+        if (rand < 0.28) idleAnim.type = 0; // breathe (most common)
+        else if (rand < 0.40) idleAnim.type = 1; // lookAround
+        else if (rand < 0.48) idleAnim.type = 2; // scratchHead
+        else if (rand < 0.56) idleAnim.type = 3; // crossArms
+        else if (rand < 0.64) idleAnim.type = 4; // stretch
+        else if (rand < 0.71) idleAnim.type = 5; // wave
+        else if (rand < 0.77) idleAnim.type = 6; // think
+        else if (rand < 0.82) idleAnim.type = 7; // tap foot
+        else if (rand < 0.87) idleAnim.type = 8; // nod
+        else if (rand < 0.92) idleAnim.type = 9; // shrug
+        else if (rand < 0.96) idleAnim.type = 10; // checkPhone
+        else idleAnim.type = 11; // yawn
         
         idleAnim.startFrame = agent.frame;
         idleAnim.duration = 180 + Math.random() * 240; // 3-7 seconds at 60fps
@@ -198,6 +202,13 @@ export const AgentModel = memo(function AgentModel({
           break;
         case 7: // tap foot - slight body sway
           idleBodyRotZ = Math.sin(frameValue * 0.12) * 0.03 * idleSmooth;
+          break;
+        case 8: // nod - head bobs
+          const nodPhase = Math.sin(frameValue * 0.2) * idleSmooth;
+          idleBodyRotX = nodPhase * 0.12;
+          break;
+        case 11: // yawn - slight lean back
+          idleBodyRotX = -0.08 * idleSmooth;
           break;
       }
     }
@@ -352,6 +363,22 @@ export const AgentModel = memo(function AgentModel({
             leftArmRef.current.rotation.x = baseBreathX + Math.sin(frameValue * 0.12) * 0.06 * idleSmooth;
             leftArmRef.current.rotation.z = baseBreathZ;
             break;
+          case 8: // nod - hands relaxed at sides
+            leftArmRef.current.rotation.x = baseBreathX - 0.05 * idleSmooth;
+            leftArmRef.current.rotation.z = baseBreathZ;
+            break;
+          case 9: // shrug - arms slightly raised
+            leftArmRef.current.rotation.x = baseBreathX;
+            leftArmRef.current.rotation.z = (baseBreathZ - 0.3 * Math.sin(frameValue * 0.15)) * idleSmooth + baseBreathZ * (1 - idleSmooth);
+            break;
+          case 10: // checkPhone - left arm comes up holding phone
+            leftArmRef.current.rotation.x = (-1.8 + Math.sin(frameValue * 0.08) * 0.05) * idleSmooth + baseBreathX * (1 - idleSmooth);
+            leftArmRef.current.rotation.z = (-0.3) * idleSmooth + baseBreathZ * (1 - idleSmooth);
+            break;
+          case 11: // yawn - left arm stays relaxed
+            leftArmRef.current.rotation.x = baseBreathX + 0.1 * Math.sin(frameValue * 0.1) * idleSmooth;
+            leftArmRef.current.rotation.z = baseBreathZ;
+            break;
           default: // 0 - basic breathe
             leftArmRef.current.rotation.x = baseBreathX;
             leftArmRef.current.rotation.z = baseBreathZ;
@@ -451,6 +478,22 @@ export const AgentModel = memo(function AgentModel({
           case 7: // tap foot - arms relaxed with slight sway
             rightArmRef.current.rotation.x = baseBreathX - Math.sin(frameValue * 0.12) * 0.06 * idleSmooth;
             rightArmRef.current.rotation.z = baseBreathZ;
+            break;
+          case 8: // nod - hands relaxed
+            rightArmRef.current.rotation.x = baseBreathX - 0.05 * idleSmooth;
+            rightArmRef.current.rotation.z = -baseBreathZ;
+            break;
+          case 9: // shrug - arms slightly raised
+            rightArmRef.current.rotation.x = baseBreathX;
+            rightArmRef.current.rotation.z = (-baseBreathZ + 0.3 * Math.sin(frameValue * 0.15)) * idleSmooth + (-baseBreathZ) * (1 - idleSmooth);
+            break;
+          case 10: // checkPhone - right arm relaxed
+            rightArmRef.current.rotation.x = baseBreathX - 0.08 * idleSmooth;
+            rightArmRef.current.rotation.z = -baseBreathZ;
+            break;
+          case 11: // yawn - right arm stretches up slightly
+            rightArmRef.current.rotation.x = (-1.2 + Math.sin(frameValue * 0.1) * 0.15) * idleSmooth + baseBreathX * (1 - idleSmooth);
+            rightArmRef.current.rotation.z = (0.4) * idleSmooth + (-baseBreathZ) * (1 - idleSmooth);
             break;
           default: // 0 - basic breathe
             rightArmRef.current.rotation.x = baseBreathX;

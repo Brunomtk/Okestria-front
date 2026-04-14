@@ -44,9 +44,11 @@ type OrbitControllerLike = {
 export function CameraAnimator({
   presetRef,
   orbitRef,
+  instantRef,
 }: {
   presetRef: MutableRefObject<CameraPreset | null>;
   orbitRef: RefObject<OrbitControllerLike | null>;
+  instantRef?: MutableRefObject<boolean>;
 }) {
   const { camera } = useThree();
   const activePerspectiveCameraRef = useRef<THREE.PerspectiveCamera | null>(
@@ -69,6 +71,21 @@ export function CameraAnimator({
 
     targetPositionRef.current.set(...preset.pos);
     targetLookAtRef.current.set(...preset.target);
+
+    const doInstant = instantRef?.current ?? false;
+    if (doInstant) {
+      camera.position.copy(targetPositionRef.current);
+      orbit.target.copy(targetLookAtRef.current);
+      if (activeCamera && typeof preset.zoom === "number") {
+        activeCamera.zoom = preset.zoom;
+        activeCamera.updateProjectionMatrix();
+      }
+      orbit.update();
+      presetRef.current = null;
+      if (instantRef) instantRef.current = false;
+      return;
+    }
+
     camera.position.lerp(targetPositionRef.current, 0.06);
     orbit.target.lerp(targetLookAtRef.current, 0.06);
 
