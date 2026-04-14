@@ -112,6 +112,42 @@ export type SendSingleLeadEmailResult = {
   insightsGenerationStatus?: string | null;
 };
 
+
+export type LeadChatPrimePayload = {
+  agentId?: number | null;
+  message: string;
+  model?: string | null;
+  thinking?: string | null;
+  timeoutSeconds?: number;
+  usePersistentSession?: boolean;
+  deliver?: boolean;
+  channel?: string | null;
+  to?: string | null;
+};
+
+export type LeadChatPrimeResult = {
+  sourceType: string;
+  sourceId: number;
+  companyId: number;
+  agentId: number;
+  agentSlug: string;
+  agentName: string;
+  sessionKey?: string | null;
+  persistentSessionRequested: boolean;
+  persistentSessionApplied: boolean;
+  totalLeadCount: number;
+  includedLeadCount: number;
+  contextTruncated: boolean;
+  hookAccepted: boolean;
+  hookStatusCode: number;
+  runId?: string | null;
+  taskId?: string | null;
+  result?: string | null;
+  promptPreview: string;
+  warning?: string | null;
+  rawResponse?: string | null;
+};
+
 export type LeadSummary = {
   id: number;
   companyId: number;
@@ -625,3 +661,16 @@ export const sendSingleLeadEmail = async (leadId: number, payload: SendSingleLea
   if (!normalized) throw new Error("Failed to send email for this lead.");
   return normalized;
 };
+
+
+export const primeLeadChat = async (leadId: number, payload: LeadChatPrimePayload) =>
+  requestBackend<LeadChatPrimeResult>(`/LeadChat/lead/${leadId}/prime`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const primeLeadGenerationJobChat = async (jobId: number, payload: LeadChatPrimePayload) =>
+  requestBackend<LeadChatPrimeResult>(`/LeadChat/job/${jobId}/prime`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

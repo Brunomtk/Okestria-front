@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   Bot,
   Building2,
+  MessageSquare,
   ChevronDown,
   ChevronRight,
   Copy,
@@ -42,6 +43,9 @@ import {
   getLeadById,
   generateLeadInsights,
   sendSingleLeadEmail,
+  primeLeadChat,
+  primeLeadGenerationJobChat,
+  type LeadChatPrimeResult,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
   type LeadSummary,
@@ -99,7 +103,7 @@ export function LeadOpsPanel({
 }: {
   agents: AgentState[];
   companyName?: string | null;
-  onSelectAgent: (agentId: string) => void;
+  onSelectAgent: (agentId: string, options?: { sessionKey?: string | null }) => void;
 }) {
   const companyId = getBrowserCompanyId();
 
@@ -137,6 +141,7 @@ export function LeadOpsPanel({
   const [generatingInsights, setGeneratingInsights] = useState(false);
   const [sendingBatch, setSendingBatch] = useState(false);
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
+  const [chatPriming, setChatPriming] = useState<number | "job" | null>(null);
 
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
@@ -463,6 +468,75 @@ export function LeadOpsPanel({
     }
   }, [companyId, effectiveCompanyEmail, effectiveCompanyName, emailIntroText, emailReplyTo, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
 
+  const resolveGatewayAgentIdForLeadChat = useCallback((primeResult: LeadChatPrimeResult) => {
+    const selectedOption = leadAgentOptions.find((entry) => entry.backendAgentId === primeResult.agentId);
+    if (selectedOption?.gatewayAgentId) return selectedOption.gatewayAgentId;
+
+    const normalizedSlug = primeResult.agentSlug?.trim().toLowerCase();
+    if (normalizedSlug) {
+      const bySlug = agents.find((agent) => agent.agentId.trim().toLowerCase() === normalizedSlug);
+      if (bySlug) return bySlug.agentId;
+    }
+
+    const normalizedName = primeResult.agentName?.trim().toLowerCase();
+    if (normalizedName) {
+      const byName = agents.find((agent) => agent.name.trim().toLowerCase() === normalizedName);
+      if (byName) return byName.agentId;
+    }
+
+    return null;
+  }, [agents, leadAgentOptions]);
+
+  const handlePrimeLeadJobChat = useCallback(async () => {
+    if (!selectedJob) return;
+    setError(null);
+    setChatPriming("job");
+    try {
+      const result = await primeLeadGenerationJobChat(selectedJob.id, {
+        agentId: selectedBackendAgentId > 0 ? selectedBackendAgentId : undefined,
+        message: "Use this full lead generation as context. Analyze the leads, prioritize the best opportunities, and continue helping inside the chat.",
+        usePersistentSession: true,
+        timeoutSeconds: 120,
+      });
+      const gatewayAgentId = resolveGatewayAgentIdForLeadChat(result);
+      if (!gatewayAgentId) {
+        throw new Error(`Lead context was sent to ${result.agentName}, but the front could not map that agent to an available chat target.`);
+      }
+      onSelectAgent(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+      setModalView("none");
+      setError(result.warning?.trim() || null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to open this lead mission in chat.");
+    } finally {
+      setChatPriming(null);
+    }
+  }, [onSelectAgent, resolveGatewayAgentIdForLeadChat, selectedBackendAgentId, selectedJob]);
+
+  const handlePrimeSelectedLeadChat = useCallback(async () => {
+    if (!selectedLeadDetail) return;
+    setError(null);
+    setChatPriming(selectedLeadDetail.id);
+    try {
+      const result = await primeLeadChat(selectedLeadDetail.id, {
+        agentId: selectedBackendAgentId > 0 ? selectedBackendAgentId : undefined,
+        message: "Use this lead as the active context in chat. Review the business, suggest next actions, and help me work this opportunity step by step.",
+        usePersistentSession: true,
+        timeoutSeconds: 120,
+      });
+      const gatewayAgentId = resolveGatewayAgentIdForLeadChat(result);
+      if (!gatewayAgentId) {
+        throw new Error(`Lead context was sent to ${result.agentName}, but the front could not map that agent to an available chat target.`);
+      }
+      onSelectAgent(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+      setModalView("none");
+      setError(result.warning?.trim() || null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to open this lead in chat.");
+    } finally {
+      setChatPriming(null);
+    }
+  }, [onSelectAgent, resolveGatewayAgentIdForLeadChat, selectedBackendAgentId, selectedLeadDetail]);
+
   const handleSendSingleEmail = useCallback(async () => {
     if (!selectedLeadDetail) return;
     setSendingSingleEmail(true);
@@ -650,6 +724,21 @@ export function LeadOpsPanel({
                 {selectedJob.finishedAtUtc && (
                   <span>Finished: <span className="text-white/60">{formatDateTime(selectedJob.finishedAtUtc)}</span></span>
                 )}
+              </div>
+
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handlePrimeLeadJobChat()}
+                  disabled={chatPriming === "job" || leadAgentOptions.length === 0}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-200 ring-1 ring-violet-500/25 transition hover:bg-violet-500/25 disabled:opacity-50"
+                >
+                  {chatPriming === "job" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                  Use mission in chat
+                </button>
+                <div className="text-xs text-white/35">
+                  Sends the full generation context to the selected agent and opens the chat session.
+                </div>
               </div>
 
               {/* Email Batches */}
@@ -1118,6 +1207,21 @@ export function LeadOpsPanel({
                 >
                   View Outreach <ChevronRight className="h-4 w-4" />
                 </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 rounded-xl bg-violet-500/5 p-4 ring-1 ring-violet-500/10">
+                <button
+                  type="button"
+                  onClick={() => void handlePrimeSelectedLeadChat()}
+                  disabled={chatPriming === selectedLeadDetail.id || leadAgentOptions.length === 0}
+                  className="inline-flex items-center gap-2 rounded-lg bg-violet-500/15 px-4 py-2 text-sm font-medium text-violet-200 ring-1 ring-violet-500/25 transition hover:bg-violet-500/25 disabled:opacity-50"
+                >
+                  {chatPriming === selectedLeadDetail.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                  Use this lead in chat
+                </button>
+                <div className="text-xs text-white/45">
+                  Opens the selected agent chat already primed with this lead context.
+                </div>
               </div>
             </div>
           ) : (

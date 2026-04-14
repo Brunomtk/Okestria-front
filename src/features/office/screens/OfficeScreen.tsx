@@ -3467,15 +3467,34 @@ export function OfficeScreen({
   ]);
 
   const handleOpenAgentChat = useCallback(
-  (agentId: string) => {
-  setSelectedChatAgentId(agentId);
-  setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
-  setChatOpen(true);
+    (agentId: string, options?: { sessionKey?: string | null }) => {
+      if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId) && options?.sessionKey) {
+        const targetAgent = state.agents.find((entry) => entry.agentId === agentId);
+        if (targetAgent && targetAgent.sessionKey !== options.sessionKey) {
+          dispatch({
+            type: "updateAgent",
+            agentId,
+            patch: {
+              sessionKey: options.sessionKey,
+              outputLines: [],
+              transcriptEntries: [],
+              runId: null,
+              historyLoadedAt: null,
+              sessionCreated: false,
+              sessionSettingsSynced: false,
+              lastRunStatus: "idle",
+            },
+          });
+        }
+      }
+      setSelectedChatAgentId(agentId);
+      setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
+      setChatOpen(true);
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId)) {
         dispatch({ type: "selectAgent", agentId });
       }
     },
-    [dispatch],
+    [dispatch, state.agents],
   );
   const updateRemoteChatSession = useCallback(
     (
