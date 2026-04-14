@@ -277,7 +277,6 @@ const normalizeEmailBatchJob = (value: unknown): LeadEmailBatchJob | null => {
   return {
     id,
     companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
-    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     requestedByUserId: parseNumber(pick(entry, "requestedByUserId", "RequestedByUserId"), NaN) || null,
     sourceLeadJobId: parseNumber(pick(entry, "sourceLeadJobId", "SourceLeadJobId"), NaN) || null,
     title: parseString(pick(entry, "title", "Title")) ?? "Lead email batch",
