@@ -2160,6 +2160,58 @@ export function RetroOffice3D({
     githubImmersive ||
     qaImmersive ||
     standupImmersive;
+  const closeImmersiveOverlay = useCallback(() => {
+    if (monitorImmersive) {
+      onMonitorSelect?.(null);
+      return;
+    }
+    if (atmImmersive) {
+      setActiveAtmUid(null);
+      return;
+    }
+    if (smsBoothImmersive) {
+      setManualSmsBoothOpen(false);
+      if (effectiveSmsBoothAgentId && effectiveSmsBoothAgentId !== "__manual_sms_booth__") {
+        onTextMessageClose?.(effectiveSmsBoothAgentId);
+      }
+      return;
+    }
+    if (phoneBoothImmersive) {
+      setManualPhoneBoothOpen(false);
+      if (effectivePhoneBoothAgentId && effectivePhoneBoothAgentId !== "__manual_phone_booth__") {
+        onPhoneCallComplete?.(effectivePhoneBoothAgentId);
+      }
+      return;
+    }
+    if (githubImmersive) {
+      setActiveGithubTerminalUid(null);
+      onGithubReviewDismiss?.();
+      return;
+    }
+    if (qaImmersive) {
+      setActiveQaTerminalUid(null);
+      onQaLabDismiss?.();
+      return;
+    }
+    if (standupImmersive) {
+      setStandupBoardOpen(false);
+    }
+  }, [
+    atmImmersive,
+    effectivePhoneBoothAgentId,
+    effectiveSmsBoothAgentId,
+    githubImmersive,
+    monitorImmersive,
+    onGithubReviewDismiss,
+    onMonitorSelect,
+    onPhoneCallComplete,
+    onQaLabDismiss,
+    onTextMessageClose,
+    phoneBoothImmersive,
+    qaImmersive,
+    smsBoothImmersive,
+    standupImmersive,
+  ]);
 
   // Camera constants.
   const LOCAL_CAMERA_TARGET = useMemo(
@@ -4887,6 +4939,142 @@ export function RetroOffice3D({
           </Canvas>
         ) : null}
       </div>
+
+      {monitorImmersive ? (
+        <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close monitor view"
+          >
+            <X size={18} />
+          </button>
+          <MonitorImmersiveContent monitor={activeMonitor!} />
+        </div>
+      ) : null}
+
+      {atmImmersive ? (
+        <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close ATM view"
+          >
+            <X size={18} />
+          </button>
+          <AtmImmersiveScreen {...(atmAnalytics ?? {})} />
+        </div>
+      ) : null}
+
+      {githubImmersive ? (
+        <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close GitHub review view"
+          >
+            <X size={18} />
+          </button>
+          <GithubImmersiveScreen
+            agentName={githubReviewAgentId ? (agents.find((agent) => agent.id === githubReviewAgentId)?.name ?? null) : null}
+            githubSkill={githubSkill}
+            onOpenSetup={onOpenGithubSkillSetup}
+          />
+        </div>
+      ) : null}
+
+      {qaImmersive ? (
+        <div className="fixed inset-0 z-[90] bg-[radial-gradient(circle_at_top,#142033_0%,#08101b_45%,#04070d_100%)] text-white backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close QA lab view"
+          >
+            <X size={18} />
+          </button>
+          <div className="flex h-full flex-col px-6 py-6">
+            <div className="rounded-[28px] border border-cyan-400/20 bg-slate-950/78 p-6 shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+              <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-cyan-200/80">QA lab</div>
+              <div className="mt-2 text-3xl font-semibold text-white">Testing station online</div>
+              <div className="mt-2 max-w-3xl text-sm leading-6 text-white/65">
+                This station is active again. The immersive QA view was missing from the scene render, so the room looked empty. The overlay is now restored and can be closed normally.
+              </div>
+            </div>
+            <div className="mt-5 grid min-h-0 flex-1 gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[28px] border border-cyan-400/15 bg-slate-950/74 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.32)]">
+                <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-cyan-100/75">Device matrix</div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={`qa-card-${index}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Bench {index + 1}</div>
+                      <div className="mt-2 text-base font-semibold text-white">Ready for regression</div>
+                      <div className="mt-2 text-sm leading-6 text-white/55">Capture logs, validate flows, and confirm the latest run before release.</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-[28px] border border-cyan-400/15 bg-slate-950/74 p-5 shadow-[0_20px_80px_rgba(0,0,0,0.32)]">
+                <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-cyan-100/75">Current status</div>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/[0.08] p-4 text-sm text-emerald-100/90">Terminal connected and visible.</div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/70">Agent: {qaTestingAgentId ? (agents.find((agent) => agent.id === qaTestingAgentId)?.name ?? qaTestingAgentId) : 'Manual test mode'}</div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/70">Use this screen to keep the lab from opening into a blank canvas again.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {phoneBoothImmersive && effectivePhoneCallScenario ? (
+        <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close phone booth view"
+          >
+            <X size={18} />
+          </button>
+          <PhoneBoothImmersiveScreen
+            scenario={effectivePhoneCallScenario}
+            step={phoneCallStep}
+            typedDigits={dialedDigits}
+          />
+        </div>
+      ) : null}
+
+      {smsBoothImmersive && effectiveTextMessageScenario ? (
+        <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={closeImmersiveOverlay}
+            className="absolute right-5 top-5 z-[91] inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-black/55 text-white/80 shadow-[0_12px_40px_rgba(0,0,0,0.35)] transition hover:border-white/30 hover:text-white"
+            aria-label="Close messaging booth view"
+          >
+            <X size={18} />
+          </button>
+          <SmsBoothImmersiveScreen
+            scenario={effectiveTextMessageScenario}
+            step={textMessageStep}
+            typedMessage={typedMessageText}
+            activeKey={activeTextKey}
+            contacts={textContacts}
+            activeContactIndex={activeTextContactIndex}
+          />
+        </div>
+      ) : null}
+
+      {standupImmersive && standupMeeting ? (
+        <StandupImmersiveScreen
+          meeting={standupMeeting}
+          onClose={() => setStandupBoardOpen(false)}
+        />
+      ) : null}
 
       {!readOnly && editMode && drawerOpen && !immersiveOverlayActive ? (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/45 px-4 py-6 backdrop-blur-[3px]">
