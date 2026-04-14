@@ -751,15 +751,17 @@ export function useRebuiltAgentTick(
       if (intent === "lounge") {
         const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
         const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+        // 40% chance of napping on the couch, otherwise sitting
+        const loungeState = Math.random() < 0.4 ? "napping" as const : "sitting" as const;
         return {
-          actionKey: "lounge",
+          actionKey: loungeState === "napping" ? "lounge_nap" : "lounge",
           mode,
-          lingerMs: 1800 + Math.random() * 1600,
+          lingerMs: loungeState === "napping" ? 3500 + Math.random() * 2500 : 1800 + Math.random() * 1600,
           targetX: target.targetX,
           targetY: target.targetY,
           facing: point.facing ?? agent.facing,
           path: target.path,
-          state: "sitting",
+          state: loungeState,
           interactionTarget: "lounge",
         };
       }
@@ -767,15 +769,17 @@ export function useRebuiltAgentTick(
       if (intent === "kitchen") {
         const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
         const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
+        // 55% chance of drinking coffee, otherwise just standing around
+        const kitchenState = Math.random() < 0.55 ? "drinking_coffee" as const : "standing" as const;
         return {
-          actionKey: "kitchen",
+          actionKey: kitchenState === "drinking_coffee" ? "kitchen_coffee" : "kitchen",
           mode,
-          lingerMs: 1200 + Math.random() * 1600,
+          lingerMs: kitchenState === "drinking_coffee" ? 2200 + Math.random() * 1800 : 1200 + Math.random() * 1600,
           targetX: target.targetX,
           targetY: target.targetY,
           facing: point.facing ?? agent.facing,
           path: target.path,
-          state: "standing",
+          state: kitchenState,
           interactionTarget: "kitchen",
         };
       }
@@ -903,15 +907,25 @@ export function useRebuiltAgentTick(
         return buildIntentPlan(agent, "jukebox", "autonomous", others, point);
       });
 
-      pushCandidate("gym", 0.32, () =>
+      pushCandidate("gym", 0.65, () =>
         gymWorkoutLocations.length > 0 ? buildIntentPlan(agent, "gym", "autonomous", others) : null,
       );
 
-      pushCandidate("qa_lab", 0.26, () =>
+      pushCandidate("qa_lab", 0.5, () =>
         qaLabStations.length > 0 ? buildIntentPlan(agent, "qa_lab", "autonomous", others) : null,
       );
 
-      pushCandidate("server_room", 0.2, () => buildIntentPlan(agent, "server_room", "autonomous", others));
+      pushCandidate("server_room", 0.35, () => buildIntentPlan(agent, "server_room", "autonomous", others));
+
+      pushCandidate("phone_booth", 0.45, () => {
+        const booth = (furnitureRef.current ?? []).find((item) => item.type === "phone_booth");
+        return booth ? buildIntentPlan(agent, "phone_booth", "autonomous", others) : null;
+      });
+
+      pushCandidate("sms_booth", 0.4, () => {
+        const booth = (furnitureRef.current ?? []).find((item) => item.type === "sms_booth");
+        return booth ? buildIntentPlan(agent, "sms_booth", "autonomous", others) : null;
+      });
 
       const winner = chooseWeighted(candidates)?.plan;
       if (winner) {

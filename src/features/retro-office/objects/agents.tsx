@@ -129,6 +129,9 @@ export const AgentModel = memo(function AgentModel({
     groupRef.current.rotation.y += rotDelta * rotationLerp;
     const isWorkout = agent.state === "working_out";
     const isDancing = agent.state === "dancing";
+    const isDrinkingCoffee = agent.state === "drinking_coffee";
+    const isNapping = agent.state === "napping";
+    const isCheckingPhone = agent.state === "checking_phone";
     const isJanitor = "role" in agent && agent.role === "janitor";
     const janitorTool = isJanitor
       ? (agent as RenderAgent & JanitorActor).janitorTool
@@ -214,33 +217,41 @@ export const AgentModel = memo(function AgentModel({
     }
     
     groupRef.current.rotation.x =
-      agent.state === "sitting"
-        ? -0.15
-        : isDancing
-          ? Math.sin(agent.frame * 0.18 + (agent.phaseOffset ?? 0)) * 0.06
-          : isWorkout
-            ? workoutStyle === "bike"
-              ? 0.18
-              : workoutStyle === "row"
-                ? -0.12 + Math.max(0, workoutPhase) * 0.08
-                : workoutStyle === "stretch"
-                  ? -0.08
-                  : workoutStyle === "run"
-                    ? 0.08
-                    : workoutStyle === "box"
-                      ? 0.04
-                      : 0.02
-          : agent.pingPongUntil
-            ? 0.08
-            : idleBodyRotX;
+      isNapping
+        ? -0.35 + Math.sin(motionFrame * 0.015) * 0.02 // Leaned back, gentle breathing
+        : isDrinkingCoffee
+          ? -0.06 + Math.sin(motionFrame * 0.04) * 0.02 // Slight lean with sipping motion
+          : isCheckingPhone
+            ? 0.12 + Math.sin(motionFrame * 0.03) * 0.01 // Leaned forward looking at phone
+            : agent.state === "sitting"
+              ? -0.15
+              : isDancing
+                ? Math.sin(agent.frame * 0.18 + (agent.phaseOffset ?? 0)) * 0.06
+                : isWorkout
+                  ? workoutStyle === "bike"
+                    ? 0.18
+                    : workoutStyle === "row"
+                      ? -0.12 + Math.max(0, workoutPhase) * 0.08
+                      : workoutStyle === "stretch"
+                        ? -0.08
+                        : workoutStyle === "run"
+                          ? 0.08
+                          : workoutStyle === "box"
+                            ? 0.04
+                            : 0.02
+                : agent.pingPongUntil
+                  ? 0.08
+                  : idleBodyRotX;
     
     // Apply idle body Y rotation (looking around)
     if (isIdle && idleAnim.type === 1) {
       groupRef.current.rotation.y += idleBodyRotY;
     }
     
-    // Apply idle body Z rotation (lean/sway)
-    groupRef.current.rotation.z = idleBodyRotZ;
+    // Apply idle body Z rotation (lean/sway) and special state tilts
+    groupRef.current.rotation.z = isNapping
+      ? 0.12 + Math.sin(motionFrame * 0.01) * 0.03 // Slight tilt while napping
+      : idleBodyRotZ;
     const bounce =
       agent.state === "walking"
         ? Math.sin(frameValue * WALK_ANIM_SPEED) * 0.04
@@ -256,9 +267,11 @@ export const AgentModel = memo(function AgentModel({
     
     const idleFloat = isIdle ? Math.sin(frameValue * 0.05) * 0.014 : 0;
     const breathe =
-      agent.state === "standing" || isWorkout || agent.pingPongUntil
+      agent.state === "standing" || isWorkout || agent.pingPongUntil || isDrinkingCoffee || isCheckingPhone
         ? Math.sin(frameValue * 0.03) * (agent.status === "idle" ? 0.016 : 0.01)
-        : 0;
+        : isNapping
+          ? Math.sin(frameValue * 0.015) * 0.008 // Slow deep breathing while napping
+          : 0;
     const errorShakeX =
       agent.status === "error" ? Math.sin(agent.frame * 0.9) * 0.01 : 0;
     const errorShakeZ =
@@ -324,6 +337,22 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.pingPongUntil) {
         leftArmRef.current.rotation.x =
           0.2 + Math.sin(agent.frame * 0.08) * 0.28;
+      } else if (isDrinkingCoffee) {
+        // Left hand holds coffee cup up near face, gentle sipping motion
+        const sipPhase = Math.sin(motionFrame * 0.06);
+        leftArmRef.current.rotation.x = -1.6 + sipPhase * 0.15;
+        leftArmRef.current.rotation.z = -0.2;
+        leftArmRef.current.rotation.y = 0.15;
+      } else if (isNapping) {
+        // Arms relaxed, folded on lap/chest while napping
+        leftArmRef.current.rotation.x = -0.4 + Math.sin(motionFrame * 0.015) * 0.02;
+        leftArmRef.current.rotation.z = 0.25;
+        leftArmRef.current.rotation.y = 0.12;
+      } else if (isCheckingPhone) {
+        // Both hands up holding phone in front of face
+        leftArmRef.current.rotation.x = -1.4 + Math.sin(motionFrame * 0.04) * 0.03;
+        leftArmRef.current.rotation.z = -0.15;
+        leftArmRef.current.rotation.y = 0.2;
       } else if (agent.state === "sitting") {
         leftArmRef.current.rotation.x = 0.3;
       } else if (isIdle) {
@@ -438,6 +467,20 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.pingPongUntil) {
         rightArmRef.current.rotation.x =
           0.08 - Math.sin(agent.frame * 0.08) * 0.16;
+      } else if (isDrinkingCoffee) {
+        // Right arm relaxed at side or slightly supporting
+        rightArmRef.current.rotation.x = 0.1 + Math.sin(motionFrame * 0.04) * 0.04;
+        rightArmRef.current.rotation.z = 0.12;
+      } else if (isNapping) {
+        // Arms relaxed, folded while napping
+        rightArmRef.current.rotation.x = -0.4 + Math.sin(motionFrame * 0.015) * 0.02;
+        rightArmRef.current.rotation.z = -0.25;
+        rightArmRef.current.rotation.y = -0.12;
+      } else if (isCheckingPhone) {
+        // Right hand also up, holding phone
+        rightArmRef.current.rotation.x = -1.35 + Math.sin(motionFrame * 0.04) * 0.03;
+        rightArmRef.current.rotation.z = 0.15;
+        rightArmRef.current.rotation.y = -0.2;
       } else if (agent.state === "sitting") {
         rightArmRef.current.rotation.x = 0.3;
       } else if (isIdle) {
@@ -544,7 +587,7 @@ export const AgentModel = memo(function AgentModel({
     }
 
     const working =
-      agent.state === "sitting" || isWorkout || isDancing || agent.status === "working";
+      agent.state === "sitting" || isWorkout || isDancing || isDrinkingCoffee || isNapping || isCheckingPhone || agent.status === "working";
     const isError = agent.status === "error";
     const isAway = agent.state === "away";
 
