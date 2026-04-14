@@ -49,6 +49,22 @@ export type CompanyAgentScope = {
   agentSlugs: string[];
 };
 
+export type CompanyRuntimeRosterAgent = {
+  id: number;
+  companyId: number;
+  name?: string | null;
+  slug?: string | null;
+  role?: string | null;
+  status?: boolean | null;
+  isDefault?: boolean | null;
+  gatewayAgentId?: string | null;
+};
+
+export type CompanyRuntimeRosterResponse = {
+  companyId: number;
+  agents?: CompanyRuntimeRosterAgent[] | null;
+};
+
 const parseCookieValue = (name: string) => {
   if (typeof document === "undefined") return null;
   const needle = `${encodeURIComponent(name)}=`;
@@ -215,6 +231,38 @@ export const fetchCompanyAgentScope = async (params?: {
     .map((agent) => (typeof agent.slug === "string" ? agent.slug.trim().toLowerCase() : ""))
     .filter((value) => value.length > 0);
   return { gatewayAgentIds, agentSlugs };
+};
+
+export const fetchCompanyAgentRuntimeRoster = async (params?: {
+  companyId?: number | null;
+  token?: string | null;
+}): Promise<CompanyRuntimeRosterAgent[]> => {
+  const companyId = params?.companyId ?? getBrowserCompanyId();
+  if (!companyId) return [];
+  const token = params?.token;
+
+  const response = await requestBackendJson<CompanyRuntimeRosterResponse>(
+    `/api/Runtime/companies/${companyId}/agent-roster`,
+    undefined,
+    token,
+  );
+
+  const agents = Array.isArray(response.agents) ? response.agents : [];
+  return agents
+    .filter(
+      (entry): entry is CompanyRuntimeRosterAgent =>
+        typeof entry?.gatewayAgentId === "string" &&
+        entry.gatewayAgentId.trim().length > 0,
+    )
+    .sort((left, right) => {
+      const leftDefault = left.isDefault === true ? 1 : 0;
+      const rightDefault = right.isDefault === true ? 1 : 0;
+      if (leftDefault !== rightDefault) return rightDefault - leftDefault;
+
+      const leftName = (left.name ?? left.slug ?? "").trim().toLowerCase();
+      const rightName = (right.name ?? right.slug ?? "").trim().toLowerCase();
+      return leftName.localeCompare(rightName);
+    });
 };
 
 export const fetchCompanyGatewayAgentIds = async (params?: {

@@ -13,7 +13,7 @@ import { MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Users2 
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
-import { useAgentStore, type AgentState } from "@/features/agents/state/store";
+import { useAgentStore, type AgentState, type AgentStoreSeed } from "@/features/agents/state/store";
 import {
   GatewayClient,
   buildAgentMainSessionKey,
@@ -116,11 +116,13 @@ import { writeGatewayAgentFiles } from "@/lib/gateway/agentFiles";
 import {
   extractGatewayAgentId,
   fetchCompanyAgentDetails,
+  fetchCompanyAgentRuntimeRoster,
   fetchCompanyAgents,
   fetchCompanyAgentScope,
   getBrowserAccessToken,
   persistCompanyAgentFromWizard,
   type CompanyAgentScope,
+  type CompanyRuntimeRosterAgent,
 } from "@/lib/agents/backend-api";
 import {
   listLeadGenerationJobs,
@@ -223,6 +225,31 @@ const MAIN_AGENT_ID = "main";
 const MAX_OPENCLAW_LOG_ENTRIES = 200;
 const MAX_OPENCLAW_AGENT_OUTPUT_LINES = 12;
 const OFFICE_DANCE_MS = 60_000;
+
+const buildFallbackOfficeSeedsFromRuntimeRoster = (
+  runtimeRoster: CompanyRuntimeRosterAgent[],
+): AgentStoreSeed[] => {
+  return runtimeRoster
+    .filter(
+      (entry) =>
+        typeof entry.gatewayAgentId === "string" &&
+        entry.gatewayAgentId.trim().length > 0,
+    )
+    .map((entry) => {
+      const gatewayAgentId = entry.gatewayAgentId!.trim();
+      return {
+        agentId: gatewayAgentId,
+        name: (entry.name ?? entry.slug ?? gatewayAgentId).trim(),
+        sessionKey: buildAgentMainSessionKey(gatewayAgentId, "main"),
+        avatarSeed: gatewayAgentId,
+        avatarUrl: null,
+        model: null,
+        thinkingLevel: null,
+        toolCallingEnabled: true,
+        showThinkingTraces: false,
+      };
+    });
+};
 
 const getLatestUserRequestForAgent = (
   agent: AgentState,
@@ -1534,11 +1561,38 @@ export function OfficeScreen({
           (command): command is Extract<StudioBootstrapLoadCommand, { kind: "hydrate-agents" }> =>
             command.kind === "hydrate-agents",
         );
-        if (previousAgents.length > 0 && hydrateCommand && hydrateCommand.seeds.length === 0) {
-          console.warn(
-            "Gateway hydration returned an empty fleet after reconnect/standby. Preserving the previous office roster and scheduling a silent retry.",
-          );
-          commandsToExecute = commands.filter((command) => command.kind !== "hydrate-agents");
+        if (hydrateCommand && hydrateCommand.seeds.length === 0) {
+          const runtimeRoster = await fetchCompanyAgentRuntimeRoster();
+          const fallbackSeeds = buildFallbackOfficeSeedsFromRuntimeRoster(runtimeRoster);
+
+          if (fallbackSeeds.length > 0) {
+            console.warn(
+              "Gateway hydration returned an empty fleet after reconnect/standby. Rehydrating the office roster from the backend runtime roster and scheduling a silent retry.",
+            );
+
+            const fallbackHydrateCommand: Extract<
+              StudioBootstrapLoadCommand,
+              { kind: "hydrate-agents" }
+            > = {
+              kind: "hydrate-agents",
+              seeds: fallbackSeeds,
+              initialSelectedAgentId:
+                previousAgents.find((agent) =>
+                  fallbackSeeds.some((seed) => seed.agentId === agent.agentId),
+                )?.agentId ?? fallbackSeeds[0]?.agentId,
+            };
+
+            commandsToExecute = [
+              ...commands.filter((command) => command.kind !== "hydrate-agents"),
+              fallbackHydrateCommand,
+            ];
+          } else if (previousAgents.length > 0) {
+            console.warn(
+              "Gateway hydration returned an empty fleet after reconnect/standby. Preserving the previous office roster and scheduling a silent retry.",
+            );
+            commandsToExecute = commands.filter((command) => command.kind !== "hydrate-agents");
+          }
+
           window.setTimeout(() => {
             void loadAgents({
               forceSettings: true,
