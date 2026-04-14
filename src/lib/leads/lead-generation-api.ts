@@ -114,6 +114,7 @@ export type SendSingleLeadEmailResult = {
 
 export type LeadSummary = {
   id: number;
+  companyId: number;
   businessName: string;
   ownerFirstName?: string | null;
   ownerLastName?: string | null;
@@ -202,6 +203,7 @@ const normalizeJob = (value: unknown): LeadGenerationJob | null => {
   const companyId = parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0);
   return {
     id,
+    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     companyId,
     requestedByUserId: parseNumber(pick(entry, "requestedByUserId", "RequestedByUserId"), NaN) || null,
     agentId: parseNumber(pick(entry, "agentId", "AgentId"), 0),
@@ -238,6 +240,7 @@ const normalizeLead = (value: unknown): LeadSummary | null => {
   const ownerParts = owner ? owner.split(/\s+/).filter(Boolean) : [];
   return {
     id,
+    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     businessName: parseString(pick(entry, "businessName", "BusinessName")) ?? parseString(pick(entry, "name", "Name")) ?? `Lead ${id}`,
     ownerFirstName: parseString(pick(entry, "ownerFirstName", "OwnerFirstName")) ?? ownerParts[0] ?? null,
     ownerLastName: parseString(pick(entry, "ownerLastName", "OwnerLastName")) ?? (ownerParts.length > 1 ? ownerParts.slice(1).join(" ") : null),
@@ -274,6 +277,7 @@ const normalizeEmailBatchJob = (value: unknown): LeadEmailBatchJob | null => {
   if (!Number.isFinite(id)) return null;
   return {
     id,
+    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     requestedByUserId: parseNumber(pick(entry, "requestedByUserId", "RequestedByUserId"), NaN) || null,
     sourceLeadJobId: parseNumber(pick(entry, "sourceLeadJobId", "SourceLeadJobId"), NaN) || null,
