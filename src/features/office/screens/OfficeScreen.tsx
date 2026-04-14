@@ -67,6 +67,7 @@ import {
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
+import { SquadDetailModal } from "@/features/office/components/SquadDetailModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
@@ -137,10 +138,12 @@ import {
   createSquadTask,
   dispatchSquadTask,
   estimateSquadTaskDispatch,
+  deleteCompanySquad,
   fetchCompanySquads,
   fetchSquadCatalog,
   fetchSquadTask,
   fetchSquadTasks,
+  updateCompanySquad,
   type SquadCatalog,
   type SquadExecutionMode,
   type SquadSummary,
@@ -1022,6 +1025,13 @@ export function OfficeScreen({
   const [squadOpsDispatchEstimate, setSquadOpsDispatchEstimate] = useState<SquadTaskDispatchEstimate | null>(null);
   const [squadOpsDispatchApprovalMode, setSquadOpsDispatchApprovalMode] = useState<"pending" | "retryFailed" | "redispatchAll" | null>(null);
   const [squadOpsDispatchEstimateBusy, setSquadOpsDispatchEstimateBusy] = useState(false);
+  const [squadDetailModalOpen, setSquadDetailModalOpen] = useState(false);
+  const [squadDetailSquad, setSquadDetailSquad] = useState<SquadSummary | null>(null);
+  const [squadDetailCatalog, setSquadDetailCatalog] = useState<SquadCatalog | null>(null);
+  const [squadDetailCatalogLoading, setSquadDetailCatalogLoading] = useState(false);
+  const [squadDetailSaveBusy, setSquadDetailSaveBusy] = useState(false);
+  const [squadDetailDeleteBusy, setSquadDetailDeleteBusy] = useState(false);
+  const [squadDetailError, setSquadDetailError] = useState<string | null>(null);
   const [createAgentWizardOpen, setCreateAgentWizardOpen] = useState(false);
   const [createAgentBusy, setCreateAgentBusy] = useState(false);
   const [createAgentModalError, setCreateAgentModalError] = useState<string | null>(
@@ -2053,6 +2063,86 @@ export function OfficeScreen({
       void loadSquadOpsTasks(squadId);
     },
     [loadSquadOpsRuntimeStatus, loadSquadOpsTasks],
+  );
+
+  const handleOpenSquadDetail = useCallback(
+    (squadId: string) => {
+      const found = companySquads.find((s) => String(s.id) === squadId) ?? null;
+      if (!found) return;
+      setSquadDetailSquad(found);
+      setSquadDetailError(null);
+      setSquadDetailSaveBusy(false);
+      setSquadDetailDeleteBusy(false);
+      setSquadDetailModalOpen(true);
+      setSquadDetailCatalogLoading(true);
+      fetchSquadCatalog()
+        .then((catalog) => setSquadDetailCatalog(catalog))
+        .catch(() => setSquadDetailCatalog(null))
+        .finally(() => setSquadDetailCatalogLoading(false));
+    },
+    [companySquads],
+  );
+
+  const handleSquadDetailSave = useCallback(
+    async (payload: {
+      squadId: number;
+      name: string;
+      description: string;
+      memberAgentIds: number[];
+      leaderAgentId: number | null;
+      executionMode: SquadExecutionMode;
+      workspaceId: number | null;
+    }) => {
+      setSquadDetailSaveBusy(true);
+      setSquadDetailError(null);
+      try {
+        const updated = await updateCompanySquad({
+          squadId: payload.squadId,
+          name: payload.name,
+          description: payload.description,
+          memberAgentIds: payload.memberAgentIds,
+          leaderAgentId: payload.leaderAgentId,
+          executionMode: payload.executionMode,
+          workspaceId: payload.workspaceId,
+        });
+        await loadCompanySquads(true);
+        setSquadDetailSquad(updated);
+        setSquadDetailModalOpen(false);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to update the squad right now.";
+        setSquadDetailError(message);
+      } finally {
+        setSquadDetailSaveBusy(false);
+      }
+    },
+    [loadCompanySquads],
+  );
+
+  const handleSquadDetailDelete = useCallback(
+    async (squadId: number) => {
+      setSquadDetailDeleteBusy(true);
+      setSquadDetailError(null);
+      try {
+        await deleteCompanySquad({ squadId });
+        await loadCompanySquads(true);
+        setSquadDetailModalOpen(false);
+        setSquadDetailSquad(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to delete the squad right now.";
+        setSquadDetailError(message);
+      } finally {
+        setSquadDetailDeleteBusy(false);
+      }
+    },
+    [loadCompanySquads],
+  );
+
+  const handleSquadDetailOpenOps = useCallback(
+    (squadId: string) => {
+      setSquadDetailModalOpen(false);
+      handleOpenSquadOps(squadId);
+    },
+    [handleOpenSquadOps],
   );
 
   const handleSelectSquadTask = useCallback(async (taskId: number) => {
@@ -4833,6 +4923,9 @@ export function OfficeScreen({
             openAgentEditor(agentId, "IDENTITY.md");
           }}
           squads={companySquads}
+          onSquadDetail={(squadId) => {
+            handleOpenSquadDetail(squadId);
+          }}
           onSquadOps={(squadId) => {
             handleOpenSquadOps(squadId);
           }}
@@ -5708,6 +5801,26 @@ export function OfficeScreen({
         onSubmit={(payload) => {
           void handleCreateSquad(payload);
         }}
+      />
+      <SquadDetailModal
+        open={squadDetailModalOpen}
+        squad={squadDetailSquad}
+        catalog={squadDetailCatalog}
+        catalogLoading={squadDetailCatalogLoading}
+        saveBusy={squadDetailSaveBusy}
+        deleteBusy={squadDetailDeleteBusy}
+        error={squadDetailError}
+        onClose={() => {
+          setSquadDetailModalOpen(false);
+          setSquadDetailError(null);
+        }}
+        onSave={(payload) => {
+          void handleSquadDetailSave(payload);
+        }}
+        onDelete={(squadId) => {
+          void handleSquadDetailDelete(squadId);
+        }}
+        onOpenOps={handleSquadDetailOpenOps}
       />
       <SquadOpsModal
         open={squadOpsModalOpen}

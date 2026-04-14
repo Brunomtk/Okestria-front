@@ -1414,6 +1414,7 @@ export function RetroOffice3D({
   onAgentChatSelect,
   squads = [],
   onSquadOps,
+  onSquadDetail,
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
@@ -1508,6 +1509,7 @@ export function RetroOffice3D({
   onAgentChatSelect?: (agentId: string) => void;
   squads?: SquadSummary[];
   onSquadOps?: (squadId: string) => void;
+  onSquadDetail?: (squadId: string) => void;
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
@@ -5684,20 +5686,26 @@ export function RetroOffice3D({
               </div>
             ) : (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-                {squads.map((squad) => (
-                  <button
-                    key={String(squad.id)}
-                    type="button"
-                    onClick={() => {
-                      onSquadOps?.(String(squad.id));
-                      setAgentRosterOpen(false);
-                    }}
-                    className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
-                  >
-                    <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{squad.members?.length ?? 0} members</div>
-                  </button>
-                ))}
+                {squads.map((squad) => {
+                  const leaderName = squad.members?.find((m) => m.isLeader)?.name;
+                  return (
+                    <button
+                      key={String(squad.id)}
+                      type="button"
+                      onClick={() => {
+                        (onSquadDetail ?? onSquadOps)?.(String(squad.id));
+                        setAgentRosterOpen(false);
+                      }}
+                      className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
+                    >
+                      <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
+                      <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">
+                        <span>{squad.members?.length ?? 0} members</span>
+                        {leaderName && <span className="text-amber-300/50">· {leaderName}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
                 {squads.length === 0 ? <div className="rounded-xl border border-amber-500/18 bg-[#17120a]/70 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
               </div>
             )}
