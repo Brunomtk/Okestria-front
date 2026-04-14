@@ -4954,7 +4954,7 @@ export function RetroOffice3D({
         </div>
       ) : null}
 
-      {atmImmersive ? (
+      {atmImmersive && atmAnalytics ? (
         <div className="fixed inset-0 z-[90] bg-black/88 backdrop-blur-md">
           <button
             type="button"
@@ -4964,7 +4964,7 @@ export function RetroOffice3D({
           >
             <X size={18} />
           </button>
-          <AtmImmersiveScreen {...(atmAnalytics ?? {})} />
+          <AtmImmersiveScreen {...atmAnalytics} />
         </div>
       ) : null}
 
