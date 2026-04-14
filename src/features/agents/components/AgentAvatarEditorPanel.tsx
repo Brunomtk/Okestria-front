@@ -11,7 +11,19 @@ import {
   AGENT_AVATAR_SHOE_COLOR_OPTIONS,
   AGENT_AVATAR_SKIN_TONE_OPTIONS,
   AGENT_AVATAR_TOP_STYLE_OPTIONS,
+  AGENT_AVATAR_FACIAL_HAIR_OPTIONS,
+  AGENT_AVATAR_GLASSES_STYLE_OPTIONS,
+  AGENT_AVATAR_EARRING_STYLE_OPTIONS,
+  AGENT_AVATAR_WATCH_STYLE_OPTIONS,
+  AGENT_AVATAR_NECKWEAR_OPTIONS,
+  AGENT_AVATAR_BODY_BUILD_OPTIONS,
   type AgentAvatarProfile,
+  type AgentAvatarGlassesStyle,
+  type AgentAvatarFacialHair,
+  type AgentAvatarEarringStyle,
+  type AgentAvatarWatchStyle,
+  type AgentAvatarNeckwear,
+  type AgentAvatarBodyBuild,
   createDefaultAgentAvatarProfile,
 } from "@/lib/avatars/profile";
 import { AgentAvatarPreview3D } from "@/features/agents/components/AgentAvatarPreview3D";
@@ -402,17 +414,204 @@ export const AgentAvatarEditorPanel = forwardRef<
             </div>
           </section>
 
+          {/* ── Body build ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Body build
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_BODY_BUILD_OPTIONS.map((option) => {
+                const selected = (draft.body as { build?: AgentAvatarBodyBuild }).build === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        body: { ...current.body, build: option.id },
+                      }))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Facial hair ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Facial hair
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_FACIAL_HAIR_OPTIONS.map((option) => {
+                const selected = (draft as { face?: { facialHair?: AgentAvatarFacialHair } }).face?.facialHair === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        face: {
+                          ...(current as unknown as { face?: Record<string, unknown> }).face,
+                          facialHair: option.id,
+                        },
+                      } as AgentAvatarProfile))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Glasses style ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Glasses
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_GLASSES_STYLE_OPTIONS.map((option) => {
+                const currentGlasses = draft.accessories.glasses;
+                const currentStyle = typeof currentGlasses === "string" ? currentGlasses : (currentGlasses ? "square" : "none");
+                const selected = currentStyle === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        accessories: { ...current.accessories, glasses: option.id as AgentAvatarGlassesStyle },
+                      } as AgentAvatarProfile))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Earrings ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Earrings
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_EARRING_STYLE_OPTIONS.map((option) => {
+                const selected = ((draft.accessories as { earrings?: AgentAvatarEarringStyle }).earrings ?? "none") === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        accessories: { ...current.accessories, earrings: option.id },
+                      } as AgentAvatarProfile))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Neckwear ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Neckwear
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_NECKWEAR_OPTIONS.map((option) => {
+                const selected = ((draft.accessories as { neckwear?: AgentAvatarNeckwear }).neckwear ?? "none") === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        accessories: { ...current.accessories, neckwear: option.id },
+                      } as AgentAvatarProfile))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Watch ── */}
+          <section className="space-y-3">
+            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
+              Watch
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {AGENT_AVATAR_WATCH_STYLE_OPTIONS.map((option) => {
+                const selected = ((draft.accessories as { watch?: AgentAvatarWatchStyle }).watch ?? "none") === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className={`${pillClassName} ${
+                      selected
+                        ? "border-primary bg-primary/15 text-foreground"
+                        : "border-border/50 bg-muted/30 text-muted-foreground"
+                    }`}
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        accessories: { ...current.accessories, watch: option.id },
+                      } as AgentAvatarProfile))
+                    }
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* ── Toggles: headset & backpack ── */}
           <section className="space-y-3 xl:col-span-2">
             <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Accessories
+              Other accessories
             </h3>
             <div className="flex flex-wrap gap-2">
               {[
-                {
-                  key: "glasses" as const,
-                  label: "Glasses",
-                  enabled: draft.accessories.glasses,
-                },
                 {
                   key: "headset" as const,
                   label: "Headset",
