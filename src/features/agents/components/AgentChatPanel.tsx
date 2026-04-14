@@ -1378,6 +1378,7 @@ export const AgentChatPanel = ({
   pendingExecApprovals = [],
   onResolveExecApproval,
   onVoiceSend,
+  composerToolbarExtra,
 }: AgentChatPanelProps) => {
   const [draftValue, setDraftValue] = useState(agent.draft);
   const [newSessionBusy, setNewSessionBusy] = useState(false);
