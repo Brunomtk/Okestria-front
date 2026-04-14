@@ -36,6 +36,7 @@ import {
   getLeadGenerationJob,
   listLeadEmailBatchJobs,
   listLeadGenerationJobs,
+  listLeadsByCompany,
   listLeadsByJob,
   getLeadById,
   generateLeadInsights,
@@ -293,9 +294,9 @@ export function LeadOpsPanel({
     return () => clearInterval(timer);
   }, [jobs]);
 
-  // Load leads when job selected
+  // Load leads for the current company, with job-specific fallback when needed.
   useEffect(() => {
-    if (!selectedJobId) {
+    if (!companyId && !selectedJobId) {
       setJobLeads([]);
       setEmailBatchJobs([]);
       return;
@@ -303,17 +304,24 @@ export function LeadOpsPanel({
     let cancelled = false;
     const load = async () => {
       try {
-        const [job, leads] = await Promise.all([getLeadGenerationJob(selectedJobId), listLeadsByJob(selectedJobId)]);
+        const [job, companyLeads, jobLeads] = await Promise.all([
+          selectedJobId ? getLeadGenerationJob(selectedJobId) : Promise.resolve(null),
+          companyId ? listLeadsByCompany(companyId) : Promise.resolve([]),
+          selectedJobId ? listLeadsByJob(selectedJobId) : Promise.resolve([]),
+        ]);
         if (cancelled) return;
         if (job) setJobs((c) => [job, ...c.filter((j) => j.id !== job.id)].sort((a, b) => b.id - a.id));
+
+        const leads = companyLeads.length > 0 ? companyLeads : jobLeads;
         setJobLeads(leads);
+        setError(null);
       } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load job details.");
+        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load leads.");
       }
     };
     void load();
     return () => { cancelled = true; };
-  }, [selectedJobId]);
+  }, [companyId, selectedJobId]);
 
   // Load email batch jobs
   useEffect(() => {
@@ -864,11 +872,11 @@ export function LeadOpsPanel({
       )}
 
       {/* Lead Vault Modal */}
-      {modalView === "lead-vault" && selectedJob && (
+      {modalView === "lead-vault" && (
         <Modal
           onClose={() => setModalView("none")}
-          title={selectedJob.title}
-          subtitle={`${stats.total} leads available`}
+          title={selectedJob ? `${selectedJob.title} · Company Leads` : "Company Leads"}
+          subtitle={`${stats.total} leads available for this company`}
           size="xl"
         >
           {/* Search & Stats */}

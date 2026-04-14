@@ -467,6 +467,38 @@ export const listLeadsByJob = async (jobId: number): Promise<LeadSummary[]> => {
   return [];
 };
 
+export const listLeadsByCompany = async (companyId?: number | null): Promise<LeadSummary[]> => {
+  const resolvedCompanyId = companyId ?? getBrowserCompanyId();
+  if (!resolvedCompanyId) return [];
+
+  const paths = [
+    `/api/Leads/paged?companyId=${resolvedCompanyId}&pageNumber=1&pageSize=500`,
+    `/api/Leads/by-company/${resolvedCompanyId}`,
+  ];
+
+  for (const path of paths) {
+    try {
+      const response = await requestBackend<unknown>(path);
+      const list = Array.isArray(response)
+        ? response
+        : response && typeof response === "object" && Array.isArray((response as { result?: unknown[] }).result)
+          ? (response as { result: unknown[] }).result
+          : [];
+      const leads = list
+        .map(normalizeLead)
+        .filter((value): value is LeadSummary => Boolean(value))
+        .filter((lead) => lead.companyId === resolvedCompanyId);
+      if (leads.length > 0 || path === paths[paths.length - 1]) {
+        return leads.sort((a, b) => b.id - a.id);
+      }
+    } catch {
+      // continue
+    }
+  }
+
+  return [];
+};
+
 
 export const getLeadById = async (leadId: number): Promise<LeadSummary | null> => {
   const paths = [`/api/Leads/by-id/${leadId}`, `/api/Leads/${leadId}`];
