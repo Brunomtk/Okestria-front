@@ -641,14 +641,15 @@ export const getDeskLocations = (items: FurnitureItem[]) =>
 export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
   // Meeting seats are inferred from chair placement in the conference area so standup
   // gathering follows the authored layout instead of a hardcoded attendee list.
+  // Detection region expanded to accommodate a 6-chair round table layout.
   const chairs = items
     .filter(
       (item) =>
         item.type === "chair" &&
         item.x >= 0 &&
-        item.x <= 290 &&
+        item.x <= 320 &&
         item.y >= 0 &&
-        item.y <= 235,
+        item.y <= 280,
     )
     .sort((left, right) => left.y - right.y || left.x - right.x);
   if (chairs.length === 0) return [];
@@ -817,11 +818,13 @@ export const getQaLabStations = (
       };
     });
 
+// Overflow standing positions around the meeting table when all chairs are taken.
+// Centred around table at (166, 112) to match the 6-chair layout.
 export const MEETING_OVERFLOW_LOCATIONS = [
-  { x: 18, y: 118, facing: Math.PI / 2 },
-  { x: 270, y: 118, facing: -Math.PI / 2 },
-  { x: 145, y: 24, facing: Math.PI },
-  { x: 145, y: 220, facing: 0 },
+  { x: 20, y: 130, facing: Math.PI / 2 },       // Left standing
+  { x: 300, y: 130, facing: -Math.PI / 2 },      // Right standing
+  { x: 166, y: 20, facing: Math.PI },            // Top standing
+  { x: 166, y: 250, facing: 0 },                 // Bottom standing
 ];
 
 export const resolveDeskIndexForItem = (

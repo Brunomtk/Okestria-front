@@ -944,6 +944,9 @@ export function useRebuiltAgentTick(
       if (qaHoldByAgentId[agent.id]) return "qa_lab";
       if (githubReviewByAgentId[agent.id]) return "server_room";
       if (deskHoldByAgentId[agent.id] || typeof assignedDeskIndexByAgentId[agent.id] === "number") return "desk";
+      // When an agent is actively working (running a task), automatically send
+      // them to their desk so the office visually reflects who is busy.
+      if (agent.status === "working") return "desk";
       return null;
     },
     [
