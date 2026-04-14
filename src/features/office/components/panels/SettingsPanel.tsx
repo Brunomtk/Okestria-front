@@ -106,7 +106,7 @@ export function SettingsPanel({
           <div>
             <div className="text-[11px] font-medium text-white">Agent skills</div>
             <div className="mt-1 text-[10px] text-white/75">
-              Open the agents screen directly on the skills setup view.
+              Open the skills marketplace modal to configure and install agent skills.
             </div>
           </div>
           <button
@@ -115,7 +115,7 @@ export function SettingsPanel({
             className="rounded-md border border-cyan-400/25 bg-cyan-500/12 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-500/18 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!onOpenAgentSkills}
           >
-            {skillsButtonLabel?.trim() || "Open skills"}
+            {skillsButtonLabel?.trim() || "Open marketplace"}
           </button>
         </div>
       </div>
