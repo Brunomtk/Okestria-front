@@ -490,7 +490,7 @@ const isAuthError = (errorMessage: string | null): boolean => {
   );
 };
 
-const MAX_AUTO_RETRY_ATTEMPTS = 20;
+const MAX_AUTO_RETRY_ATTEMPTS = 120;
 const INITIAL_RETRY_DELAY_MS = 2_000;
 const MAX_RETRY_DELAY_MS = 30_000;
 
@@ -638,11 +638,9 @@ export const useGatewayConnection = (
   useEffect(() => {
     return client.onStatus((nextStatus) => {
       setStatus(nextStatus);
-      if (nextStatus !== "connecting") {
+      if (nextStatus === "connected") {
         setError(null);
-        if (nextStatus === "connected") {
-          setConnectErrorCode(null);
-        }
+        setConnectErrorCode(null);
       }
     });
   }, [client]);
@@ -726,6 +724,23 @@ export const useGatewayConnection = (
       retryAttemptRef.current = 0;
     }
   }, [status]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleOnline = () => {
+      if (status === "connected" || status === "connecting") return;
+      if (!didAutoConnect.current) return;
+      if (!gatewayUrl.trim()) return;
+      if (wasManualDisconnectRef.current) return;
+      void connect();
+    };
+
+    window.addEventListener("online", handleOnline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+    };
+  }, [connect, gatewayUrl, status]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;

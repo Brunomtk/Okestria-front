@@ -5537,6 +5537,45 @@ export function OfficeScreen({
         onFinishWizard={handleFinishCreateAgentAvatar}
       />
 
+      {hasConnectedOnce && status === "disconnected" ? (
+        <div className="fixed bottom-6 right-6 z-[96] flex w-[320px] max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-2xl border border-amber-400/25 bg-[#0b0f14]/94 p-4 shadow-2xl backdrop-blur-md">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400/12 text-amber-300">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-white">Gateway desconectado</div>
+              <div className="mt-1 text-xs leading-5 text-white/65">
+                A conexao com o gateway foi perdida. O sistema vai tentar reconectar automaticamente.
+              </div>
+              {gatewayError ? (
+                <div className="mt-2 line-clamp-3 rounded-lg border border-white/8 bg-white/5 px-2.5 py-2 font-mono text-[11px] text-amber-100/75">
+                  {gatewayError}
+                </div>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void connect()}
+              className="flex-1 rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400"
+            >
+              Reconectar agora
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowGatewayErrorModal(true)}
+              className="rounded-xl border border-white/10 px-4 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/5 hover:text-white"
+            >
+              Detalhes
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Gateway Disconnection Error Modal */}
       {showGatewayErrorModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
