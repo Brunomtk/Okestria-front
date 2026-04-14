@@ -18,13 +18,8 @@ import {
   AGENT_AVATAR_NECKWEAR_OPTIONS,
   AGENT_AVATAR_BODY_BUILD_OPTIONS,
   type AgentAvatarProfile,
-  type AgentAvatarGlassesStyle,
-  type AgentAvatarFacialHair,
-  type AgentAvatarEarringStyle,
-  type AgentAvatarWatchStyle,
-  type AgentAvatarNeckwear,
-  type AgentAvatarBodyBuild,
   createDefaultAgentAvatarProfile,
+  normalizeAgentAvatarProfile,
 } from "@/lib/avatars/profile";
 import { AgentAvatarPreview3D } from "@/features/agents/components/AgentAvatarPreview3D";
 import { randomUUID } from "@/lib/uuid";
@@ -74,7 +69,10 @@ export const AgentAvatarEditorPanel = forwardRef<
     () => createDefaultAgentAvatarProfile(agentId),
     [agentId]
   );
-  const resolvedInitialProfile = initialProfile ?? fallbackProfile;
+  const resolvedInitialProfile = useMemo(
+    () => initialProfile ? normalizeAgentAvatarProfile(initialProfile, agentId) : fallbackProfile,
+    [initialProfile, fallbackProfile, agentId]
+  );
   const [draft, setDraft] = useState<AgentAvatarProfile>(resolvedInitialProfile);
   const [saving, setSaving] = useState(false);
 
@@ -421,7 +419,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_BODY_BUILD_OPTIONS.map((option) => {
-                const selected = (draft.body as { build?: AgentAvatarBodyBuild }).build === option.id;
+                const selected = draft.body.build === option.id;
                 return (
                   <button
                     key={option.id}
@@ -452,7 +450,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_FACIAL_HAIR_OPTIONS.map((option) => {
-                const selected = (draft as { face?: { facialHair?: AgentAvatarFacialHair } }).face?.facialHair === option.id;
+                const selected = draft.face.facialHair === option.id;
                 return (
                   <button
                     key={option.id}
@@ -465,11 +463,8 @@ export const AgentAvatarEditorPanel = forwardRef<
                     onClick={() =>
                       setDraft((current) => ({
                         ...current,
-                        face: {
-                          ...(current as unknown as { face?: Record<string, unknown> }).face,
-                          facialHair: option.id,
-                        },
-                      } as AgentAvatarProfile))
+                        face: { ...current.face, facialHair: option.id },
+                      }))
                     }
                   >
                     {option.label}
@@ -486,9 +481,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_GLASSES_STYLE_OPTIONS.map((option) => {
-                const currentGlasses = draft.accessories.glasses;
-                const currentStyle = typeof currentGlasses === "string" ? currentGlasses : (currentGlasses ? "square" : "none");
-                const selected = currentStyle === option.id;
+                const selected = draft.accessories.glasses === option.id;
                 return (
                   <button
                     key={option.id}
@@ -501,8 +494,8 @@ export const AgentAvatarEditorPanel = forwardRef<
                     onClick={() =>
                       setDraft((current) => ({
                         ...current,
-                        accessories: { ...current.accessories, glasses: option.id as AgentAvatarGlassesStyle },
-                      } as AgentAvatarProfile))
+                        accessories: { ...current.accessories, glasses: option.id },
+                      }))
                     }
                   >
                     {option.label}
@@ -519,7 +512,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_EARRING_STYLE_OPTIONS.map((option) => {
-                const selected = ((draft.accessories as { earrings?: AgentAvatarEarringStyle }).earrings ?? "none") === option.id;
+                const selected = draft.accessories.earrings === option.id;
                 return (
                   <button
                     key={option.id}
@@ -533,7 +526,7 @@ export const AgentAvatarEditorPanel = forwardRef<
                       setDraft((current) => ({
                         ...current,
                         accessories: { ...current.accessories, earrings: option.id },
-                      } as AgentAvatarProfile))
+                      }))
                     }
                   >
                     {option.label}
@@ -550,7 +543,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_NECKWEAR_OPTIONS.map((option) => {
-                const selected = ((draft.accessories as { neckwear?: AgentAvatarNeckwear }).neckwear ?? "none") === option.id;
+                const selected = draft.accessories.neckwear === option.id;
                 return (
                   <button
                     key={option.id}
@@ -564,7 +557,7 @@ export const AgentAvatarEditorPanel = forwardRef<
                       setDraft((current) => ({
                         ...current,
                         accessories: { ...current.accessories, neckwear: option.id },
-                      } as AgentAvatarProfile))
+                      }))
                     }
                   >
                     {option.label}
@@ -581,7 +574,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             </h3>
             <div className="flex flex-wrap gap-2">
               {AGENT_AVATAR_WATCH_STYLE_OPTIONS.map((option) => {
-                const selected = ((draft.accessories as { watch?: AgentAvatarWatchStyle }).watch ?? "none") === option.id;
+                const selected = draft.accessories.watch === option.id;
                 return (
                   <button
                     key={option.id}
@@ -595,7 +588,7 @@ export const AgentAvatarEditorPanel = forwardRef<
                       setDraft((current) => ({
                         ...current,
                         accessories: { ...current.accessories, watch: option.id },
-                      } as AgentAvatarProfile))
+                      }))
                     }
                   >
                     {option.label}
