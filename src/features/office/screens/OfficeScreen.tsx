@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MessageSquare, ChevronDown, Mic, Radar, PanelsTopLeft, Users2 } from "lucide-react";
+import { MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Users2 } from "lucide-react";
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
@@ -69,6 +69,7 @@ import { CreateTargetModal } from "@/features/office/components/CreateTargetModa
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
+import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
 import type { ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
@@ -113,11 +114,22 @@ import {
 } from "@/lib/agents/personalityBuilder";
 import { writeGatewayAgentFiles } from "@/lib/gateway/agentFiles";
 import {
+  extractGatewayAgentId,
+  fetchCompanyAgentDetails,
+  fetchCompanyAgents,
   fetchCompanyAgentScope,
   getBrowserAccessToken,
   persistCompanyAgentFromWizard,
   type CompanyAgentScope,
 } from "@/lib/agents/backend-api";
+import {
+  listLeadGenerationJobs,
+  listLeadsByCompany,
+  primeLeadChat,
+  primeLeadGenerationJobChat,
+  type LeadGenerationJob,
+  type LeadSummary,
+} from "@/lib/leads/lead-generation-api";
 import {
   createCompanySquad,
   createSquadTask,
@@ -936,6 +948,7 @@ export function OfficeScreen({
   const gatewayConfigSnapshot = useRef<GatewayModelPolicySnapshot | null>(null);
   const loadAgentsInFlightRef = useRef<Promise<void> | null>(null);
   const connectionEpochRef = useRef(0);
+  const backendAgentByGatewayIdRef = useRef<Map<string, number>>(new Map());
   const lastLoadAgentsStartedAtRef = useRef(0);
   const lastGatewayActivityAtRef = useRef(0);
   const stateRef = useRef(state);
@@ -950,6 +963,13 @@ export function OfficeScreen({
   const [selectedChatAgentId, setSelectedChatAgentId] = useState<string | null>(
     null,
   );
+  const [leadChatContextOpen, setLeadChatContextOpen] = useState(false);
+  const [leadChatContextLoading, setLeadChatContextLoading] = useState(false);
+  const [leadChatContextTab, setLeadChatContextTab] = useState<"jobs" | "leads">("jobs");
+  const [leadChatContextError, setLeadChatContextError] = useState<string | null>(null);
+  const [leadChatJobs, setLeadChatJobs] = useState<LeadGenerationJob[]>([]);
+  const [leadChatLeads, setLeadChatLeads] = useState<LeadSummary[]>([]);
+  const [leadChatBusyKey, setLeadChatBusyKey] = useState<string | null>(null);
   const [remoteChatByAgentId, setRemoteChatByAgentId] = useState<
     Record<string, RemoteChatSessionState>
   >({});
@@ -3466,6 +3486,81 @@ export function OfficeScreen({
     state.agents,
   ]);
 
+  const resolveGatewayAgentIdForLeadContext = useCallback((params: {
+    agentId?: number | null;
+    agentSlug?: string | null;
+    agentName?: string | null;
+  }) => {
+    if (typeof params.agentId === "number" && Number.isFinite(params.agentId)) {
+      for (const [gatewayAgentId, backendAgentId] of backendAgentByGatewayIdRef.current.entries()) {
+        if (backendAgentId === params.agentId) return gatewayAgentId;
+      }
+    }
+    const normalizedSlug = params.agentSlug?.trim().toLowerCase();
+    if (normalizedSlug) {
+      const bySlug = state.agents.find((agent) => agent.agentId.trim().toLowerCase() === normalizedSlug);
+      if (bySlug) return bySlug.agentId;
+    }
+    const normalizedName = params.agentName?.trim().toLowerCase();
+    if (normalizedName) {
+      const byName = state.agents.find((agent) => agent.name.trim().toLowerCase() === normalizedName);
+      if (byName) return byName.agentId;
+    }
+    return selectedChatAgentId;
+  }, [selectedChatAgentId, state.agents]);
+
+  const resolveBackendAgentIdForGatewayAgent = useCallback(async (gatewayAgentId: string) => {
+    const cached = backendAgentByGatewayIdRef.current.get(gatewayAgentId);
+    if (typeof cached === "number" && Number.isFinite(cached)) return cached;
+    if (!companyId) return null;
+    const token = getBrowserAccessToken();
+    const companyAgents = await fetchCompanyAgents(companyId, token);
+    for (const summary of companyAgents) {
+      try {
+        const details = await fetchCompanyAgentDetails(summary.id, token);
+        const mappedGatewayAgentId = extractGatewayAgentId(details);
+        if (mappedGatewayAgentId) {
+          backendAgentByGatewayIdRef.current.set(mappedGatewayAgentId, details.id);
+        }
+      } catch {
+        // ignore broken company records
+      }
+    }
+    return backendAgentByGatewayIdRef.current.get(gatewayAgentId) ?? null;
+  }, [companyId]);
+
+  const loadLeadChatContext = useCallback(async () => {
+    if (!companyId) {
+      setLeadChatContextError("This workspace does not have a company context for leads.");
+      setLeadChatJobs([]);
+      setLeadChatLeads([]);
+      return;
+    }
+    setLeadChatContextLoading(true);
+    setLeadChatContextError(null);
+    try {
+      const [jobs, leads] = await Promise.all([
+        listLeadGenerationJobs(companyId),
+        listLeadsByCompany(companyId),
+      ]);
+      setLeadChatJobs(jobs.slice(0, 12));
+      setLeadChatLeads(leads.slice(0, 24));
+    } catch (error) {
+      setLeadChatContextError(error instanceof Error ? error.message : "Unable to load lead context right now.");
+      setLeadChatJobs([]);
+      setLeadChatLeads([]);
+    } finally {
+      setLeadChatContextLoading(false);
+    }
+  }, [companyId]);
+
+  const openLeadChatContext = useCallback(async (tab: "jobs" | "leads" = "jobs") => {
+    setLeadChatContextTab(tab);
+    setLeadChatContextOpen(true);
+    if (leadChatJobs.length > 0 || leadChatLeads.length > 0 || leadChatContextLoading) return;
+    await loadLeadChatContext();
+  }, [leadChatContextLoading, leadChatJobs.length, leadChatLeads.length, loadLeadChatContext]);
+
   const handleOpenAgentChat = useCallback(
     (agentId: string, options?: { sessionKey?: string | null }) => {
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId) && options?.sessionKey) {
@@ -3495,6 +3590,41 @@ export function OfficeScreen({
     },
     [dispatch, state.agents],
   );
+
+  const handlePrimeLeadContextFromChat = useCallback(async (target: { type: "job"; id: number } | { type: "lead"; id: number }) => {
+    if (!selectedChatAgentId) return;
+    setLeadChatContextError(null);
+    setLeadChatBusyKey(`${target.type}:${target.id}`);
+    try {
+      const backendAgentId = await resolveBackendAgentIdForGatewayAgent(selectedChatAgentId);
+      const payload = {
+        agentId: backendAgentId ?? undefined,
+        message:
+          target.type === "job"
+            ? "Use this full lead generation as context in the active chat. Analyze the opportunities and continue helping from here."
+            : "Use this lead as the active context in the chat. Analyze it and continue helping from here.",
+        usePersistentSession: true,
+        timeoutSeconds: 120,
+      };
+      const result = target.type === "job"
+        ? await primeLeadGenerationJobChat(target.id, payload)
+        : await primeLeadChat(target.id, payload);
+      const gatewayAgentId = resolveGatewayAgentIdForLeadContext({
+        agentId: result.agentId,
+        agentSlug: result.agentSlug,
+        agentName: result.agentName,
+      });
+      if (!gatewayAgentId) {
+        throw new Error(`Lead context was sent to ${result.agentName}, but no compatible chat agent was found in the UI.`);
+      }
+      handleOpenAgentChat(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+      setLeadChatContextOpen(false);
+    } catch (error) {
+      setLeadChatContextError(error instanceof Error ? error.message : "Unable to pull this lead context into chat.");
+    } finally {
+      setLeadChatBusyKey(null);
+    }
+  }, [handleOpenAgentChat, resolveBackendAgentIdForGatewayAgent, resolveGatewayAgentIdForLeadContext, selectedChatAgentId]);
   const updateRemoteChatSession = useCallback(
     (
       agentId: string,
@@ -5205,6 +5335,40 @@ export function OfficeScreen({
                         openAgentEditor(focusedChatAgent.agentId, "avatar")
                       }
                       onVoiceSend={handleVoiceSend}
+                      composerToolbarExtra={
+                        !isSquadChatTargetId(focusedChatAgent.agentId) && companyId ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openLeadChatContext("leads");
+                              }}
+                              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-violet-200 transition hover:bg-violet-500/20"
+                              aria-label="Use a specific lead in chat"
+                              title="Use a specific lead in chat"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {leadChatContextLoading && leadChatContextTab === "leads" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                                <span>Lead</span>
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void openLeadChatContext("jobs");
+                              }}
+                              className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-cyan-200 transition hover:bg-cyan-500/20"
+                              aria-label="Use a full generation in chat"
+                              title="Use a full generation in chat"
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                {leadChatContextLoading && leadChatContextTab === "jobs" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                                <span>Generation</span>
+                              </span>
+                            </button>
+                          </>
+                        ) : null
+                      }
                     />
                   ) : focusedSquadChatTarget && focusedSquadChatState ? (
                     <RemoteAgentChatPanel
@@ -5437,6 +5601,24 @@ export function OfficeScreen({
           )}
         </section>
       ) : null}
+      <LeadChatContextModal
+        open={leadChatContextOpen}
+        initialTab={leadChatContextTab}
+        loading={leadChatContextLoading}
+        error={leadChatContextError}
+        jobs={leadChatJobs}
+        leads={leadChatLeads}
+        busyKey={leadChatBusyKey}
+        agentName={focusedChatAgent?.name ?? null}
+        onClose={() => setLeadChatContextOpen(false)}
+        onUseJob={(jobId) => {
+          void handlePrimeLeadContextFromChat({ type: "job", id: jobId });
+        }}
+        onUseLead={(leadId) => {
+          void handlePrimeLeadContextFromChat({ type: "lead", id: leadId });
+        }}
+      />
+
       {agentEditorAgent ? (
         <AgentEditorModal
           key={`${agentEditorAgent.agentId}:${agentEditorInitialSection}`}

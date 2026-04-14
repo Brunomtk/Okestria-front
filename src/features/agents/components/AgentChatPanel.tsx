@@ -193,6 +193,7 @@ type AgentChatPanelProps = {
   pendingExecApprovals?: PendingExecApproval[];
   onResolveExecApproval?: (id: string, decision: ExecApprovalDecision) => void;
   onVoiceSend?: (payload: VoiceSendPayload) => Promise<void>;
+  composerToolbarExtra?: ReactNode;
 };
 
 const formatApprovalExpiry = (timestampMs: number): string => {
@@ -1293,6 +1294,7 @@ const AgentChatComposer = memo(function AgentChatComposer({
             onKeyDown={onKeyDown}
             placeholder="type a message"
           />
+          {composerToolbarExtra}
           <button
             className="rounded-md border border-border/70 bg-surface-3 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-white transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:border-border/30 disabled:bg-muted/20 disabled:text-muted-foreground"
             type="button"
