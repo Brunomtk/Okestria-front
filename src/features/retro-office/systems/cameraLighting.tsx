@@ -51,34 +51,38 @@ export function CameraAnimator({
   instantRef?: MutableRefObject<boolean>;
 }) {
   const { camera } = useThree();
-  const activePerspectiveCameraRef = useRef<THREE.PerspectiveCamera | null>(
-    camera instanceof THREE.PerspectiveCamera ? camera : null,
-  );
   const targetPositionRef = useRef(new THREE.Vector3());
   const targetLookAtRef = useRef(new THREE.Vector3());
 
-  useEffect(() => {
-    if (camera instanceof THREE.PerspectiveCamera) {
-      activePerspectiveCameraRef.current = camera;
-    }
-  }, [camera]);
+  /**
+   * Resolve the zoom-capable camera. The office uses an OrthographicCamera
+   * (zoom is the primary "distance" control), while follow-cam uses a
+   * PerspectiveCamera. We handle both.
+   */
+  const getZoomCamera = (): THREE.OrthographicCamera | THREE.PerspectiveCamera | null => {
+    if (camera instanceof THREE.OrthographicCamera) return camera;
+    if (camera instanceof THREE.PerspectiveCamera) return camera;
+    return null;
+  };
 
   useFrame(() => {
     const preset = presetRef.current;
     const orbit = orbitRef.current;
     if (!preset || !orbit) return;
-    const activeCamera = activePerspectiveCameraRef.current;
+
+    const zoomCamera = getZoomCamera();
 
     targetPositionRef.current.set(...preset.pos);
     targetLookAtRef.current.set(...preset.target);
 
+    /* ── instant snap (used on restore after overlay close) ── */
     const doInstant = instantRef?.current ?? false;
     if (doInstant) {
       camera.position.copy(targetPositionRef.current);
       orbit.target.copy(targetLookAtRef.current);
-      if (activeCamera && typeof preset.zoom === "number") {
-        activeCamera.zoom = preset.zoom;
-        activeCamera.updateProjectionMatrix();
+      if (zoomCamera && typeof preset.zoom === "number") {
+        zoomCamera.zoom = preset.zoom;
+        zoomCamera.updateProjectionMatrix();
       }
       orbit.update();
       presetRef.current = null;
@@ -86,19 +90,21 @@ export function CameraAnimator({
       return;
     }
 
+    /* ── smooth lerp (used for preset transitions) ── */
     camera.position.lerp(targetPositionRef.current, 0.06);
     orbit.target.lerp(targetLookAtRef.current, 0.06);
 
-    if (activeCamera && typeof preset.zoom === "number") {
-      activeCamera.zoom += (preset.zoom - activeCamera.zoom) * 0.08;
-      activeCamera.updateProjectionMatrix();
+    if (zoomCamera && typeof preset.zoom === "number") {
+      zoomCamera.zoom += (preset.zoom - zoomCamera.zoom) * 0.08;
+      zoomCamera.updateProjectionMatrix();
     }
 
     orbit.update();
+
     const zoomSettled =
-      !activeCamera ||
+      !zoomCamera ||
       typeof preset.zoom !== "number" ||
-      Math.abs(activeCamera.zoom - preset.zoom) < 0.5;
+      Math.abs(zoomCamera.zoom - preset.zoom) < 0.5;
 
     if (camera.position.distanceTo(targetPositionRef.current) < 0.05 && zoomSettled) {
       presetRef.current = null;

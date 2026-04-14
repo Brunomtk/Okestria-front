@@ -702,12 +702,15 @@ function CameraRig({
   target,
   position,
   zoom,
+  orbitRef,
 }: {
   target: [number, number, number];
   position?: [number, number, number];
   zoom?: number;
+  orbitRef?: RefObject<{ target: THREE.Vector3; update: () => void } | null>;
 }) {
   const { camera } = useThree();
+  const appliedRef = useRef(false);
   useLayoutEffect(() => {
     if (position) {
       camera.position.set(...position);
@@ -717,7 +720,19 @@ function CameraRig({
     }
     camera.lookAt(...target);
     camera.updateProjectionMatrix();
+    appliedRef.current = false;
   }, [camera, position, target, zoom]);
+
+  /* Sync OrbitControls target once it is available (ref may be null on first layout). */
+  useFrame(() => {
+    if (appliedRef.current) return;
+    const orbit = orbitRef?.current;
+    if (!orbit) return;
+    orbit.target.set(...target);
+    orbit.update();
+    appliedRef.current = true;
+  });
+
   return null;
 }
 
@@ -1770,6 +1785,7 @@ export function RetroOffice3D({
       persistCameraPreset(cameraPersistenceKey, preservedCamera);
       initialPersistedCameraRef.current = preservedCamera;
       lastPersistedCameraJsonRef.current = JSON.stringify(preservedCamera);
+      preservedOfficeCameraRef.current = null; // clear after consuming
       return;
     }
     if (currentCameraSnapshotRef.current) {
@@ -2530,6 +2546,21 @@ export function RetroOffice3D({
       window.clearInterval(interval);
     };
   }, [cameraPersistenceKey, focusedOverlayViewActive, followAgentId]);
+
+  /* Save camera on F5 / tab close so it restores on next visit. */
+  useEffect(() => {
+    const key = cameraPersistenceKey;
+    const handleBeforeUnload = () => {
+      const snapshot = currentCameraSnapshotRef.current;
+      if (snapshot) {
+        persistCameraPreset(key, snapshot);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [cameraPersistenceKey]);
 
   const closeManualPhoneBoothView = useCallback(() => {
     activePhoneCallFlowKeyRef.current = null;
@@ -4325,6 +4356,7 @@ export function RetroOffice3D({
               target={cameraTarget}
               position={cameraPosition}
               zoom={cameraZoom}
+              orbitRef={orbitRef}
             />
             <AdaptiveDprController />
 
