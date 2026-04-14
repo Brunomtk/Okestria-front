@@ -4950,7 +4950,7 @@ export function RetroOffice3D({
           >
             <X size={18} />
           </button>
-          <MonitorImmersiveContent monitor={activeMonitor!} />
+          <MonitorImmersiveOverlay monitor={activeMonitor!} />
         </div>
       ) : null}
 
