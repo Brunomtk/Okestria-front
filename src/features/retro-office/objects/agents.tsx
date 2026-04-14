@@ -1829,7 +1829,7 @@ export const AgentModel = memo(function AgentModel({
       {glassesStyle === "round" ? (
         <>
           <mesh position={[-0.04, 0.475, 0.078]} rotation={[0, 0, 0]}>
-            <cylinderGeometry args={[0.028, 0.028, 0.01, 16]} rotation={[0, 0, 0]} />
+            <cylinderGeometry args={[0.028, 0.028, 0.01, 16]} />
             <meshBasicMaterial color="#111827" wireframe />
           </mesh>
           <mesh position={[0.04, 0.475, 0.078]}>
