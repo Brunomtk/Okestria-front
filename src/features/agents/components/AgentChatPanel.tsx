@@ -998,6 +998,7 @@ const AgentChatComposer = memo(function AgentChatComposer({
   showThinkingTraces: boolean;
   onToolCallingToggle: (enabled: boolean) => void;
   onThinkingTracesToggle: (enabled: boolean) => void;
+  composerToolbarExtra?: ReactNode;
 }) {
   const [isDragActive, setIsDragActive] = useState(false);
   const dragDepthRef = useRef(0);
