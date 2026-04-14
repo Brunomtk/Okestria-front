@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   Bot,
   Building2,
+  ChevronDown,
   ChevronRight,
   Copy,
   ExternalLink,
@@ -770,16 +771,29 @@ export function LeadOpsPanel({
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-white/50">Agent</label>
-                <select
-                  value={selectedBackendAgentId || ""}
-                  onChange={(e) => setSelectedBackendAgentId(Number(e.target.value) || 0)}
-                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-cyan-500/50"
-                >
-                  {leadAgentOptions.length === 0 && <option value="">No agents</option>}
-                  {leadAgentOptions.map((a) => (
-                    <option key={a.backendAgentId} value={a.backendAgentId}>{a.name}</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <select
+                    value={selectedBackendAgentId || ""}
+                    onChange={(e) => setSelectedBackendAgentId(Number(e.target.value) || 0)}
+                    className="w-full appearance-none rounded-lg bg-white/5 px-3 py-2.5 pr-10 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-cyan-500/50"
+                  >
+                    {leadAgentOptions.length === 0 && (
+                      <option value="" style={{ color: "#0f172a", backgroundColor: "#f8fafc" }}>
+                        No agents
+                      </option>
+                    )}
+                    {leadAgentOptions.map((a) => (
+                      <option
+                        key={a.backendAgentId}
+                        value={a.backendAgentId}
+                        style={{ color: "#0f172a", backgroundColor: "#f8fafc" }}
+                      >
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+                </div>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-white/50">Region</label>
