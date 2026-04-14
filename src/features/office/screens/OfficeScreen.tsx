@@ -5337,36 +5337,20 @@ export function OfficeScreen({
                       onVoiceSend={handleVoiceSend}
                       composerToolbarExtra={
                         !isSquadChatTargetId(focusedChatAgent.agentId) && companyId ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void openLeadChatContext("leads");
-                              }}
-                              className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-violet-200 transition hover:bg-violet-500/20"
-                              aria-label="Use a specific lead in chat"
-                              title="Use a specific lead in chat"
-                            >
-                              <span className="inline-flex items-center gap-1.5">
-                                {leadChatContextLoading && leadChatContextTab === "leads" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                                <span>Lead</span>
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void openLeadChatContext("jobs");
-                              }}
-                              className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-cyan-200 transition hover:bg-cyan-500/20"
-                              aria-label="Use a full generation in chat"
-                              title="Use a full generation in chat"
-                            >
-                              <span className="inline-flex items-center gap-1.5">
-                                {leadChatContextLoading && leadChatContextTab === "jobs" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
-                                <span>Generation</span>
-                              </span>
-                            </button>
-                          </>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              void openLeadChatContext(leadChatContextTab);
+                            }}
+                            className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-cyan-200 transition hover:bg-cyan-500/20"
+                            aria-label="Use leads or a full generation in chat"
+                            title="Use leads or a full generation in chat"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              {leadChatContextLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquare className="h-3.5 w-3.5" />}
+                              <span>Leads</span>
+                            </span>
+                          </button>
                         ) : null
                       }
                     />
