@@ -3482,7 +3482,6 @@ export function OfficeScreen({
               historyLoadedAt: null,
               sessionCreated: false,
               sessionSettingsSynced: false,
-              lastRunStatus: "idle",
             },
           });
         }
