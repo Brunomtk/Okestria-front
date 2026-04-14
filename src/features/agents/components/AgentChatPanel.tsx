@@ -963,6 +963,7 @@ const AgentChatComposer = memo(function AgentChatComposer({
   showThinkingTraces,
   onToolCallingToggle,
   onThinkingTracesToggle,
+  composerToolbarExtra,
 }: {
   value: string;
   onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
@@ -2009,6 +2010,7 @@ export const AgentChatPanel = ({
             showThinkingTraces={agent.showThinkingTraces}
             onToolCallingToggle={onToolCallingToggle}
             onThinkingTracesToggle={onThinkingTracesToggle}
+            composerToolbarExtra={composerToolbarExtra}
           />
         </div>
       </div>
