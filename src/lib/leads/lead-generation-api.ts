@@ -203,7 +203,6 @@ const normalizeJob = (value: unknown): LeadGenerationJob | null => {
   const companyId = parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0);
   return {
     id,
-    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
     companyId,
     requestedByUserId: parseNumber(pick(entry, "requestedByUserId", "RequestedByUserId"), NaN) || null,
     agentId: parseNumber(pick(entry, "agentId", "AgentId"), 0),
