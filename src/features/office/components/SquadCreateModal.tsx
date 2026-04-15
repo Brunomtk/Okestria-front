@@ -235,10 +235,10 @@ export function SquadCreateModal({
                       onClick={() => setIconEmoji(emoji)}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition ${
                         iconEmoji === emoji
-                          ? "ring-2 bg-white/10"
+                          ? "bg-white/10"
                           : "bg-white/5 hover:bg-white/10"
                       }`}
-                      style={iconEmoji === emoji ? { ringColor: color } : undefined}
+                      style={iconEmoji === emoji ? { boxShadow: `0 0 0 2px ${color}` } : undefined}
                     >
                       {emoji}
                     </button>
