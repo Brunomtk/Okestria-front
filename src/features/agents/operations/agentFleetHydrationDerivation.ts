@@ -16,6 +16,9 @@ import {
 } from "@/features/agents/state/runtimeEventBridge";
 import type { AgentStoreSeed } from "@/features/agents/state/store";
 
+/** Preferred default model when the gateway config does not specify one. */
+const PREFERRED_DEFAULT_MODEL = "anthropic/claude-sonnet-4-5-20250514";
+
 type AgentsListResult = {
   defaultId: string;
   mainKey: string;
@@ -218,10 +221,13 @@ export const deriveHydrateAgentFleetResult = (
     const modelProvider =
       typeof mainSession?.modelProvider === "string" ? mainSession.modelProvider.trim() : "";
     const modelId = typeof mainSession?.model === "string" ? mainSession.model.trim() : "";
-    const model =
-      modelProvider && modelId
-        ? `${modelProvider}/${modelId}`
-        : resolveDefaultModelForAgent(agent.id, input.configSnapshot);
+    const sessionModel =
+      modelProvider && modelId ? `${modelProvider}/${modelId}` : null;
+    const configModel = resolveDefaultModelForAgent(agent.id, input.configSnapshot);
+    // Prefer per-agent config override, then the platform preferred default
+    // (Claude Sonnet). Only fall back to the gateway session model if nothing
+    // else applies. This ensures all agents start with Claude Sonnet by default.
+    const model = configModel ?? PREFERRED_DEFAULT_MODEL;
     const thinkingLevel =
       typeof mainSession?.thinkingLevel === "string" ? mainSession.thinkingLevel : null;
     const sessionExecHost = normalizeExecHost(mainSession?.execHost);
@@ -246,6 +252,11 @@ export const deriveHydrateAgentFleetResult = (
       sessionExecSecurity === resolvedExecSecurity &&
       sessionExecAsk === resolvedExecAsk;
     if (expectsExecOverrides && !hasMatchingExecOverrides) {
+      needsSessionSettingsSync.add(agent.id);
+    }
+    // If the hydrated model differs from the session model, mark for sync so
+    // the preferred default (Claude Sonnet) is applied on next send.
+    if (model && sessionModel && model !== sessionModel) {
       needsSessionSettingsSync.add(agent.id);
     }
     return {
