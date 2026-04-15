@@ -654,6 +654,8 @@ type ChatRosterEntry = {
   kind: "local" | "remote" | "squad";
   isRunning: boolean;
   memberCount?: number;
+  iconEmoji?: string | null;
+  color?: string | null;
 };
 
 const EMPTY_REMOTE_CHAT_SESSION: RemoteChatSessionState = {
@@ -2080,6 +2082,8 @@ export function OfficeScreen({
     async (payload: {
       name: string;
       description: string;
+      iconEmoji: string | null;
+      color: string | null;
       memberAgentIds: number[];
       leaderAgentId: number | null;
       executionMode: SquadExecutionMode;
@@ -4495,6 +4499,8 @@ export function OfficeScreen({
         kind: "squad",
         isRunning: false,
         memberCount: squad.members.filter((member) => member.gatewayAgentId).length,
+        iconEmoji: squad.iconEmoji,
+        color: squad.color,
       }));
     const remoteEntries: ChatRosterEntry[] = remoteOfficeAgents.map((agent) => ({
       id: agent.id,
@@ -5375,11 +5381,20 @@ export function OfficeScreen({
                               : "text-white/50 hover:bg-white/5 hover:text-white/80"
                           }`}
                         >
-                          <span
-                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                              isRunning ? "bg-emerald-400" : "bg-white/20"
-                            }`}
-                          />
+                          {agent.kind === "squad" && agent.iconEmoji ? (
+                            <span
+                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px]"
+                              style={{ backgroundColor: `${agent.color || "#3b82f6"}20` }}
+                            >
+                              {agent.iconEmoji}
+                            </span>
+                          ) : (
+                            <span
+                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                isRunning ? "bg-emerald-400" : "bg-white/20"
+                              }`}
+                            />
+                          )}
                           <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
                             {agent.name}
                           </span>
@@ -5389,8 +5404,11 @@ export function OfficeScreen({
                               Remote
                             </span>
                           ) : agent.kind === "squad" ? (
-                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-amber-300/70">
-                              Squad{typeof agent.memberCount === "number" ? ` · ${agent.memberCount}` : ""}
+                            <span
+                              className="shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]"
+                              style={{ color: agent.color || "#f59e0b", backgroundColor: `${agent.color || "#f59e0b"}15` }}
+                            >
+                              {typeof agent.memberCount === "number" ? `${agent.memberCount}` : ""}
                             </span>
                           ) : null}
 

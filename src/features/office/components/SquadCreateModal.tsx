@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Check, Crown, Search, Shuffle, Users2, X, Zap } from "lucide-react";
 import type { SquadCatalogAgent, SquadCatalogWorkspace, SquadExecutionMode } from "@/lib/squads/api";
 
 type SquadCreateModalProps = {
@@ -12,6 +13,8 @@ type SquadCreateModalProps = {
   onSubmit: (payload: {
     name: string;
     description: string;
+    iconEmoji: string | null;
+    color: string | null;
     memberAgentIds: number[];
     leaderAgentId: number | null;
     executionMode: SquadExecutionMode;
@@ -19,16 +22,33 @@ type SquadCreateModalProps = {
   }) => void;
 };
 
-const EXECUTION_MODE_OPTIONS: Array<{
+/* ── Preset palette ── */
+const SQUAD_COLORS = [
+  "#f59e0b", "#ef4444", "#3b82f6", "#10b981", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#6366f1",
+  "#a855f7", "#84cc16",
+];
+
+const SQUAD_EMOJIS = [
+  "🚀", "💰", "🛡️", "⚡", "🎯", "📊", "🔥", "💎",
+  "🌟", "🏆", "🧠", "🔧", "📈", "🎨", "💼", "🤖",
+  "🦾", "🌍", "📣", "🧩",
+];
+
+const EXECUTION_MODES: Array<{
   value: SquadExecutionMode;
   label: string;
-  description: string;
+  icon: string;
+  hint: string;
 }> = [
-  { value: "leader", label: "Leader first", description: "One leader receives the squad work first. Best for most teams." },
-  { value: "all", label: "All members", description: "Send the same task to every selected member at the same time." },
-  { value: "manual", label: "Manual", description: "Use the squad mainly for organization and chat targeting." },
-  { value: "workflow", label: "Workflow", description: "Use the leader as the entry point for staged execution." },
+  { value: "leader", label: "Leader first", icon: "👑", hint: "Leader receives work first" },
+  { value: "all", label: "All at once", icon: "⚡", hint: "Every member gets the task" },
+  { value: "manual", label: "Manual", icon: "✋", hint: "You decide who works" },
+  { value: "workflow", label: "Workflow", icon: "🔄", hint: "Staged sequential execution" },
 ];
+
+/* ── Step indicator ── */
+const STEPS = ["Identity", "Members", "Settings"] as const;
 
 export function SquadCreateModal({
   open,
@@ -43,295 +63,422 @@ export function SquadCreateModal({
   const sortedAgents = useMemo(
     () =>
       [...agents].sort(
-        (left, right) =>
-          Number(right.status) - Number(left.status) ||
-          Number(right.isDefault) - Number(left.isDefault) ||
-          left.agentName.localeCompare(right.agentName),
+        (a, b) =>
+          Number(b.status) - Number(a.status) ||
+          Number(b.isDefault) - Number(a.isDefault) ||
+          a.agentName.localeCompare(b.agentName),
       ),
     [agents],
   );
-  const activeAgents = useMemo(() => sortedAgents.filter((agent) => agent.status), [sortedAgents]);
+  const activeAgents = useMemo(() => sortedAgents.filter((a) => a.status), [sortedAgents]);
+
+  /* ── Form state ── */
+  const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [iconEmoji, setIconEmoji] = useState("🚀");
+  const [color, setColor] = useState(SQUAD_COLORS[0]);
   const [executionMode, setExecutionMode] = useState<SquadExecutionMode>("leader");
   const [workspaceId, setWorkspaceId] = useState<number | null>(null);
   const [memberIds, setMemberIds] = useState<number[]>([]);
   const [leaderId, setLeaderId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
 
+  /* Reset on open */
   useEffect(() => {
     if (!open) return;
-    const fallbackAgent =
-      (preferredAgentId ? sortedAgents.find((agent) => agent.gatewayAgentId === preferredAgentId) : null) ??
+    const fallback =
+      (preferredAgentId ? sortedAgents.find((a) => a.gatewayAgentId === preferredAgentId) : null) ??
       activeAgents[0] ??
       sortedAgents[0] ??
       null;
-    const initialMembers = fallbackAgent ? [fallbackAgent.agentId] : [];
-    const defaultName = fallbackAgent ? `${fallbackAgent.agentName} Squad` : "New Squad";
-    setName(defaultName);
+    setStep(0);
+    setName(fallback ? `${fallback.agentName} Squad` : "New Squad");
     setDescription("");
+    setIconEmoji(SQUAD_EMOJIS[Math.floor(Math.random() * SQUAD_EMOJIS.length)]);
+    setColor(SQUAD_COLORS[Math.floor(Math.random() * SQUAD_COLORS.length)]);
     setExecutionMode("leader");
     setWorkspaceId(null);
-    setMemberIds(initialMembers);
-    setLeaderId(fallbackAgent?.agentId ?? null);
+    setMemberIds(fallback ? [fallback.agentId] : []);
+    setLeaderId(fallback?.agentId ?? null);
     setSearch("");
   }, [open, preferredAgentId, sortedAgents, activeAgents]);
 
+  /* ── Filtered agents ── */
   const filteredAgents = useMemo(() => {
-    const needle = search.trim().toLowerCase();
-    if (!needle) return sortedAgents;
-    return sortedAgents.filter((agent) => {
-      const haystack = [agent.agentName, agent.agentSlug, agent.role].join(" ").toLowerCase();
-      return haystack.includes(needle);
-    });
+    const q = search.trim().toLowerCase();
+    if (!q) return sortedAgents;
+    return sortedAgents.filter((a) =>
+      [a.agentName, a.agentSlug, a.role].join(" ").toLowerCase().includes(q),
+    );
   }, [search, sortedAgents]);
 
   const selectedMembers = useMemo(
-    () => sortedAgents.filter((agent) => memberIds.includes(agent.agentId)),
+    () => sortedAgents.filter((a) => memberIds.includes(a.agentId)),
     [memberIds, sortedAgents],
   );
 
   if (!open) return null;
 
-  const submitDisabled = busy || !name.trim() || selectedMembers.length === 0 || !leaderId;
+  /* ── Step validation ── */
+  const step0Valid = name.trim().length > 0;
+  const step1Valid = selectedMembers.length > 0 && leaderId !== null;
+  const canSubmit = step0Valid && step1Valid && !busy;
+
+  const handleSubmit = () => {
+    onSubmit({
+      name: name.trim(),
+      description: description.trim(),
+      iconEmoji,
+      color,
+      memberAgentIds: memberIds,
+      leaderAgentId: leaderId,
+      executionMode,
+      workspaceId,
+    });
+  };
+
+  const toggleMember = (agentId: number) => {
+    setMemberIds((cur) => {
+      const next = cur.includes(agentId) ? cur.filter((id) => id !== agentId) : [...cur, agentId];
+      if (!next.includes(leaderId ?? -1)) setLeaderId(next[0] ?? null);
+      return next;
+    });
+  };
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      <section className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-amber-500/20 bg-[#0a0603] shadow-[0_32px_120px_rgba(0,0,0,0.72)]">
-        <div className="border-b border-white/10 px-6 py-4">
-          <div className="font-mono text-[11px] uppercase tracking-[0.18em] text-amber-300/70">Create squad</div>
-          <h2 className="mt-2 text-xl font-semibold text-white">Create a squad that really works</h2>
-          <p className="mt-2 text-sm text-white/55">
-            Choose the members, pick one leader, and set how tasks should be routed.
-          </p>
+      <section
+        className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        style={{ borderColor: `${color}30` }}
+      >
+        {/* ── Header with live badge ── */}
+        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+          <div
+            className="flex h-12 w-12 items-center justify-center rounded-xl text-xl"
+            style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}50` }}
+          >
+            {iconEmoji}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-lg font-semibold text-white">
+              {name.trim() || "New Squad"}
+            </h2>
+            <p className="text-xs text-white/40">
+              {selectedMembers.length} member{selectedMembers.length !== 1 ? "s" : ""} · {EXECUTION_MODES.find((m) => m.value === executionMode)?.label ?? executionMode}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white">
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="min-h-0 overflow-y-auto border-r border-white/10 p-6">
-            <label className="block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Squad name</span>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                placeholder="Frontend Delivery Squad"
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-300/45"
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Description</span>
-              <textarea
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder="Who this squad is for, what it owns, and how it should help."
-                className="mt-2 min-h-[120px] w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-300/45"
-              />
-            </label>
-
-            <label className="mt-4 block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Workspace</span>
-              <select
-                value={workspaceId ?? ""}
-                onChange={(event) => setWorkspaceId(event.target.value ? Number(event.target.value) : null)}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-300/45"
+        {/* ── Step tabs ── */}
+        <div className="flex border-b border-white/10">
+          {STEPS.map((label, i) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => setStep(i)}
+              className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
+                step === i
+                  ? "border-b-2 text-white"
+                  : "text-white/40 hover:text-white/60"
+              }`}
+              style={step === i ? { borderColor: color } : undefined}
+            >
+              <span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
+                style={step === i ? { backgroundColor: `${color}30`, color } : { backgroundColor: "rgba(255,255,255,.08)" }}
               >
-                <option value="">No workspace selected</option>
-                {workspaces
-                  .filter((workspace) => workspace.status)
-                  .map((workspace) => (
-                    <option key={workspace.workspaceId} value={workspace.workspaceId}>
-                      {workspace.workspaceName}
-                    </option>
-                  ))}
-              </select>
-            </label>
+                {i < step ? "✓" : i + 1}
+              </span>
+              {label}
+            </button>
+          ))}
+        </div>
 
-            <div className="mt-6">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Execution mode</div>
-              <div className="mt-3 grid gap-2">
-                {EXECUTION_MODE_OPTIONS.map((option) => {
-                  const active = option.value === executionMode;
-                  return (
+        {/* ── Content ── */}
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {/* STEP 0 — Identity */}
+          {step === 0 && (
+            <div className="space-y-5">
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Squad name</label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Growth Squad"
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Description <span className="normal-case text-white/25">(optional)</span></label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What this squad owns and how it helps."
+                  rows={3}
+                  className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
+                />
+              </div>
+
+              {/* Icon picker */}
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Icon</label>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {SQUAD_EMOJIS.map((emoji) => (
                     <button
-                      key={option.value}
+                      key={emoji}
                       type="button"
-                      onClick={() => setExecutionMode(option.value)}
-                      className={`rounded-xl border px-4 py-3 text-left transition ${
-                        active
-                          ? "border-amber-300/45 bg-amber-500/10 text-white"
-                          : "border-white/10 bg-black/15 text-white/65 hover:border-white/20 hover:text-white"
+                      onClick={() => setIconEmoji(emoji)}
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg text-base transition ${
+                        iconEmoji === emoji
+                          ? "ring-2 bg-white/10"
+                          : "bg-white/5 hover:bg-white/10"
                       }`}
+                      style={iconEmoji === emoji ? { ringColor: color } : undefined}
                     >
-                      <div className="font-mono text-[11px] uppercase tracking-[0.14em]">{option.label}</div>
-                      <div className="mt-1 text-sm leading-5">{option.description}</div>
+                      {emoji}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+              </div>
+
+              {/* Color picker */}
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Color</label>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {SQUAD_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setColor(c)}
+                      className="relative h-8 w-8 rounded-full border-2 transition hover:scale-110"
+                      style={{
+                        backgroundColor: c,
+                        borderColor: color === c ? "#fff" : "transparent",
+                        boxShadow: color === c ? `0 0 12px ${c}60` : undefined,
+                      }}
+                    >
+                      {color === c && <Check className="absolute inset-0 m-auto h-4 w-4 text-white drop-shadow" />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          <div className="min-h-0 overflow-y-auto p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Members</div>
-                <div className="mt-1 text-xs text-white/40">Only company agents appear here.</div>
+          {/* STEP 1 — Members */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-white/45">Select agents and pick a leader.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const ids = activeAgents.map((a) => a.agentId);
+                    setMemberIds(ids);
+                    setLeaderId((cur) => (cur && ids.includes(cur) ? cur : ids[0] ?? null));
+                  }}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] text-white/60 transition hover:bg-white/10 hover:text-white"
+                >
+                  Select all active
+                </button>
               </div>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search agents..."
+                  className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-4 text-sm text-white outline-none transition focus:border-white/25"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                {filteredAgents.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/30">
+                    No agents found.
+                  </div>
+                ) : (
+                  filteredAgents.map((agent) => {
+                    const checked = memberIds.includes(agent.agentId);
+                    const isLeader = leaderId === agent.agentId;
+                    return (
+                      <div
+                        key={agent.agentId}
+                        className={`group flex items-center gap-3 rounded-xl border px-3.5 py-2.5 transition cursor-pointer ${
+                          checked
+                            ? "border-white/20 bg-white/[0.06]"
+                            : "border-white/[0.06] bg-transparent hover:border-white/12 hover:bg-white/[0.03]"
+                        }`}
+                        onClick={() => toggleMember(agent.agentId)}
+                      >
+                        {/* checkbox */}
+                        <div
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border transition ${
+                            checked ? "border-transparent" : "border-white/20 bg-transparent"
+                          }`}
+                          style={checked ? { backgroundColor: color } : undefined}
+                        >
+                          {checked && <Check className="h-3 w-3 text-white" />}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-medium text-white">{agent.agentName}</span>
+                            {!agent.status && (
+                              <span className="rounded-full border border-red-400/20 bg-red-500/10 px-1.5 py-0.5 text-[9px] uppercase text-red-200">off</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-white/35">{agent.role || agent.agentSlug || "No role"}</div>
+                        </div>
+
+                        {/* Leader button */}
+                        {checked && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setLeaderId(agent.agentId); }}
+                            title="Set as leader"
+                            className={`flex h-7 items-center gap-1 rounded-lg px-2 text-[10px] font-bold uppercase tracking-wider transition ${
+                              isLeader
+                                ? "text-amber-200"
+                                : "text-white/25 hover:text-white/50"
+                            }`}
+                            style={isLeader ? { backgroundColor: "rgba(245,158,11,.15)" } : undefined}
+                          >
+                            <Crown className="h-3.5 w-3.5" />
+                            {isLeader ? "Leader" : ""}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2 — Settings */}
+          {step === 2 && (
+            <div className="space-y-5">
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Execution mode</label>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {EXECUTION_MODES.map((m) => {
+                    const active = m.value === executionMode;
+                    return (
+                      <button
+                        key={m.value}
+                        type="button"
+                        onClick={() => setExecutionMode(m.value)}
+                        className={`rounded-xl border px-4 py-3 text-left transition ${
+                          active
+                            ? "border-white/20 bg-white/[0.07] text-white"
+                            : "border-white/[0.06] text-white/50 hover:border-white/15 hover:text-white/70"
+                        }`}
+                        style={active ? { borderColor: `${color}50` } : undefined}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{m.icon}</span>
+                          <span className="text-sm font-medium">{m.label}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] text-white/35">{m.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {workspaces.filter((w) => w.status).length > 0 && (
+                <div>
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">Workspace <span className="normal-case text-white/25">(optional)</span></label>
+                  <select
+                    value={workspaceId ?? ""}
+                    onChange={(e) => setWorkspaceId(e.target.value ? Number(e.target.value) : null)}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  >
+                    <option value="">No workspace</option>
+                    {workspaces
+                      .filter((w) => w.status)
+                      .map((w) => (
+                        <option key={w.workspaceId} value={w.workspaceId}>
+                          {w.workspaceName}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Preview card */}
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                <div className="text-[10px] font-medium uppercase tracking-wider text-white/35">Preview</div>
+                <div className="mt-3 flex items-center gap-3">
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-xl text-lg"
+                    style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}50` }}
+                  >
+                    {iconEmoji}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-white">{name.trim() || "New Squad"}</div>
+                    <div className="text-[11px] text-white/40">
+                      {selectedMembers.length} member{selectedMembers.length !== 1 ? "s" : ""}
+                      {selectedMembers.find((a) => a.agentId === leaderId) && (
+                        <> · <Crown className="mb-0.5 inline h-3 w-3 text-amber-400" /> {selectedMembers.find((a) => a.agentId === leaderId)?.agentName}</>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                {description.trim() && (
+                  <p className="mt-2 text-xs text-white/35">{description}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-4 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={() => (step > 0 ? setStep(step - 1) : onClose())}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60 transition hover:bg-white/10 hover:text-white"
+          >
+            {step > 0 ? "Back" : "Cancel"}
+          </button>
+
+          <div className="flex items-center gap-2">
+            {step < STEPS.length - 1 ? (
               <button
                 type="button"
-                onClick={() => {
-                  const next = activeAgents.map((agent) => agent.agentId);
-                  setMemberIds(next);
-                  setLeaderId((current) => (current && next.includes(current) ? current : next[0] ?? null));
-                }}
-                className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
+                disabled={step === 0 ? !step0Valid : !step1Valid}
+                onClick={() => setStep(step + 1)}
+                className="rounded-lg px-5 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ backgroundColor: `${color}25`, border: `1px solid ${color}40` }}
               >
-                Select all active
+                Next
               </button>
-            </div>
-
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search agent by name, slug, or role"
-              className="mt-3 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-300/45"
-            />
-
-            <div className="mt-3 space-y-2">
-              {filteredAgents.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/10 bg-black/10 px-4 py-4 text-sm text-white/40">
-                  No agents found.
-                </div>
-              ) : (
-                filteredAgents.map((agent) => {
-                  const checked = memberIds.includes(agent.agentId);
-                  return (
-                    <label
-                      key={agent.agentId}
-                      className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition ${
-                        checked
-                          ? "border-amber-300/40 bg-amber-500/10 text-white"
-                          : "border-white/10 bg-black/15 text-white/65 hover:border-white/20 hover:text-white"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={(event) => {
-                          const nextChecked = event.target.checked;
-                          setMemberIds((current) => {
-                            const next = nextChecked
-                              ? [...current, agent.agentId]
-                              : current.filter((entry) => entry !== agent.agentId);
-                            if (!next.includes(leaderId ?? -1)) {
-                              setLeaderId(next[0] ?? null);
-                            }
-                            return next;
-                          });
-                        }}
-                        className="mt-1 h-4 w-4 rounded border-white/15 bg-black/20 text-amber-300"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="truncate text-sm font-medium">{agent.agentName}</div>
-                          {agent.isDefault ? (
-                            <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-cyan-100">
-                              Default
-                            </span>
-                          ) : null}
-                          <span
-                            className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] ${
-                              agent.status
-                                ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-                                : "border-red-400/20 bg-red-500/10 text-red-100"
-                            }`}
-                          >
-                            {agent.status ? "Active" : "Inactive"}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-xs text-white/40">
-                          {agent.role || "No role"}
-                          {agent.agentSlug ? ` · ${agent.agentSlug}` : ""}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-
-            <label className="mt-6 block">
-              <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Leader agent</span>
-              <select
-                value={leaderId ?? ""}
-                onChange={(event) => setLeaderId(event.target.value ? Number(event.target.value) : null)}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-300/45"
+            ) : (
+              <button
+                type="button"
+                disabled={!canSubmit}
+                onClick={handleSubmit}
+                className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ backgroundColor: `${color}30`, border: `1px solid ${color}50` }}
               >
-                {selectedMembers.length === 0 ? <option value="">Select members first</option> : null}
-                {selectedMembers.map((agent) => (
-                  <option key={agent.agentId} value={agent.agentId}>
-                    {agent.agentName}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/15 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/45">Summary</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-white/40">Members</div>
-                  <div className="mt-1 text-lg font-semibold text-white">{selectedMembers.length}</div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-white/40">Leader</div>
-                  <div className="mt-1 truncate text-sm font-medium text-white">
-                    {selectedMembers.find((agent) => agent.agentId === leaderId)?.agentName ?? "Not selected"}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.12em] text-white/40">Mode</div>
-                  <div className="mt-1 text-sm font-medium text-white">
-                    {EXECUTION_MODE_OPTIONS.find((option) => option.value === executionMode)?.label ?? executionMode}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {error ? (
-              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                {error}
-              </div>
-            ) : null}
+                <Zap className="h-4 w-4" />
+                {busy ? "Creating..." : "Create squad"}
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={submitDisabled}
-            onClick={() =>
-              onSubmit({
-                name: name.trim(),
-                description: description.trim(),
-                memberAgentIds: memberIds,
-                leaderAgentId: leaderId,
-                executionMode,
-                workspaceId,
-              })
-            }
-            className="rounded-lg border border-amber-400/35 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-45"
-          >
-            {busy ? "Creating squad..." : "Create squad"}
-          </button>
         </div>
       </section>
     </div>

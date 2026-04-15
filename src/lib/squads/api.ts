@@ -43,6 +43,9 @@ export type SquadSummary = {
   companyId: number;
   name: string;
   description: string;
+  iconEmoji: string | null;
+  color: string | null;
+  avatarUrl: string | null;
   executionMode: SquadExecutionMode;
   leaderGatewayAgentId: string | null;
   members: SquadMember[];
@@ -190,6 +193,9 @@ const normalizeBackendSquad = (
     name: typeof raw.name === "string" && raw.name.trim() ? raw.name.trim() : "New Squad",
     description:
       typeof raw.description === "string" ? raw.description.trim() : "",
+    iconEmoji: typeof raw.iconEmoji === "string" && raw.iconEmoji.trim() ? raw.iconEmoji.trim() : null,
+    color: typeof raw.color === "string" && raw.color.trim() ? raw.color.trim() : null,
+    avatarUrl: typeof raw.avatarUrl === "string" && raw.avatarUrl.trim() ? raw.avatarUrl.trim() : null,
     executionMode: normalizeExecutionMode(raw.defaultExecutionMode ?? raw.executionMode),
     leaderGatewayAgentId,
     members,
@@ -241,6 +247,9 @@ export const fetchCompanySquads = async (params?: {
 export const createCompanySquad = async (params: {
   name: string;
   description?: string;
+  iconEmoji?: string | null;
+  color?: string | null;
+  avatarUrl?: string | null;
   memberAgentIds: number[];
   leaderAgentId?: number | null;
   executionMode?: SquadExecutionMode;
@@ -279,6 +288,9 @@ export const createCompanySquad = async (params: {
         workspaceId: params.workspaceId ?? null,
         name: params.name.trim(),
         description: params.description?.trim() || null,
+        iconEmoji: params.iconEmoji?.trim() || null,
+        color: params.color?.trim() || null,
+        avatarUrl: params.avatarUrl?.trim() || null,
         leaderAgentId,
         defaultExecutionMode: normalizeExecutionMode(params.executionMode),
         isActive: true,

@@ -130,6 +130,9 @@ export type OkestriaSquad = {
   name?: string | null;
   slug?: string | null;
   description?: string | null;
+  iconEmoji?: string | null;
+  color?: string | null;
+  avatarUrl?: string | null;
   status?: boolean | null;
   isActive?: boolean | null;
   leaderAgentId?: number | null;
