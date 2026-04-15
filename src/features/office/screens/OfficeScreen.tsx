@@ -1257,6 +1257,26 @@ export function OfficeScreen({
     setForceShowOnboarding(false);
   }, [completeOnboarding]);
 
+  const resolveBackendAgentIdForGatewayAgent = useCallback(async (gatewayAgentId: string) => {
+    const cached = backendAgentByGatewayIdRef.current.get(gatewayAgentId);
+    if (typeof cached === "number" && Number.isFinite(cached)) return cached;
+    if (!companyId) return null;
+    const token = getBrowserAccessToken();
+    const companyAgents = await fetchCompanyAgents(companyId, token);
+    for (const summary of companyAgents) {
+      try {
+        const details = await fetchCompanyAgentDetails(summary.id, token);
+        const mappedGatewayAgentId = extractGatewayAgentId(details);
+        if (mappedGatewayAgentId) {
+          backendAgentByGatewayIdRef.current.set(mappedGatewayAgentId, details.id);
+        }
+      } catch {
+        // ignore broken company records
+      }
+    }
+    return backendAgentByGatewayIdRef.current.get(gatewayAgentId) ?? null;
+  }, [companyId]);
+
   const handleAvatarProfileSave = useCallback(
     (agentId: string, profile: AgentAvatarProfile) => {
       dispatch({
@@ -3658,26 +3678,6 @@ export function OfficeScreen({
     }
     return selectedChatAgentId;
   }, [selectedChatAgentId, state.agents]);
-
-  const resolveBackendAgentIdForGatewayAgent = useCallback(async (gatewayAgentId: string) => {
-    const cached = backendAgentByGatewayIdRef.current.get(gatewayAgentId);
-    if (typeof cached === "number" && Number.isFinite(cached)) return cached;
-    if (!companyId) return null;
-    const token = getBrowserAccessToken();
-    const companyAgents = await fetchCompanyAgents(companyId, token);
-    for (const summary of companyAgents) {
-      try {
-        const details = await fetchCompanyAgentDetails(summary.id, token);
-        const mappedGatewayAgentId = extractGatewayAgentId(details);
-        if (mappedGatewayAgentId) {
-          backendAgentByGatewayIdRef.current.set(mappedGatewayAgentId, details.id);
-        }
-      } catch {
-        // ignore broken company records
-      }
-    }
-    return backendAgentByGatewayIdRef.current.get(gatewayAgentId) ?? null;
-  }, [companyId]);
 
   const loadLeadChatContext = useCallback(async () => {
     if (!companyId) {
