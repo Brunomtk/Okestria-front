@@ -67,8 +67,10 @@ const clearGatewaySessionHistory = async (
   client: GatewayClientLike,
   sessionKey: string
 ): Promise<void> => {
+  const key = sessionKey.trim();
+  if (!key) return;
   try {
-    await client.call("sessions.delete", { sessionKey });
+    await client.call("sessions.delete", { key });
     return;
   } catch (deleteError) {
     const deleteMessage = normalizeErrorMessage(deleteError, "Failed to delete gateway session.");
@@ -77,7 +79,7 @@ const clearGatewaySessionHistory = async (
     }
 
     try {
-      await client.call("sessions.reset", { sessionKey });
+      await client.call("sessions.reset", { key });
       return;
     } catch (resetError) {
       const resetMessage = normalizeErrorMessage(resetError, "Failed to reset gateway session.");
@@ -404,40 +406,33 @@ export function useChatInteractionController(
         },
       });
 
-      let abortError: unknown = null;
       try {
         await params.client.call("chat.abort", {
           sessionKey: stopIntent.sessionKey,
         });
-      } catch (err) {
-        abortError = err;
-      }
-
-      if (abortError) {
+      } catch (abortError) {
+        // Retry abort once — do NOT fall back to chat.send which would create
+        // a new run on the real OpenClaw session.
         try {
-          await params.client.call("chat.send", {
+          await params.client.call("chat.abort", {
             sessionKey: stopIntent.sessionKey,
-            message: "stop",
-            deliver: false,
           });
-          abortError = null;
-        } catch (fallbackErr) {
-          abortError = fallbackErr;
+        } catch (retryError) {
+          const message = normalizeErrorMessage(retryError, "Failed to stop run.");
+          const contextHint = isContextWindowError(message)
+            ? " The model hit the session token limit. Clear chat or compact the session before sending again."
+            : "";
+          params.setError(`${message}${contextHint}`.trim());
+          console.error("Failed to stop run.", retryError);
+          params.dispatch({
+            type: "appendOutput",
+            agentId,
+            line: `Stop failed: ${message}${contextHint}`.trim(),
+          });
         }
-      }
-
-      if (abortError) {
-        const message = normalizeErrorMessage(abortError, "Failed to stop run.");
-        const contextHint = isContextWindowError(message)
-          ? " The model hit the session token limit. Clear chat or compact the session before sending again."
-          : "";
-        params.setError(`${message}${contextHint}`.trim());
-        console.error("Failed to stop run.", abortError);
-        params.dispatch({
-          type: "appendOutput",
-          agentId,
-          line: `Stop failed: ${message}${contextHint}`.trim(),
-        });
+      } finally {
+        setStopBusyAgentId(null);
+        stopBusyAgentIdRef.current = null;
       }
     },
     [clearPendingLivePatch, params]
