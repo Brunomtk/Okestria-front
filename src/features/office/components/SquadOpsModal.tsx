@@ -96,6 +96,14 @@ const dispatchModeLabel = (mode: "pending" | "retryFailed" | "redispatchAll" | n
   return "Dispatch runs";
 };
 
+const SkeletonLoader = () => (
+  <div className="flex flex-col gap-3 p-4">
+    <div className="h-4 w-24 rounded-lg bg-gradient-to-r from-white/5 to-white/10 animate-pulse" />
+    <div className="h-3 w-full rounded-lg bg-gradient-to-r from-white/5 to-white/10 animate-pulse" />
+    <div className="h-3 w-5/6 rounded-lg bg-gradient-to-r from-white/5 to-white/10 animate-pulse" />
+  </div>
+);
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -132,6 +140,7 @@ export function SquadOpsModal({
   const [prompt, setPrompt] = useState("");
   const [preferredModel, setPreferredModel] = useState("");
   const [showModelSelect, setShowModelSelect] = useState(false);
+  const [errorDismissed, setErrorDismissed] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -139,6 +148,7 @@ export function SquadOpsModal({
     setPrompt("");
     setPreferredModel("");
     setShowModelSelect(false);
+    setErrorDismissed(false);
     setTab(tasks.length > 0 ? "tasks" : "create");
   }, [open, squad?.id]);
 
@@ -172,20 +182,20 @@ export function SquadOpsModal({
 
       <section className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-cyan-500/20 bg-[#07090c] shadow-[0_40px_140px_rgba(0,0,0,0.78)]">
         {/* ---- HEADER ---- */}
-        <header className="border-b border-white/10 px-6 py-4">
+        <header className="border-b border-white/10 bg-gradient-to-b from-white/[0.03] to-transparent px-6 py-5">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-300">
-                <Zap className="h-5 w-5" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-cyan-500/10 text-cyan-300 shadow-lg shadow-cyan-500/10">
+                <Zap className="h-5.5 w-5.5" />
               </div>
               <div className="min-w-0">
-                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-300/60">Squad Ops</div>
-                <div className="flex items-center gap-2">
+                <div className="font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-400/60">Squad Ops</div>
+                <div className="flex items-center gap-2 mt-1">
                   {hasSquads ? (
                     <select
                       value={selectedSquadId ?? ""}
                       onChange={(e) => onSelectSquad(e.target.value)}
-                      className="max-w-[240px] truncate rounded-lg border border-white/10 bg-transparent px-2 py-1 text-base font-semibold text-white outline-none transition focus:border-cyan-300/40"
+                      className="max-w-[280px] truncate rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-3 py-1.5 text-sm font-bold text-cyan-100 outline-none transition focus:border-cyan-400/40 focus:bg-cyan-500/10"
                     >
                       <option value="" className="bg-[#07090c]">Select a squad</option>
                       {squads.map((s) => (
@@ -193,11 +203,11 @@ export function SquadOpsModal({
                       ))}
                     </select>
                   ) : (
-                    <span className="text-base font-semibold text-white/40">No squads available</span>
+                    <span className="text-sm font-semibold text-white/40">No squads available</span>
                   )}
                   {squad && (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/45">
-                      {squad.members.length} members · {modeLabel(squad.executionMode)}
+                    <span className="rounded-full border border-cyan-500/20 bg-cyan-500/8 px-2.5 py-0.5 text-[10px] font-medium text-cyan-200">
+                      {squad.members.length} members • {modeLabel(squad.executionMode)}
                     </span>
                   )}
                 </div>
@@ -208,7 +218,7 @@ export function SquadOpsModal({
               <button
                 type="button"
                 onClick={onRefresh}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/50 transition hover:bg-white/10 hover:text-white"
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white"
                 title="Refresh"
               >
                 <RefreshCcw className="h-4 w-4" />
@@ -216,7 +226,7 @@ export function SquadOpsModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70 transition hover:bg-white/10 hover:text-white"
+                className="rounded-xl border border-white/10 bg-white/5 px-5 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
               >
                 Close
               </button>
@@ -225,10 +235,10 @@ export function SquadOpsModal({
 
           {/* Hooks status banner */}
           {hooksMessage && (
-            <div className={`mt-3 rounded-xl border px-3 py-2 text-xs leading-5 ${
+            <div className={`mt-4 rounded-lg border px-4 py-2.5 text-xs leading-5 font-medium ${
               hooksConfigured
-                ? "border-emerald-500/20 bg-emerald-500/8 text-emerald-200/80"
-                : "border-amber-500/20 bg-amber-500/8 text-amber-200/80"
+                ? "border-emerald-500/20 bg-emerald-500/8 text-emerald-200"
+                : "border-amber-500/20 bg-amber-500/8 text-amber-200"
             }`}>
               {hooksMessage}
             </div>
@@ -236,14 +246,14 @@ export function SquadOpsModal({
 
           {/* Tabs */}
           {selectedSquadId && (
-            <div className="mt-3 flex gap-1">
+            <div className="mt-4 flex gap-2">
               <button
                 type="button"
                 onClick={() => setTab("tasks")}
-                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                className={`rounded-full px-4 py-2 text-xs font-semibold tracking-wide transition-all duration-200 ${
                   tab === "tasks"
-                    ? "bg-white/8 text-white"
-                    : "text-white/45 hover:bg-white/5 hover:text-white/70"
+                    ? "bg-cyan-500/15 text-cyan-100 border border-cyan-500/30"
+                    : "text-white/50 border border-transparent hover:bg-white/5 hover:text-white/70"
                 }`}
               >
                 Tasks ({tasks.length})
@@ -251,10 +261,10 @@ export function SquadOpsModal({
               <button
                 type="button"
                 onClick={() => setTab("create")}
-                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                className={`rounded-full px-4 py-2 text-xs font-semibold tracking-wide transition-all duration-200 ${
                   tab === "create"
-                    ? "bg-cyan-500/10 text-cyan-200"
-                    : "text-white/45 hover:bg-white/5 hover:text-white/70"
+                    ? "bg-cyan-500/15 text-cyan-100 border border-cyan-500/30"
+                    : "text-white/50 border border-transparent hover:bg-white/5 hover:text-white/70"
                 }`}
               >
                 + New task
@@ -268,122 +278,141 @@ export function SquadOpsModal({
           {/* No squad selected */}
           {!selectedSquadId && (
             <div className="flex h-full min-h-[400px] flex-col items-center justify-center px-8 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-amber-400/20 bg-amber-500/10 text-amber-200">
-                <Users2 className="h-7 w-7" />
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 border border-cyan-500/20">
+                <Users2 className="h-8 w-8 text-cyan-300/70" />
               </div>
-              <h3 className="mt-4 text-lg font-semibold text-white">Select a squad to start</h3>
-              <p className="mt-2 max-w-sm text-sm text-white/40">
-                Choose a squad from the dropdown above to create tasks, dispatch runs, and review results.
+              <h3 className="mt-6 text-xl font-bold text-white">Select a squad to get started</h3>
+              <p className="mt-3 max-w-md text-sm text-white/50 leading-relaxed">
+                Choose a squad from the dropdown above to create tasks, dispatch agent runs, and review detailed results.
               </p>
             </div>
           )}
 
           {/* =========== CREATE TAB =========== */}
           {selectedSquadId && tab === "create" && (
-            <div className="mx-auto max-w-2xl p-6 space-y-4">
-              <div>
-                <h3 className="text-base font-semibold text-white">Create a new task</h3>
-                <p className="mt-1 text-sm text-white/40">
-                  Describe what the squad should do. The task will be sent according to the squad&apos;s execution mode.
+            <div className="mx-auto max-w-2xl p-8">
+              {/* Illustration */}
+              <div className="mb-8 flex justify-center">
+                <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-cyan-500/5 border border-cyan-500/20">
+                  <Rocket className="h-10 w-10 text-cyan-300" />
+                </div>
+              </div>
+
+              <div className="mb-8 text-center">
+                <h3 className="text-xl font-bold text-white">Create a new task</h3>
+                <p className="mt-2 text-sm text-white/50">
+                  Describe what the squad should do. The task will be sent according to the squad's execution mode.
                 </p>
               </div>
 
-              <label className="block">
-                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Task title</span>
-                <input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g. Review the landing page and suggest improvements"
-                  className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/40"
-                />
-              </label>
+              <div className="space-y-6">
+                <label className="block">
+                  <span className="text-xs font-bold uppercase tracking-widest text-cyan-300/70">Task title</span>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g. Review the landing page and suggest improvements"
+                    className="mt-2.5 w-full rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-5 py-3.5 text-sm text-white placeholder-white/30 outline-none transition focus:border-cyan-400/40 focus:bg-cyan-500/10"
+                  />
+                </label>
 
-              <label className="block">
-                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-white/40">Instructions</span>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Explain the goal, expected output, tone, constraints, and who should focus on what."
-                  rows={6}
-                  className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/40"
-                />
-              </label>
+                <label className="block">
+                  <span className="text-xs font-bold uppercase tracking-widest text-cyan-300/70">Instructions</span>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    placeholder="Explain the goal, expected output, tone, constraints, and who should focus on what."
+                    rows={7}
+                    className="mt-2.5 w-full resize-none rounded-xl border border-cyan-500/20 bg-cyan-500/5 px-5 py-3.5 text-sm text-white placeholder-white/30 outline-none transition focus:border-cyan-400/40 focus:bg-cyan-500/10"
+                  />
+                </label>
 
-              {/* Collapsible model select */}
-              <div>
+                {/* Collapsible model select */}
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowModelSelect(!showModelSelect)}
+                    className="flex w-full items-center justify-between py-1 text-sm font-medium text-cyan-300/80 transition hover:text-cyan-200"
+                  >
+                    <span className="flex items-center gap-2">
+                      <div className={`h-1.5 w-1.5 rounded-full bg-cyan-400/40 transition-transform ${showModelSelect ? "rotate-45" : ""}`} />
+                      Advanced: override AI model
+                    </span>
+                    <ChevronRight className={`h-4 w-4 transition-transform ${showModelSelect ? "rotate-90" : ""}`} />
+                  </button>
+                  {showModelSelect && (
+                    <select
+                      value={preferredModel}
+                      onChange={(e) => setPreferredModel(e.target.value)}
+                      className="mt-3 w-full rounded-lg border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400/40"
+                    >
+                      <option value="" className="bg-[#07090c]">Use squad default model</option>
+                      {availableModels.map((m) => (
+                        <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`} className="bg-[#07090c]">
+                          {m.name || m.id} • {m.provider}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setShowModelSelect(!showModelSelect)}
-                  className="flex items-center gap-2 text-xs text-white/35 transition hover:text-white/55"
+                  disabled={submitDisabled}
+                  onClick={() => {
+                    onCreateTask({ title: title.trim(), prompt: prompt.trim(), preferredModel: preferredModel || null });
+                    setTitle("");
+                    setPrompt("");
+                    setPreferredModel("");
+                    setShowModelSelect(false);
+                  }}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-gradient-to-r from-cyan-500/20 to-cyan-500/10 px-5 py-4 text-sm font-bold text-cyan-100 transition hover:border-cyan-400/60 hover:from-cyan-500/25 hover:to-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <ChevronRight className={`h-3 w-3 transition-transform ${showModelSelect ? "rotate-90" : ""}`} />
-                  Advanced: override AI model
+                  {createBusy ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" /> Creating task...</>
+                  ) : (
+                    <><Send className="h-4 w-4" /> Create task</>
+                  )}
                 </button>
-                {showModelSelect && (
-                  <select
-                    value={preferredModel}
-                    onChange={(e) => setPreferredModel(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-300/40"
-                  >
-                    <option value="" className="bg-[#07090c]">Use squad default model</option>
-                    {availableModels.map((m) => (
-                      <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`} className="bg-[#07090c]">
-                        {m.name || m.id} · {m.provider}
-                      </option>
-                    ))}
-                  </select>
-                )}
               </div>
-
-              <button
-                type="button"
-                disabled={submitDisabled}
-                onClick={() => {
-                  onCreateTask({ title: title.trim(), prompt: prompt.trim(), preferredModel: preferredModel || null });
-                  setTitle("");
-                  setPrompt("");
-                  setPreferredModel("");
-                  setShowModelSelect(false);
-                }}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-3 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {createBusy ? (
-                  <><Loader2 className="h-4 w-4 animate-spin" /> Creating task...</>
-                ) : (
-                  <><Send className="h-4 w-4" /> Create task</>
-                )}
-              </button>
             </div>
           )}
 
           {/* =========== TASKS TAB =========== */}
           {selectedSquadId && tab === "tasks" && (
-            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[300px_minmax(0,1fr)]">
+            <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[320px_minmax(0,1fr)]">
               {/* Task list sidebar */}
-              <aside className="min-h-0 overflow-y-auto border-r border-white/8 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Tasks</span>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/40">{tasks.length}</span>
+              <aside className="min-h-0 overflow-y-auto border-r border-white/8 bg-white/[0.01] p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-mono text-xs font-bold uppercase tracking-wider text-cyan-400/60">Tasks</span>
+                  <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-200">{tasks.length}</span>
                 </div>
 
                 {loading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-5 w-5 animate-spin text-white/30" />
+                  <div className="flex flex-col items-center justify-center py-16">
+                    <div className="relative h-8 w-8">
+                      <div className="absolute inset-0 rounded-full border-2 border-cyan-500/20" />
+                      <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-cyan-400 animate-spin" />
+                    </div>
+                    <p className="mt-3 text-xs text-white/40">Loading tasks...</p>
                   </div>
                 ) : tasks.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center">
-                    <Rocket className="mx-auto h-6 w-6 text-white/20" />
-                    <p className="mt-2 text-xs text-white/35">No tasks yet.</p>
+                  <div className="rounded-xl border border-dashed border-cyan-500/20 px-4 py-10 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-500/10 mx-auto">
+                      <Rocket className="h-6 w-6 text-cyan-300/60" />
+                    </div>
+                    <p className="mt-3 text-xs font-medium text-white/40">No tasks yet</p>
+                    <p className="mt-1 text-xs text-white/30">Get started by creating your first task</p>
                     <button
                       type="button"
                       onClick={() => setTab("create")}
-                      className="mt-3 text-xs font-medium text-cyan-300/80 transition hover:text-cyan-200"
+                      className="mt-4 text-xs font-bold text-cyan-300 transition hover:text-cyan-200"
                     >
-                      Create your first task
+                      Create task
                     </button>
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {tasks.map((task) => {
                       const active = task.id === selectedTask?.id;
                       return (
@@ -391,22 +420,25 @@ export function SquadOpsModal({
                           key={task.id}
                           type="button"
                           onClick={() => onSelectTask(task.id)}
-                          className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                          className={`w-full rounded-lg border px-3 py-3.5 text-left transition-all duration-150 ${
                             active
-                              ? "border-cyan-300/30 bg-cyan-500/8 text-white"
-                              : "border-white/8 bg-transparent text-white/65 hover:border-white/15 hover:bg-white/[0.03] hover:text-white"
+                              ? "border-cyan-500/40 bg-cyan-500/15 text-white"
+                              : "border-white/8 bg-transparent text-white/65 hover:border-white/15 hover:bg-white/[0.05] hover:text-white"
                           }`}
                         >
-                          <div className="flex items-start gap-2">
-                            {statusIcon(task.status)}
+                          <div className="flex items-start gap-2.5">
+                            <div className="mt-0.5">{statusIcon(task.status)}</div>
                             <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium">{task.title}</div>
-                              <div className="mt-1 flex items-center gap-2 text-[10px] text-white/35">
-                                <span>{statusLabel(task.status)}</span>
-                                <span>·</span>
-                                <span>{task.runCount} runs</span>
+                              <div className="truncate text-sm font-medium leading-snug">{task.title}</div>
+                              <div className="mt-1.5 flex items-center gap-2 text-xs text-white/45">
+                                <span className="font-medium">{statusLabel(task.status)}</span>
+                                <span className="opacity-40">•</span>
+                                <span>{task.runCount} {task.runCount === 1 ? "run" : "runs"}</span>
                               </div>
                             </div>
+                            {active && (
+                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-cyan-400 to-cyan-600 rounded-r" />
+                            )}
                           </div>
                         </button>
                       );
@@ -416,123 +448,125 @@ export function SquadOpsModal({
               </aside>
 
               {/* Task detail */}
-              <main className="min-h-0 overflow-y-auto p-5">
+              <main className="min-h-0 overflow-y-auto p-6">
                 {!selectedTask ? (
                   <div className="flex h-full min-h-[400px] flex-col items-center justify-center text-center">
-                    <Rocket className="h-8 w-8 text-white/15" />
-                    <h3 className="mt-3 text-base font-semibold text-white/60">Select a task</h3>
-                    <p className="mt-1 text-sm text-white/30">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-500/10 border border-cyan-500/20">
+                      <Rocket className="h-8 w-8 text-cyan-300/40" />
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-white/70">Select a task</h3>
+                    <p className="mt-2 text-sm text-white/40">
                       Pick a task from the list to see runs and dispatch actions.
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-5">
+                  <div className="space-y-6">
                     {/* Task header */}
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <h3 className="text-lg font-semibold text-white">{selectedTask.title}</h3>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-white/40">
-                          <span>{modeLabel(selectedTask.executionMode)}</span>
-                          <span>·</span>
+                    <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-white/8">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-xl font-bold text-white">{selectedTask.title}</h3>
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-white/50 font-medium">
+                          <span className="text-cyan-300/70">{modeLabel(selectedTask.executionMode)}</span>
+                          <span className="opacity-30">•</span>
                           <span>{formatDateTime(selectedTask.createdDate)}</span>
                           {selectedTask.preferredModel && (
                             <>
-                              <span>·</span>
-                              <span className="text-cyan-300/60">{selectedTask.preferredModel}</span>
+                              <span className="opacity-30">•</span>
+                              <span className="text-cyan-300">{selectedTask.preferredModel}</span>
                             </>
                           )}
                         </div>
                       </div>
-                      <span className={`rounded-full border px-3 py-1 text-[10px] font-medium uppercase tracking-[0.12em] ${statusTone(selectedTask.status)}`}>
+                      <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold whitespace-nowrap ${statusTone(selectedTask.status)}`}>
                         {statusLabel(selectedTask.status)}
                       </span>
                     </div>
 
                     {/* Instructions */}
                     {selectedTask.prompt && (
-                      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 text-sm leading-relaxed text-white/65">
+                      <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm leading-relaxed text-white/60 font-medium">
                         {selectedTask.prompt}
                       </div>
                     )}
 
                     {/* Run stats */}
-                    <div className="grid grid-cols-4 gap-2">
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-center">
-                        <div className="text-xl font-semibold text-white">{runSummary.total}</div>
-                        <div className="mt-0.5 text-[10px] text-white/35">Total</div>
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-center">
+                        <div className="text-2xl font-bold text-white">{runSummary.total}</div>
+                        <div className="mt-1.5 text-xs font-semibold text-white/40">Total</div>
                       </div>
-                      <div className="rounded-xl border border-cyan-400/15 bg-cyan-500/5 p-3 text-center">
-                        <div className="text-xl font-semibold text-cyan-100">{runSummary.running}</div>
-                        <div className="mt-0.5 text-[10px] text-cyan-200/50">Running</div>
+                      <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-center shadow-lg shadow-cyan-500/5">
+                        <div className="text-2xl font-bold text-cyan-100">{runSummary.running}</div>
+                        <div className="mt-1.5 text-xs font-semibold text-cyan-200/60">Running</div>
                       </div>
-                      <div className="rounded-xl border border-emerald-400/15 bg-emerald-500/5 p-3 text-center">
-                        <div className="text-xl font-semibold text-emerald-100">{runSummary.completed}</div>
-                        <div className="mt-0.5 text-[10px] text-emerald-200/50">Done</div>
+                      <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center shadow-lg shadow-emerald-500/5">
+                        <div className="text-2xl font-bold text-emerald-100">{runSummary.completed}</div>
+                        <div className="mt-1.5 text-xs font-semibold text-emerald-200/60">Done</div>
                       </div>
-                      <div className="rounded-xl border border-red-400/15 bg-red-500/5 p-3 text-center">
-                        <div className="text-xl font-semibold text-red-100">{runSummary.failed}</div>
-                        <div className="mt-0.5 text-[10px] text-red-200/50">Failed</div>
+                      <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-center shadow-lg shadow-red-500/5">
+                        <div className="text-2xl font-bold text-red-100">{runSummary.failed}</div>
+                        <div className="mt-1.5 text-xs font-semibold text-red-200/60">Failed</div>
                       </div>
                     </div>
 
                     {/* Dispatch approval */}
                     {dispatchApprovalMode && (
-                      <div className="rounded-xl border border-amber-400/20 bg-amber-500/8 p-4">
-                        <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="rounded-lg border border-amber-500/30 bg-amber-500/12 p-5">
+                        <div className="flex items-start justify-between gap-4 mb-4 pb-4 border-b border-amber-500/20">
                           <div>
-                            <div className="text-sm font-medium text-amber-100">{dispatchModeLabel(dispatchApprovalMode)}</div>
-                            <div className="mt-0.5 text-xs text-amber-200/50">Review estimated usage before sending.</div>
+                            <div className="text-sm font-bold text-amber-100">{dispatchModeLabel(dispatchApprovalMode)}</div>
+                            <div className="mt-1.5 text-xs text-amber-200/60 font-medium">Review estimated usage before confirming dispatch.</div>
                           </div>
-                          <span className="rounded-full border border-amber-300/20 bg-black/20 px-2 py-0.5 text-[10px] text-amber-200/70">
-                            Approval
+                          <span className="rounded-full border border-amber-400/30 bg-amber-500/20 px-2.5 py-1 text-xs font-semibold text-amber-200">
+                            Review
                           </span>
                         </div>
 
                         {dispatchEstimateBusy ? (
-                          <div className="flex items-center gap-2 py-3 text-sm text-white/40">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                          <div className="flex items-center gap-3 py-4 text-sm text-white/40 font-medium">
+                            <div className="h-4 w-4 rounded-full border-2 border-amber-400/30 border-t-amber-400 animate-spin" />
                             Estimating token usage...
                           </div>
                         ) : dispatchEstimate ? (
                           <>
-                            <div className="grid grid-cols-4 gap-2 mb-3">
-                              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
-                                <div className="text-xs text-white/35">Runs</div>
-                                <div className="mt-1 text-base font-semibold text-white">{dispatchEstimate.selectedRuns}</div>
+                            <div className="grid grid-cols-4 gap-3 mb-4">
+                              <div className="rounded-lg border border-white/15 bg-white/5 p-3.5 text-center">
+                                <div className="text-xs font-semibold text-white/50 uppercase">Runs</div>
+                                <div className="mt-2 text-lg font-bold text-white">{dispatchEstimate.selectedRuns}</div>
                               </div>
-                              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
-                                <div className="text-xs text-white/35">In/run</div>
-                                <div className="mt-1 text-base font-semibold text-white">~{dispatchEstimate.estimatedInputTokensPerRun}</div>
+                              <div className="rounded-lg border border-white/15 bg-white/5 p-3.5 text-center">
+                                <div className="text-xs font-semibold text-white/50 uppercase">In/run</div>
+                                <div className="mt-2 text-lg font-bold text-white">~{dispatchEstimate.estimatedInputTokensPerRun}</div>
                               </div>
-                              <div className="rounded-lg border border-white/10 bg-black/20 p-2.5 text-center">
-                                <div className="text-xs text-white/35">Out/run</div>
-                                <div className="mt-1 text-base font-semibold text-white">~{dispatchEstimate.estimatedOutputTokensPerRun}</div>
+                              <div className="rounded-lg border border-white/15 bg-white/5 p-3.5 text-center">
+                                <div className="text-xs font-semibold text-white/50 uppercase">Out/run</div>
+                                <div className="mt-2 text-lg font-bold text-white">~{dispatchEstimate.estimatedOutputTokensPerRun}</div>
                               </div>
-                              <div className="rounded-lg border border-amber-400/25 bg-amber-500/8 p-2.5 text-center">
-                                <div className="text-xs text-amber-200/60">Total</div>
-                                <div className="mt-1 text-base font-semibold text-amber-100">~{dispatchEstimate.estimatedTotalTokens}</div>
+                              <div className="rounded-lg border border-amber-500/40 bg-amber-500/15 p-3.5 text-center shadow-lg shadow-amber-500/5">
+                                <div className="text-xs font-semibold text-amber-200/70 uppercase">Total</div>
+                                <div className="mt-2 text-lg font-bold text-amber-100">~{dispatchEstimate.estimatedTotalTokens}</div>
                               </div>
                             </div>
                             {dispatchEstimate.notes && (
-                              <div className="mb-3 rounded-lg border border-white/8 bg-black/15 px-3 py-2 text-xs text-white/40">
-                                {dispatchEstimate.notes} Model: {dispatchEstimate.model || selectedTask.preferredModel || "default"}
+                              <div className="mb-5 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50 font-medium">
+                                {dispatchEstimate.notes} • Model: {dispatchEstimate.model || selectedTask.preferredModel || "default"}
                               </div>
                             )}
-                            <div className="flex gap-2">
+                            <div className="flex gap-3">
                               <button
                                 type="button"
                                 onClick={() => onConfirmDispatchTask(selectedTask.id, dispatchApprovalMode)}
                                 disabled={dispatchBusy || dispatchEstimateBusy || !hooksConfigured}
-                                className="inline-flex items-center gap-2 rounded-xl border border-amber-300/30 bg-amber-500/12 px-4 py-2.5 text-sm font-medium text-amber-50 transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-45"
+                                className="inline-flex items-center gap-2.5 rounded-lg border border-amber-500/40 bg-gradient-to-r from-amber-500/20 to-amber-500/10 px-5 py-3 text-sm font-bold text-amber-100 transition hover:border-amber-400/60 hover:from-amber-500/30 hover:to-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                               >
-                                {dispatchBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                                {dispatchBusy ? "Sending..." : "Approve & run"}
+                                {dispatchBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                                {dispatchBusy ? "Sending..." : "Confirm dispatch"}
                               </button>
                               <button
                                 type="button"
                                 onClick={onCancelDispatchApproval}
                                 disabled={dispatchBusy}
-                                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white/60 transition hover:bg-white/10 hover:text-white disabled:opacity-45"
+                                className="rounded-lg border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white/70 transition hover:border-white/25 hover:bg-white/10 hover:text-white disabled:opacity-40"
                               >
                                 Cancel
                               </button>
@@ -544,32 +578,32 @@ export function SquadOpsModal({
 
                     {/* Dispatch actions */}
                     {!dispatchApprovalMode && (
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-3">
                         <button
                           type="button"
                           disabled={dispatchDisabled}
                           onClick={() => onPreviewDispatchTask(selectedTask.id, "pending")}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-400/25 bg-cyan-500/8 px-3 py-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-2.5 rounded-lg border border-cyan-500/40 bg-cyan-500/15 px-4 py-2.5 text-sm font-semibold text-cyan-100 transition hover:border-cyan-400/60 hover:bg-cyan-500/25 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Send className="h-3 w-3" />
+                          <Send className="h-4 w-4" />
                           Dispatch pending
                         </button>
                         <button
                           type="button"
                           disabled={dispatchDisabled}
                           onClick={() => onPreviewDispatchTask(selectedTask.id, "retryFailed")}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/60 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-2.5 rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white/70 transition hover:border-white/25 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <RefreshCcw className="h-3 w-3" />
+                          <RefreshCcw className="h-4 w-4" />
                           Retry failed
                         </button>
                         <button
                           type="button"
                           disabled={dispatchDisabled}
                           onClick={() => onPreviewDispatchTask(selectedTask.id, "redispatchAll")}
-                          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/15 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/70 transition hover:bg-amber-500/12 hover:text-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="inline-flex items-center gap-2.5 rounded-lg border border-amber-500/40 bg-amber-500/12 px-4 py-2.5 text-sm font-semibold text-amber-200 transition hover:border-amber-400/60 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
                         >
-                          <Zap className="h-3 w-3" />
+                          <Zap className="h-4 w-4" />
                           Redispatch all
                         </button>
                       </div>
@@ -577,52 +611,65 @@ export function SquadOpsModal({
 
                     {/* Agent runs */}
                     <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-cyan-400/60">
                           Agent runs {refreshingTask ? "(refreshing...)" : ""}
                         </span>
-                        <span className="text-[10px] text-white/30">{selectedTask.runs.length} runs</span>
+                        <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-2.5 py-0.5 text-xs font-semibold text-cyan-200">{selectedTask.runs.length}</span>
                       </div>
 
                       {selectedTask.runs.length === 0 ? (
-                        <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/30">
-                          No runs yet. Dispatch the task to start agent runs.
+                        <div className="rounded-lg border border-dashed border-cyan-500/20 px-5 py-10 text-center">
+                          <p className="text-sm font-medium text-white/40">No runs yet</p>
+                          <p className="mt-1 text-xs text-white/30">Dispatch the task to start agent runs</p>
                         </div>
                       ) : (
-                        <div className="space-y-2">
-                          {selectedTask.runs.map((run) => (
-                            <article key={run.id} className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="flex items-center gap-2">
-                                  {statusIcon(run.status)}
-                                  <div>
-                                    <span className="text-sm font-medium text-white">{run.agentName}</span>
-                                    {run.role && <span className="ml-2 text-xs text-white/30">{run.role}</span>}
+                        <div className="space-y-3">
+                          {selectedTask.runs.map((run) => {
+                            const n = normalizeStatus(run.status);
+                            const isFailed = ["failed", "error", "cancelled"].includes(n);
+                            const isDone = ["completed", "success", "done"].includes(n);
+                            const isRunning = ["running", "dispatching", "processing", "in_progress"].includes(n);
+                            let borderColor = "border-l-white/20";
+                            if (isDone) borderColor = "border-l-emerald-400";
+                            else if (isRunning) borderColor = "border-l-cyan-400";
+                            else if (isFailed) borderColor = "border-l-red-400";
+
+                            return (
+                              <article key={run.id} className={`rounded-lg border border-white/8 bg-white/[0.02] p-4 border-l-4 ${borderColor} transition-all`}>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-center gap-3 flex-1">
+                                    <div className="mt-0.5">{statusIcon(run.status)}</div>
+                                    <div className="flex-1">
+                                      <span className="text-sm font-semibold text-white">{run.agentName}</span>
+                                      {run.role && <span className="ml-2.5 text-xs text-white/40 font-medium">{run.role}</span>}
+                                    </div>
                                   </div>
+                                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap ${statusTone(run.status)}`}>
+                                    {statusLabel(run.status || "pending")}
+                                  </span>
                                 </div>
-                                <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${statusTone(run.status)}`}>
-                                  {statusLabel(run.status || "pending")}
-                                </span>
-                              </div>
 
-                              {run.dispatchError && (
-                                <div className="mt-2 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200/80">
-                                  {run.dispatchError}
+                                {run.dispatchError && (
+                                  <div className="mt-3.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-xs text-red-200/90 font-medium flex items-start gap-2">
+                                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                    <span>{run.dispatchError}</span>
+                                  </div>
+                                )}
+
+                                <div className="mt-3.5 flex flex-wrap gap-x-6 gap-y-1.5 text-xs text-white/45 font-medium">
+                                  <span>Started: {formatDateTime(run.startedAtUtc)}</span>
+                                  <span>Finished: {formatDateTime(run.finishedAtUtc)}</span>
                                 </div>
-                              )}
 
-                              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/30">
-                                <span>Started: {formatDateTime(run.startedAtUtc)}</span>
-                                <span>Finished: {formatDateTime(run.finishedAtUtc)}</span>
-                              </div>
-
-                              {run.outputText?.trim() && (
-                                <div className="mt-3 rounded-lg border border-white/8 bg-black/20 p-3 text-sm leading-relaxed text-white/65">
-                                  {run.outputText.trim()}
-                                </div>
-                              )}
-                            </article>
-                          ))}
+                                {run.outputText?.trim() && (
+                                  <div className="mt-3.5 rounded-lg border border-white/10 bg-black/40 px-4 py-3 font-mono text-xs leading-relaxed text-white/70 overflow-x-auto">
+                                    {run.outputText.trim()}
+                                  </div>
+                                )}
+                              </article>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -634,11 +681,19 @@ export function SquadOpsModal({
         </div>
 
         {/* ---- ERROR BAR ---- */}
-        {error && (
-          <div className="border-t border-red-500/20 bg-red-500/8 px-6 py-3">
-            <div className="flex items-center gap-2 text-sm text-red-200">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
+        {error && !errorDismissed && (
+          <div className="border-t border-red-500/30 bg-red-500/12 px-6 py-4">
+            <div className="flex items-center gap-3 text-sm text-red-200">
+              <AlertCircle className="h-5 w-5 shrink-0 text-red-400" />
+              <span className="flex-1 font-medium">{error}</span>
+              <button
+                type="button"
+                onClick={() => setErrorDismissed(true)}
+                className="rounded-lg p-1 text-red-300/60 transition hover:bg-red-500/20 hover:text-red-200"
+                title="Dismiss"
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
             </div>
           </div>
         )}

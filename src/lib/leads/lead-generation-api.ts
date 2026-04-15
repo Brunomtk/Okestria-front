@@ -581,6 +581,42 @@ export const generateLeadInsights = async (
 };
 
 
+export type BulkGenerateInsightsResult = {
+  total: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  items: {
+    leadId: number;
+    businessName: string | null;
+    success: boolean;
+    usedAi: boolean;
+    usedFallback: boolean;
+    status: string | null;
+    error: string | null;
+  }[];
+};
+
+export const bulkGenerateInsights = async (
+  companyId: number,
+  jobId?: number | null,
+  options?: { forceRegenerate?: boolean; preferredModel?: string | null },
+): Promise<BulkGenerateInsightsResult> => {
+  const body = {
+    companyId,
+    ...(jobId ? { jobId } : {}),
+    forceRegenerate: options?.forceRegenerate ?? false,
+    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
+  };
+
+  const response = await requestBackend<BulkGenerateInsightsResult>("/api/Leads/bulk-generate-insights", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  return response;
+};
+
 export const listLeadEmailBatchJobs = async (companyId?: number | null, sourceLeadJobId?: number | null): Promise<LeadEmailBatchJob[]> => {
   const resolvedCompanyId = companyId ?? getBrowserCompanyId();
   const params = new URLSearchParams();
