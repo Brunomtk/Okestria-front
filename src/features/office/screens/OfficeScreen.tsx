@@ -197,7 +197,7 @@ import {
 import { deriveSkillReadinessState } from "@/lib/skills/presentation";
 import type { StandupAgentSnapshot } from "@/lib/office/standup/types";
 import type { SkillStatusEntry } from "@/lib/skills/types";
-import { fetchRuntimeConfigStatus, type RuntimeConfigStatusResponse } from "@/lib/auth/api";
+import { fetchCompanyEmailContext, fetchRuntimeConfigStatus, type OkestriaCompanyEmailContext, type RuntimeConfigStatusResponse } from "@/lib/auth/api";
 
 const stringToColor = (str: string) => {
   let hash = 0;
@@ -1138,6 +1138,31 @@ export function OfficeScreen({
   }, []);
   const normalizedCompanyName = companyName?.trim() || null;
   const normalizedWorkspaceName = workspaceName?.trim() || null;
+
+  // ── Company email context (loaded once, injected silently into every chat message) ──
+  const companyContextRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!companyId) return;
+    const token = getBrowserAccessToken();
+    if (!token) return;
+    fetchCompanyEmailContext(companyId, token)
+      .then((ctx: OkestriaCompanyEmailContext) => {
+        const parts: string[] = [];
+        if (normalizedCompanyName) parts.push(`Company: ${normalizedCompanyName}`);
+        if (ctx.description?.trim()) parts.push(`About: ${ctx.description.trim()}`);
+        if (ctx.products?.trim()) parts.push(`Products/Services: ${ctx.products.trim()}`);
+        if (ctx.tone?.trim()) parts.push(`Communication tone: ${ctx.tone.trim()}`);
+        if (ctx.website?.trim()) parts.push(`Website: ${ctx.website.trim()}`);
+        if (ctx.phone?.trim()) parts.push(`Phone: ${ctx.phone.trim()}`);
+        if (ctx.extraNotes?.trim()) parts.push(`Additional notes: ${ctx.extraNotes.trim()}`);
+        if (userFullName?.trim()) parts.push(`Current user: ${userFullName.trim()}`);
+        if (userRole?.trim()) parts.push(`User role: ${userRole.trim()}`);
+        companyContextRef.current = parts.length > 0 ? parts.join("\n") : null;
+      })
+      .catch(() => {
+        // Silently ignore — company context is best-effort
+      });
+  }, [companyId, normalizedCompanyName, userFullName, userRole]);
   const companyHeadline = normalizedCompanyName ?? normalizedWorkspaceName ?? "Headquarters";
   const preferredOfficeTitle = normalizedCompanyName
     ? `${normalizedCompanyName} Headquarters`
@@ -4100,7 +4125,11 @@ export function OfficeScreen({
         return;
       }
 
-      await chatController.handleSend(agentId, sessionKey, { ...resolvedPayload, text: trimmed });
+      await chatController.handleSend(agentId, sessionKey, {
+        ...resolvedPayload,
+        text: trimmed,
+        systemContext: companyContextRef.current,
+      });
     },
     [
       chatController,

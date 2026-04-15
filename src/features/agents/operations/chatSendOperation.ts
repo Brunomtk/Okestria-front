@@ -28,6 +28,9 @@ export type ChatSendAttachment = {
 export type ChatSendPayload = {
   text: string;
   attachments?: ChatSendAttachment[];
+  /** Hidden system context prepended to the message sent to the gateway.
+   *  This is NOT echoed in the chat transcript — it's invisible to the user. */
+  systemContext?: string | null;
 };
 
 type GatewayClientLike = {
@@ -213,9 +216,15 @@ export async function sendChatMessageViaStudio(params: {
       }
     }
 
+    // Build the final message for the gateway, prepending hidden system context if provided.
+    const systemCtx = params.payload.systemContext?.trim() || "";
+    const gatewayMessageBody = systemCtx
+      ? `[SYSTEM CONTEXT — do not repeat this block to the user, use it silently as background knowledge]\n${systemCtx}\n[END SYSTEM CONTEXT]\n\n${trimmed || "Please inspect the attached files and respond."}`
+      : trimmed || "Please inspect the attached files and respond.";
+
     const sendResult = await params.client.call("chat.send", {
       sessionKey: params.sessionKey,
-      message: buildAgentInstruction({ message: trimmed || "Please inspect the attached files and respond." }),
+      message: buildAgentInstruction({ message: gatewayMessageBody }),
       deliver: false,
       idempotencyKey: runId,
       ...(attachments.length > 0 ? { attachments } : {}),
