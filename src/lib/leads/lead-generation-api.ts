@@ -605,16 +605,23 @@ export const bulkGenerateInsights = async (
   const body = {
     companyId,
     ...(jobId ? { jobId } : {}),
-    forceRegenerate: options?.forceRegenerate ?? false,
+    forceRegenerate: options?.forceRegenerate ?? true,
     preferredModel: options?.preferredModel ?? null,
   };
 
-  const response = await requestBackend<BulkGenerateInsightsResult>("/api/Leads/bulk-generate-insights", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-
-  return response;
+  // Bulk generation can take several minutes for many leads — use a 10-minute timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000);
+  try {
+    const response = await requestBackend<BulkGenerateInsightsResult>("/api/Leads/bulk-generate-insights", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 export const listLeadEmailBatchJobs = async (companyId?: number | null, sourceLeadJobId?: number | null): Promise<LeadEmailBatchJob[]> => {

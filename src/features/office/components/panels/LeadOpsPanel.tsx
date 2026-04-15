@@ -156,12 +156,12 @@ export function LeadOpsPanel({
   const [companyBrandName, setCompanyBrandName] = useState(companyName?.trim() || "");
   const [companyBrandEmail, setCompanyBrandEmail] = useState("");
 
-  // AI provider selection
+  // AI provider selection — Claude as default
   const AI_PROVIDERS = [
-    { value: "gpt-5.4-nano", label: "OpenAI · GPT-5.4 Nano" },
-    { value: "gpt-4.1-mini", label: "OpenAI · GPT-4.1 Mini" },
     { value: "claude-sonnet-4-20250514", label: "Claude · Sonnet 4" },
     { value: "claude-haiku-3-5-20241022", label: "Claude · Haiku 3.5" },
+    { value: "gpt-5.4-nano", label: "OpenAI · GPT-5.4 Nano" },
+    { value: "gpt-4.1-mini", label: "OpenAI · GPT-4.1 Mini" },
   ];
   const [selectedAiProvider, setSelectedAiProvider] = useState(AI_PROVIDERS[0].value);
 
@@ -464,7 +464,7 @@ export function LeadOpsPanel({
     setBulkResult(null);
     setBulkProgress({ current: 0, total: jobLeads.length || selectedJob.totalInserted || 0 });
     try {
-      const result = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: false, preferredModel: selectedAiProvider });
+      const result = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: true, preferredModel: selectedAiProvider });
       setBulkResult(result);
       setBulkProgress({ current: result.total, total: result.total });
       // Refresh lead list
