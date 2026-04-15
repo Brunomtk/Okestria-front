@@ -43,6 +43,7 @@ import {
   getLeadById,
   generateLeadInsights,
   bulkGenerateInsights,
+  pollBulkInsightJob,
   sendSingleLeadEmail,
   primeLeadChat,
   primeLeadGenerationJobChat,
@@ -463,16 +464,49 @@ export function LeadOpsPanel({
     setBulkGenerating(true);
     setBulkResult(null);
     setBulkProgress({ current: 0, total: jobLeads.length || selectedJob.totalInserted || 0 });
+    setError(null);
     try {
-      const result = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: true, preferredModel: selectedAiProvider });
-      setBulkResult(result);
-      setBulkProgress({ current: result.total, total: result.total });
-      // Refresh lead list
-      const refreshed = await listLeadsByJob(selectedJob.id);
-      setJobLeads(refreshed);
-      setError(null);
+      // 1. Queue the job — returns immediately with jobId
+      const queued = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: true, preferredModel: selectedAiProvider });
+      const jobId = queued.jobId;
+      if (!jobId) {
+        // Fallback: old-style synchronous response (no jobId)
+        setBulkResult(queued);
+        setBulkProgress({ current: queued.total, total: queued.total });
+        const refreshed = await listLeadsByJob(selectedJob.id);
+        setJobLeads(refreshed);
+        setBulkGenerating(false);
+        return;
+      }
+
+      setBulkProgress({ current: 0, total: queued.total });
+
+      // 2. Poll for progress every 2 seconds
+      const poll = async (): Promise<void> => {
+        for (let i = 0; i < 600; i++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const status = await pollBulkInsightJob(jobId);
+            setBulkProgress({ current: status.processed, total: status.total });
+            setBulkResult(status);
+
+            if (status.status === "completed" || status.status === "failed") {
+              if (status.errorMessage) setError(status.errorMessage);
+              // Refresh lead list
+              const refreshed = await listLeadsByJob(selectedJob.id);
+              setJobLeads(refreshed);
+              return;
+            }
+          } catch {
+            // Polling error — keep trying
+          }
+        }
+        setError("Bulk generation is still running in the background. Refresh the page to see updated leads.");
+      };
+
+      await poll();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate insights for all leads.");
+      setError(e instanceof Error ? e.message : "Failed to start bulk insight generation.");
     } finally {
       setBulkGenerating(false);
     }
@@ -789,31 +823,64 @@ export function LeadOpsPanel({
 
               {/* Bulk Insights Progress */}
               {(bulkGenerating || bulkResult) && (
-                <div className="mt-5 rounded-xl bg-amber-500/5 p-4 ring-1 ring-amber-500/15">
+                <div className="mt-5 rounded-xl bg-amber-500/5 p-4 ring-1 ring-amber-500/15 space-y-3">
+                  {/* Header */}
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-amber-300">
-                      {bulkGenerating ? "Generating insights for all leads…" : "Insight generation complete"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {bulkGenerating && <Loader2 className="h-4 w-4 animate-spin text-amber-400" />}
+                      <span className="text-xs font-medium text-amber-300">
+                        {bulkGenerating
+                          ? bulkResult?.status === "queued"
+                            ? "Queuing insight generation…"
+                            : `Generating insights — ${bulkProgress?.current ?? 0} of ${bulkProgress?.total ?? 0} leads`
+                          : bulkResult?.status === "failed"
+                            ? "Generation failed"
+                            : "Generation complete"}
+                      </span>
+                    </div>
                     {!bulkGenerating && bulkResult && (
                       <button type="button" onClick={() => setBulkResult(null)} className="text-xs text-white/30 hover:text-white/60">
                         <X className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
-                  {bulkGenerating && bulkProgress && (
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500 shadow-lg shadow-amber-500/50 animate-shimmer" style={{ width: "100%", backgroundSize: "200% 100%", backgroundPosition: "-200% 0", animation: "shimmer 2s infinite" }} />
+
+                  {/* Progress bar */}
+                  {bulkProgress && bulkProgress.total > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-white/40">
+                          {bulkResult?.currentLeadName
+                            ? `Processing: ${bulkResult.currentLeadName}`
+                            : bulkGenerating ? "Processing…" : "Done"}
+                        </span>
+                        <span className="text-[10px] font-mono text-amber-400/80">
+                          {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
+                        </span>
+                      </div>
+                      <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 transition-all duration-700 ease-out"
+                          style={{ width: `${Math.max(2, Math.round((bulkProgress.current / bulkProgress.total) * 100))}%` }}
+                        />
+                      </div>
                     </div>
                   )}
-                  {bulkResult && (
-                    <div className="mt-3 grid grid-cols-4 gap-2">
+
+                  {/* Stats */}
+                  {bulkResult && (bulkResult.processed > 0 || !bulkGenerating) && (
+                    <div className="grid grid-cols-5 gap-2">
                       <div className="rounded-lg bg-white/5 px-2 py-1.5 text-center">
                         <div className="text-sm font-semibold text-white">{bulkResult.total}</div>
                         <div className="text-[10px] text-white/40">Total</div>
                       </div>
+                      <div className="rounded-lg bg-violet-500/10 px-2 py-1.5 text-center">
+                        <div className="text-sm font-semibold text-violet-400">{bulkResult.processed}</div>
+                        <div className="text-[10px] text-violet-400/60">Processed</div>
+                      </div>
                       <div className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-center">
                         <div className="text-sm font-semibold text-emerald-400">{bulkResult.succeeded}</div>
-                        <div className="text-[10px] text-emerald-400/60">Generated</div>
+                        <div className="text-[10px] text-emerald-400/60">AI Generated</div>
                       </div>
                       <div className="rounded-lg bg-cyan-500/10 px-2 py-1.5 text-center">
                         <div className="text-sm font-semibold text-cyan-400">{bulkResult.skipped}</div>
@@ -824,6 +891,11 @@ export function LeadOpsPanel({
                         <div className="text-[10px] text-rose-400/60">Failed</div>
                       </div>
                     </div>
+                  )}
+
+                  {/* Error message */}
+                  {bulkResult?.errorMessage && (
+                    <div className="text-xs text-rose-400/80">{bulkResult.errorMessage}</div>
                   )}
                 </div>
               )}
