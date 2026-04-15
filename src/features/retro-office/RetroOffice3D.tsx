@@ -1156,61 +1156,29 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
   );
 });
 
+/**
+ * Fixed-DPR controller — sets a stable DPR once on mount and only lowers it
+ * when the tab is hidden. No per-frame adjustments, so zero stutter from
+ * renderer resizes mid-interaction.
+ */
 function AdaptiveDprController() {
-  const { gl, setDpr } = useThree();
-  const currentDprRef = useRef(1);
-  const frameCounterRef = useRef(0);
-  const avgDeltaRef = useRef(1 / 60);
-  const cooldownRef = useRef(0);
+  const { setDpr } = useThree();
 
   useEffect(() => {
-    const initialDpr = Math.min(window.devicePixelRatio || 1, 0.95);
-    currentDprRef.current = initialDpr;
-    setDpr(initialDpr);
+    const fixedDpr = Math.min(window.devicePixelRatio || 1, 0.9);
+    setDpr(fixedDpr);
+
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") {
-        currentDprRef.current = 0.72;
-        setDpr(0.72);
-        return;
-      }
-      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.95);
-      currentDprRef.current = restoredDpr;
-      setDpr(restoredDpr);
+      setDpr(
+        document.visibilityState === "visible"
+          ? Math.min(window.devicePixelRatio || 1, 0.9)
+          : 0.6,
+      );
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
+    return () =>
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
   }, [setDpr]);
-
-  useFrame((_, delta) => {
-    if (document.visibilityState !== "visible") return;
-    avgDeltaRef.current = avgDeltaRef.current * 0.95 + delta * 0.05;
-    frameCounterRef.current += 1;
-
-    // Cooldown after a DPR change — wait ~90 frames (~1.5s) before next adjustment
-    if (cooldownRef.current > 0) {
-      cooldownRef.current--;
-      return;
-    }
-
-    if (frameCounterRef.current < 60) return;
-    frameCounterRef.current = 0;
-
-    const maxDpr = Math.min(window.devicePixelRatio || 1, 0.95);
-    const minDpr = 0.55;
-    let nextDpr = currentDprRef.current;
-    if (avgDeltaRef.current > 1 / 45) {
-      nextDpr = Math.max(minDpr, currentDprRef.current - 0.05);
-    } else if (avgDeltaRef.current < 1 / 62) {
-      nextDpr = Math.min(maxDpr, currentDprRef.current + 0.02);
-    }
-    if (Math.abs(nextDpr - currentDprRef.current) < 0.015) return;
-    currentDprRef.current = nextDpr;
-    setDpr(Number(nextDpr.toFixed(2)));
-    cooldownRef.current = 90;
-    gl.info.reset();
-  });
 
   return null;
 }
@@ -3965,6 +3933,12 @@ export function RetroOffice3D({
     [drag, furniture, wallDrawStart, worldToCanvas],
   );
 
+  // Stable handler — avoids new closure on every render which would cause
+  // the entire Canvas tree to re-mount and stutter.
+  const handleCanvasPointerUp = useCallback(() => {
+    if (dragRef.current.kind === "moving") setDrag({ kind: "idle" });
+  }, []);
+
   const startPlacing = useCallback((type: string) => {
     setDrag({ kind: "placing", itemType: type });
     setSelectedUid(null);
@@ -4360,9 +4334,7 @@ export function RetroOffice3D({
               preserveDrawingBuffer: false,
             }}
             style={{ width: "100%", height: "100%" }}
-            onPointerUp={() => {
-              if (dragRef.current.kind === "moving") setDrag({ kind: "idle" });
-            }}
+            onPointerUp={handleCanvasPointerUp}
           >
             {/* Ensure camera looks at origin after mount. */}
             <CameraRig
@@ -4378,7 +4350,7 @@ export function RetroOffice3D({
               ref={orbitRef}
               enabled={followAgentId === null && (!editMode || spaceDown)}
               enableDamping
-              dampingFactor={0.12}
+              dampingFactor={0.18}
               rotateSpeed={0.8}
               zoomSpeed={1.05}
               panSpeed={0.85}

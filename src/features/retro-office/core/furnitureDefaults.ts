@@ -370,7 +370,7 @@ const deskStation = (
 // Larger table to seat 6 comfortably. Centre at (130, 100) gives clearance
 // from walls and keeps all chairs within the meeting-seat detection region
 // defined in navigation.ts (x: 0→320, y: 0→260).
-const MEETING_TABLE_X = 30;
+const MEETING_TABLE_X = 150;
 const MEETING_TABLE_Y = 100;
 const MEETING_TABLE_R = 78;
 
