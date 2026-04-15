@@ -105,6 +105,7 @@ import {
 import type { GatewayModelPolicySnapshot } from "@/lib/gateway/models";
 import {
   createDefaultAgentAvatarProfile,
+  normalizeAgentAvatarProfile,
   type AgentAvatarProfile,
 } from "@/lib/avatars/profile";
 import {
@@ -121,6 +122,7 @@ import {
   fetchCompanyAgentScope,
   getBrowserAccessToken,
   persistCompanyAgentFromWizard,
+  updateAgentAvatarProfileJson,
   type CompanyAgentScope,
   type CompanyRuntimeRosterAgent,
 } from "@/lib/agents/backend-api";
@@ -1268,8 +1270,33 @@ export function OfficeScreen({
         { avatars: { [key]: { [agentId]: profile } } },
         0,
       );
+      // Persist avatar profile to backend so it loads with the agent record
+      const backendId = backendAgentByGatewayIdRef.current.get(agentId);
+      if (typeof backendId === "number" && Number.isFinite(backendId)) {
+        const token = getBrowserAccessToken();
+        updateAgentAvatarProfileJson({
+          backendAgentId: backendId,
+          avatarProfileJson: JSON.stringify(profile),
+          token,
+        }).catch(() => {/* silent – local settings are the fallback */});
+      } else if (companyId) {
+        // Resolve backend ID first, then persist
+        const token = getBrowserAccessToken();
+        void (async () => {
+          try {
+            const resolved = await resolveBackendAgentIdForGatewayAgent(agentId);
+            if (typeof resolved === "number") {
+              await updateAgentAvatarProfileJson({
+                backendAgentId: resolved,
+                avatarProfileJson: JSON.stringify(profile),
+                token,
+              });
+            }
+          } catch {/* silent */}
+        })();
+      }
     },
-    [dispatch, gatewayUrl, settingsCoordinator],
+    [dispatch, gatewayUrl, settingsCoordinator, companyId, resolveBackendAgentIdForGatewayAgent],
   );
   const openAgentEditor = useCallback(
     (agentId: string, initialSection: AgentEditorSection = "avatar") => {
@@ -1530,6 +1557,48 @@ export function OfficeScreen({
       return Object.keys(next).length === Object.keys(previous).length ? previous : next;
     });
   }, [companyScopedAgentIds, dispatch, state.agents]);
+
+  // Seed avatar profiles from backend on first load so agents render with persisted avatars
+  const backendAvatarSeedDoneRef = useRef(false);
+  useEffect(() => {
+    if (backendAvatarSeedDoneRef.current) return;
+    if (!companyId || state.agents.length === 0) return;
+    backendAvatarSeedDoneRef.current = true;
+    void (async () => {
+      try {
+        const token = getBrowserAccessToken();
+        const companyAgents = await fetchCompanyAgents(companyId, token);
+        for (const summary of companyAgents) {
+          if (!summary.avatarProfileJson) continue;
+          try {
+            const parsed = JSON.parse(summary.avatarProfileJson) as Record<string, unknown>;
+            const profile = normalizeAgentAvatarProfile(parsed, String(summary.id));
+            // Find matching gateway agent by matching through details
+            const details = await fetchCompanyAgentDetails(summary.id, token);
+            const gatewayAgentId = extractGatewayAgentId(details);
+            if (!gatewayAgentId) continue;
+            backendAgentByGatewayIdRef.current.set(gatewayAgentId, summary.id);
+            // Seed into local state and settings
+            const existingAgent = state.agents.find((a) => a.agentId === gatewayAgentId);
+            if (existingAgent && !existingAgent.avatarProfile) {
+              dispatch({
+                type: "updateAgent",
+                agentId: gatewayAgentId,
+                patch: { avatarProfile: profile, avatarSeed: profile.seed },
+              });
+              const key = gatewayUrl.trim();
+              if (key) {
+                settingsCoordinator.schedulePatch(
+                  { avatars: { [key]: { [gatewayAgentId]: profile } } },
+                  0,
+                );
+              }
+            }
+          } catch {/* ignore malformed profiles */}
+        }
+      } catch {/* silent */}
+    })();
+  }, [companyId, state.agents, dispatch, gatewayUrl, settingsCoordinator]);
 
   const loadAgents = useCallback(async (options?: {
     forceSettings?: boolean;

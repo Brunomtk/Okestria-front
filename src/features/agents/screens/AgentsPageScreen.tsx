@@ -31,7 +31,15 @@ import {
   useAgentStore,
 } from "@/features/agents/state/store";
 import type { AgentState } from "@/features/agents/state/store";
-import { fetchCompanyAgentScope, persistCompanyAgentFromWizard, type CompanyAgentScope } from "@/lib/agents/backend-api";
+import {
+  fetchCompanyAgentScope,
+  getBrowserAccessToken,
+  getBrowserCompanyId,
+  persistCompanyAgentFromWizard,
+  resolveBackendAgentIdByGatewayId,
+  updateAgentAvatarProfileJson,
+  type CompanyAgentScope,
+} from "@/lib/agents/backend-api";
 import { createGatewayRuntimeEventHandler } from "@/features/agents/state/gatewayRuntimeEventHandler";
 import {
   type CronJobSummary,
@@ -962,6 +970,26 @@ const AgentsPageScreen = () => {
         },
         0
       );
+      // Also persist to backend so the avatar profile is always returned with the agent
+      void (async () => {
+        try {
+          const cid = getBrowserCompanyId();
+          if (!cid) return;
+          const token = getBrowserAccessToken();
+          const backendId = await resolveBackendAgentIdByGatewayId({
+            gatewayAgentId: resolvedAgentId,
+            companyId: cid,
+            token,
+          });
+          if (typeof backendId === "number") {
+            await updateAgentAvatarProfileJson({
+              backendAgentId: backendId,
+              avatarProfileJson: JSON.stringify(profile),
+              token,
+            });
+          }
+        } catch {/* silent – local settings are the primary fallback */}
+      })();
     },
     [gatewayUrl, settingsCoordinator]
   );

@@ -21,6 +21,7 @@ import { normalizeAssistantDisplayText } from "@/lib/text/assistantText";
 import { isNearBottom } from "@/lib/dom";
 import { useVoiceRecorder, type VoiceRecorderState, type VoiceSendPayload } from "@/hooks/useVoiceRecorder";
 import { AgentAvatar } from "./AgentAvatar";
+import { AgentAvatarFace3D } from "./AgentAvatarFace3D";
 import type { ChatSendAttachment, ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import type {
   ExecApprovalDecision,
@@ -1791,13 +1792,20 @@ export const AgentChatPanel = ({
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <div className="group/avatar relative">
-              <AgentAvatar
-                seed={avatarSeed}
-                name={agent.name}
-                avatarUrl={agent.avatarUrl ?? null}
-                size={52}
-                isSelected={isSelected}
-              />
+              {agent.avatarProfile ? (
+                <AgentAvatarFace3D
+                  profile={agent.avatarProfile}
+                  size={52}
+                />
+              ) : (
+                <AgentAvatar
+                  seed={avatarSeed}
+                  name={agent.name}
+                  avatarUrl={agent.avatarUrl ?? null}
+                  size={52}
+                  isSelected={isSelected}
+                />
+              )}
               <button
                 className="nodrag ui-btn-icon ui-btn-icon-xs agent-avatar-shuffle-btn absolute bottom-0 right-0"
                 style={{ "--ui-btn-icon-size": "1.1rem" } as React.CSSProperties}

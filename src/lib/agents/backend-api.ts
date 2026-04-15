@@ -11,6 +11,7 @@ export type BackendAgentSummary = {
   role?: string | null;
   description?: string | null;
   avatarUrl?: string | null;
+  avatarProfileJson?: string | null;
   emoji?: string | null;
   status?: boolean | null;
   isDefault?: boolean | null;
@@ -311,6 +312,7 @@ const ensureBackendAgentRecord = async (params: {
           role: params.draft.identity.creature.trim() || "Assistant",
           description: params.draft.soul.coreTruths.trim() || params.draft.identity.vibe.trim() || null,
           avatarUrl: params.draft.identity.avatar.trim() || null,
+          avatarProfileJson: JSON.stringify(params.profile),
           emoji: params.draft.identity.emoji.trim() || null,
           status: true,
           isDefault: matchedBySlug.isDefault === true,
@@ -333,6 +335,7 @@ const ensureBackendAgentRecord = async (params: {
         role: params.draft.identity.creature.trim() || "Assistant",
         description: params.draft.soul.coreTruths.trim() || params.draft.identity.vibe.trim() || null,
         avatarUrl: params.draft.identity.avatar.trim() || null,
+        avatarProfileJson: JSON.stringify(params.profile),
         emoji: params.draft.identity.emoji.trim() || null,
         status: true,
         isDefault: shouldCreateAsDefault,
@@ -383,6 +386,42 @@ export const persistCompanyAgentFromWizard = async (params: {
   );
 
   return agent;
+};
+
+export const updateAgentAvatarProfileJson = async (params: {
+  backendAgentId: number;
+  avatarProfileJson: string;
+  token?: string | null;
+}) => {
+  return requestBackendJson<BackendAgentDetails>(
+    `/api/Agents/update/${params.backendAgentId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        avatarProfileJson: params.avatarProfileJson,
+      }),
+    },
+    params.token,
+  );
+};
+
+export const resolveBackendAgentIdByGatewayId = async (params: {
+  gatewayAgentId: string;
+  companyId: number;
+  token?: string | null;
+}): Promise<number | null> => {
+  const companyAgents = await fetchCompanyAgents(params.companyId, params.token);
+  for (const agent of companyAgents) {
+    try {
+      const details = await fetchCompanyAgentDetails(agent.id, params.token);
+      if (extractGatewayAgentId(details) === params.gatewayAgentId.trim()) {
+        return details.id;
+      }
+    } catch {
+      // ignore broken records
+    }
+  }
+  return null;
 };
 
 export const deletePersistedCompanyAgentByGatewayId = async (params: {

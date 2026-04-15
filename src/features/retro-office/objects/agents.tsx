@@ -784,10 +784,13 @@ export const AgentModel = memo(function AgentModel({
   const showGlasses = resolvedAppearance.accessories.glasses;
   const showHeadset = resolvedAppearance.accessories.headset;
   const showBackpack = resolvedAppearance.accessories.backpack;
+  const showScarf = resolvedAppearance.accessories.scarf;
+  const showWatch = resolvedAppearance.accessories.watch;
   const accessoryColor = topColor;
-  const sleeveColor = topStyle === "jacket" ? "#dbe4ff" : topColor;
-  const cuffColor = topStyle === "hoodie" ? "#d1d5db" : sleeveColor;
+  const sleeveColor = topStyle === "jacket" || topStyle === "vest" ? "#dbe4ff" : topColor;
+  const cuffColor = topStyle === "hoodie" || topStyle === "sweater" ? "#d1d5db" : sleeveColor;
   const topAccentColor = topStyle === "jacket" ? "#1f2937" : cuffColor;
+  const hasSleeves = topStyle !== "tank" && topStyle !== "vest";
 
   const faceTexture = useMemo(() => {
     const canvas = document.createElement("canvas");
@@ -894,68 +897,110 @@ export const AgentModel = memo(function AgentModel({
         <circleGeometry args={[0.12, 12]} />
         <meshBasicMaterial color="#000" transparent opacity={0.2} />
       </mesh>
-      <group ref={rightLegRef} position={[-0.045, 0.1, 0]}>
-        {bottomStyle === "shorts" ? (
-          <>
-            <mesh position={[0, 0.03, 0]}>
-              <boxGeometry args={[0.07, 0.08, 0.08]} />
-              <meshLambertMaterial color={trouserColor} />
+      {/* ── Skirt (single piece covering both legs) ── */}
+      {bottomStyle === "skirt" ? (
+        <group>
+          <mesh position={[0, 0.13, 0]}>
+            <boxGeometry args={[0.2, 0.1, 0.1]} />
+            <meshLambertMaterial color={trouserColor} />
+          </mesh>
+          <group ref={rightLegRef} position={[-0.045, 0.04, 0]}>
+            <mesh><boxGeometry args={[0.05, 0.08, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+            <mesh position={[0, -0.06, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+          <group ref={leftLegRef} position={[0.045, 0.04, 0]}>
+            <mesh><boxGeometry args={[0.05, 0.08, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+            <mesh position={[0, -0.06, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+        </group>
+      ) : (
+        <>
+          <group ref={rightLegRef} position={[-0.045, 0.1, 0]}>
+            {bottomStyle === "shorts" ? (
+              <>
+                <mesh position={[0, 0.03, 0]}>
+                  <boxGeometry args={[0.07, 0.08, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                <mesh position={[0, -0.045, 0]}>
+                  <boxGeometry args={[0.05, 0.06, 0.05]} />
+                  <meshLambertMaterial color={skin} />
+                </mesh>
+              </>
+            ) : bottomStyle === "joggers" ? (
+              <>
+                <mesh>
+                  <boxGeometry args={[0.08, 0.14, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                <mesh position={[0, -0.055, 0]}>
+                  <boxGeometry args={[0.084, 0.025, 0.084]} />
+                  <meshLambertMaterial color={cuffColor} />
+                </mesh>
+              </>
+            ) : (
+              <>
+                <mesh>
+                  <boxGeometry args={[0.07, 0.14, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                {bottomStyle === "cuffed" ? (
+                  <mesh position={[0, -0.05, 0]}>
+                    <boxGeometry args={[0.074, 0.022, 0.084]} />
+                    <meshLambertMaterial color="#d1d5db" />
+                  </mesh>
+                ) : null}
+              </>
+            )}
+            <mesh position={[0, -0.09, 0]}>
+              <boxGeometry args={[0.07, 0.05, 0.12]} />
+              <meshLambertMaterial color={shoeColor} />
             </mesh>
-            <mesh position={[0, -0.045, 0]}>
-              <boxGeometry args={[0.05, 0.06, 0.05]} />
-              <meshLambertMaterial color={skin} />
+          </group>
+          <group ref={leftLegRef} position={[0.045, 0.1, 0]}>
+            {bottomStyle === "shorts" ? (
+              <>
+                <mesh position={[0, 0.03, 0]}>
+                  <boxGeometry args={[0.07, 0.08, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                <mesh position={[0, -0.045, 0]}>
+                  <boxGeometry args={[0.05, 0.06, 0.05]} />
+                  <meshLambertMaterial color={skin} />
+                </mesh>
+              </>
+            ) : bottomStyle === "joggers" ? (
+              <>
+                <mesh>
+                  <boxGeometry args={[0.08, 0.14, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                <mesh position={[0, -0.055, 0]}>
+                  <boxGeometry args={[0.084, 0.025, 0.084]} />
+                  <meshLambertMaterial color={cuffColor} />
+                </mesh>
+              </>
+            ) : (
+              <>
+                <mesh>
+                  <boxGeometry args={[0.07, 0.14, 0.08]} />
+                  <meshLambertMaterial color={trouserColor} />
+                </mesh>
+                {bottomStyle === "cuffed" ? (
+                  <mesh position={[0, -0.05, 0]}>
+                    <boxGeometry args={[0.074, 0.022, 0.084]} />
+                    <meshLambertMaterial color="#d1d5db" />
+                  </mesh>
+                ) : null}
+              </>
+            )}
+            <mesh position={[0, -0.09, 0]}>
+              <boxGeometry args={[0.07, 0.05, 0.12]} />
+              <meshLambertMaterial color={shoeColor} />
             </mesh>
-          </>
-        ) : (
-          <>
-            <mesh>
-              <boxGeometry args={[0.07, 0.14, 0.08]} />
-              <meshLambertMaterial color={trouserColor} />
-            </mesh>
-            {bottomStyle === "cuffed" ? (
-              <mesh position={[0, -0.05, 0]}>
-                <boxGeometry args={[0.074, 0.022, 0.084]} />
-                <meshLambertMaterial color="#d1d5db" />
-              </mesh>
-            ) : null}
-          </>
-        )}
-        <mesh position={[0, -0.09, 0]}>
-          <boxGeometry args={[0.07, 0.05, 0.12]} />
-          <meshLambertMaterial color={shoeColor} />
-        </mesh>
-      </group>
-      <group ref={leftLegRef} position={[0.045, 0.1, 0]}>
-        {bottomStyle === "shorts" ? (
-          <>
-            <mesh position={[0, 0.03, 0]}>
-              <boxGeometry args={[0.07, 0.08, 0.08]} />
-              <meshLambertMaterial color={trouserColor} />
-            </mesh>
-            <mesh position={[0, -0.045, 0]}>
-              <boxGeometry args={[0.05, 0.06, 0.05]} />
-              <meshLambertMaterial color={skin} />
-            </mesh>
-          </>
-        ) : (
-          <>
-            <mesh>
-              <boxGeometry args={[0.07, 0.14, 0.08]} />
-              <meshLambertMaterial color={trouserColor} />
-            </mesh>
-            {bottomStyle === "cuffed" ? (
-              <mesh position={[0, -0.05, 0]}>
-                <boxGeometry args={[0.074, 0.022, 0.084]} />
-                <meshLambertMaterial color="#d1d5db" />
-              </mesh>
-            ) : null}
-          </>
-        )}
-        <mesh position={[0, -0.09, 0]}>
-          <boxGeometry args={[0.07, 0.05, 0.12]} />
-          <meshLambertMaterial color={shoeColor} />
-        </mesh>
-      </group>
+          </group>
+        </>
+      )}
       {showBackpack ? (
         <group position={[0, 0.28, -0.08]}>
           <mesh>
@@ -1000,12 +1045,73 @@ export const AgentModel = memo(function AgentModel({
           </mesh>
         </>
       ) : null}
-      <group ref={rightArmRef} position={[-0.12, 0.28, 0]}>
-        <mesh position={[0, -0.08, 0]}>
-          <boxGeometry args={[0.06, 0.16, 0.06]} />
-          <meshLambertMaterial color={sleeveColor} />
+      {topStyle === "vest" ? (
+        <mesh position={[0, 0.28, 0.056]}>
+          <boxGeometry args={[0.182, 0.21, 0.012]} />
+          <meshLambertMaterial color="#374151" />
         </mesh>
-        {topStyle === "hoodie" ? (
+      ) : null}
+      {topStyle === "polo" ? (
+        <>
+          <mesh position={[-0.055, 0.38, 0.035]} rotation={[0.3, 0, -0.15]}>
+            <boxGeometry args={[0.045, 0.022, 0.035]} />
+            <meshLambertMaterial color={topColor} />
+          </mesh>
+          <mesh position={[0.055, 0.38, 0.035]} rotation={[0.3, 0, 0.15]}>
+            <boxGeometry args={[0.045, 0.022, 0.035]} />
+            <meshLambertMaterial color={topColor} />
+          </mesh>
+        </>
+      ) : null}
+      {topStyle === "sweater" ? (
+        <>
+          <mesh position={[0, 0.35, -0.045]}>
+            <boxGeometry args={[0.17, 0.1, 0.03]} />
+            <meshLambertMaterial color={topColor} />
+          </mesh>
+          <mesh position={[0, 0.38, 0]}>
+            <boxGeometry args={[0.09, 0.025, 0.08]} />
+            <meshLambertMaterial color={cuffColor} />
+          </mesh>
+          <mesh position={[0, 0.22, 0.056]}>
+            <boxGeometry args={[0.11, 0.03, 0.012]} />
+            <meshLambertMaterial color={cuffColor} />
+          </mesh>
+        </>
+      ) : null}
+      {/* ── Watch on left wrist ── */}
+      {showWatch ? (
+        <mesh position={[0.12, 0.12, 0.018]}>
+          <boxGeometry args={[0.035, 0.015, 0.035]} />
+          <meshLambertMaterial color="#334155" />
+        </mesh>
+      ) : null}
+      {/* ── Scarf ── */}
+      {showScarf ? (
+        <>
+          <mesh position={[0, 0.38, 0.025]}>
+            <boxGeometry args={[0.15, 0.035, 0.09]} />
+            <meshLambertMaterial color="#dc2626" />
+          </mesh>
+          <mesh position={[0.035, 0.34, 0.055]}>
+            <boxGeometry args={[0.035, 0.07, 0.025]} />
+            <meshLambertMaterial color="#dc2626" />
+          </mesh>
+        </>
+      ) : null}
+      <group ref={rightArmRef} position={[-0.12, 0.28, 0]}>
+        {hasSleeves ? (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+            <meshLambertMaterial color={sleeveColor} />
+          </mesh>
+        ) : (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.055, 0.16, 0.055]} />
+            <meshLambertMaterial color={skin} />
+          </mesh>
+        )}
+        {(topStyle === "hoodie" || topStyle === "sweater") ? (
           <mesh position={[0, -0.145, 0]}>
             <boxGeometry args={[0.064, 0.03, 0.064]} />
             <meshLambertMaterial color={cuffColor} />
@@ -1104,11 +1210,18 @@ export const AgentModel = memo(function AgentModel({
         </group>
       </group>
       <group ref={leftArmRef} position={[0.12, 0.28, 0]}>
-        <mesh position={[0, -0.08, 0]}>
-          <boxGeometry args={[0.06, 0.16, 0.06]} />
-          <meshLambertMaterial color={sleeveColor} />
-        </mesh>
-        {topStyle === "hoodie" ? (
+        {hasSleeves ? (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+            <meshLambertMaterial color={sleeveColor} />
+          </mesh>
+        ) : (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.055, 0.16, 0.055]} />
+            <meshLambertMaterial color={skin} />
+          </mesh>
+        )}
+        {(topStyle === "hoodie" || topStyle === "sweater") ? (
           <mesh position={[0, -0.145, 0]}>
             <boxGeometry args={[0.064, 0.03, 0.064]} />
             <meshLambertMaterial color={cuffColor} />
@@ -1182,6 +1295,76 @@ export const AgentModel = memo(function AgentModel({
           </mesh>
         </>
       ) : null}
+      {hairStyle === "buzz" ? (
+        <mesh position={[0, 0.545, 0]}>
+          <boxGeometry args={[0.165, 0.018, 0.145]} />
+          <meshLambertMaterial color={hairColor} />
+        </mesh>
+      ) : null}
+      {hairStyle === "long" ? (
+        <>
+          <mesh position={[0, 0.555, 0]}>
+            <boxGeometry args={[0.18, 0.04, 0.155]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[-0.085, 0.46, -0.01]}>
+            <boxGeometry args={[0.035, 0.14, 0.11]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0.085, 0.46, -0.01]}>
+            <boxGeometry args={[0.035, 0.14, 0.11]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.44, -0.065]}>
+            <boxGeometry args={[0.15, 0.16, 0.025]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {hairStyle === "curly" ? (
+        <>
+          <mesh position={[0, 0.57, 0]}>
+            <boxGeometry args={[0.2, 0.07, 0.18]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.53, 0]}>
+            <boxGeometry args={[0.19, 0.035, 0.17]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {hairStyle === "mohawk" ? (
+        <>
+          <mesh position={[0, 0.55, 0]}>
+            <boxGeometry args={[0.16, 0.025, 0.13]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.61, 0.008]}>
+            <boxGeometry args={[0.035, 0.09, 0.11]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.645, 0.008]}>
+            <boxGeometry args={[0.03, 0.035, 0.07]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {hairStyle === "ponytail" ? (
+        <>
+          <mesh position={[0, 0.555, 0]}>
+            <boxGeometry args={[0.17, 0.04, 0.14]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.52, -0.085]}>
+            <boxGeometry args={[0.055, 0.035, 0.035]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.45, -0.095]}>
+            <boxGeometry args={[0.045, 0.1, 0.035]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
       {hatStyle === "cap" ? (
         <>
           <mesh position={[0, 0.59, 0]}>
@@ -1199,6 +1382,60 @@ export const AgentModel = memo(function AgentModel({
           <boxGeometry args={[0.18, 0.06, 0.16]} />
           <meshLambertMaterial color={accessoryColor} />
         </mesh>
+      ) : null}
+      {hatStyle === "fedora" ? (
+        <>
+          <mesh position={[0, 0.585, 0]}>
+            <boxGeometry args={[0.24, 0.012, 0.2]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          <mesh position={[0, 0.615, 0]}>
+            <boxGeometry args={[0.16, 0.055, 0.13]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          <mesh position={[0, 0.595, 0.001]}>
+            <boxGeometry args={[0.162, 0.012, 0.132]} />
+            <meshLambertMaterial color="#1a1a1a" />
+          </mesh>
+        </>
+      ) : null}
+      {hatStyle === "headband" ? (
+        <mesh position={[0, 0.55, 0]}>
+          <boxGeometry args={[0.175, 0.022, 0.155]} />
+          <meshLambertMaterial color={accessoryColor} />
+        </mesh>
+      ) : null}
+      {hatStyle === "bandana" ? (
+        <>
+          <mesh position={[0, 0.56, 0]}>
+            <boxGeometry args={[0.175, 0.03, 0.155]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          <mesh position={[0, 0.55, -0.08]}>
+            <boxGeometry args={[0.055, 0.025, 0.025]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          <mesh position={[0.018, 0.53, -0.085]}>
+            <boxGeometry args={[0.022, 0.045, 0.018]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+        </>
+      ) : null}
+      {hatStyle === "tophat" ? (
+        <>
+          <mesh position={[0, 0.585, 0]}>
+            <boxGeometry args={[0.2, 0.012, 0.18]} />
+            <meshLambertMaterial color="#1a1a2e" />
+          </mesh>
+          <mesh position={[0, 0.655, 0]}>
+            <boxGeometry args={[0.14, 0.11, 0.12]} />
+            <meshLambertMaterial color="#1a1a2e" />
+          </mesh>
+          <mesh position={[0, 0.6, 0.001]}>
+            <boxGeometry args={[0.142, 0.012, 0.122]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+        </>
       ) : null}
       {showHeadset ? (
         <>
