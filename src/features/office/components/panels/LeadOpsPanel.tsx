@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Bot,
   Building2,
@@ -44,6 +44,7 @@ import {
   generateLeadInsights,
   bulkGenerateInsights,
   pollBulkInsightJob,
+  getActiveInsightJob,
   sendSingleLeadEmail,
   primeLeadChat,
   primeLeadGenerationJobChat,
@@ -148,6 +149,8 @@ export function LeadOpsPanel({
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
   const [bulkResult, setBulkResult] = useState<BulkGenerateInsightsResult | null>(null);
+  const [bulkJobId, setBulkJobId] = useState<string | null>(null);
+  const bulkPollRef = useRef(false);
 
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
@@ -459,6 +462,75 @@ export function LeadOpsPanel({
     }
   }, [selectedLeadId, selectedAiProvider]);
 
+  // On mount, check backend for an active bulk insight job and resume polling
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const active = await getActiveInsightJob(companyId);
+        if (cancelled || !active || !active.jobId) return;
+        setBulkJobId(active.jobId);
+        setBulkGenerating(true);
+        setBulkProgress({ current: active.processed, total: active.total });
+        setBulkResult(active);
+      } catch { /* ignore */ }
+    };
+    void check();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId]);
+
+  // Polling effect — runs whenever bulkJobId is set
+  useEffect(() => {
+    if (!bulkJobId) return;
+    if (bulkPollRef.current) return;
+    bulkPollRef.current = true;
+    let cancelled = false;
+
+    const doPoll = async () => {
+      for (let i = 0; i < 600; i++) {
+        if (cancelled) break;
+        await new Promise((r) => setTimeout(r, 2000));
+        if (cancelled) break;
+        try {
+          const status = await pollBulkInsightJob(bulkJobId);
+          if (cancelled) break;
+          setBulkProgress({ current: status.processed, total: status.total });
+          setBulkResult(status);
+
+          if (status.status === "completed" || status.status === "failed") {
+            if (status.errorMessage) setError(status.errorMessage);
+            // Refresh lead list
+            if (selectedJobId) {
+              try {
+                const refreshed = await listLeadsByJob(selectedJobId);
+                if (!cancelled) setJobLeads(refreshed);
+              } catch { /* ignore */ }
+            } else if (companyId) {
+              try {
+                const refreshed = await listLeadsByCompany(companyId);
+                if (!cancelled) setJobLeads(refreshed);
+              } catch { /* ignore */ }
+            }
+            if (!cancelled) {
+              setBulkGenerating(false);
+              setBulkJobId(null);
+            }
+            break;
+          }
+        } catch {
+          // Polling error — keep trying
+        }
+      }
+      bulkPollRef.current = false;
+    };
+
+    void doPoll();
+    return () => { cancelled = true; bulkPollRef.current = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkJobId]);
+
   const handleBulkGenerateInsights = useCallback(async () => {
     if (!companyId || !selectedJob) return;
     setBulkGenerating(true);
@@ -466,7 +538,6 @@ export function LeadOpsPanel({
     setBulkProgress({ current: 0, total: jobLeads.length || selectedJob.totalInserted || 0 });
     setError(null);
     try {
-      // 1. Queue the job — returns immediately with jobId
       const queued = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: true, preferredModel: selectedAiProvider });
       const jobId = queued.jobId;
       if (!jobId) {
@@ -480,34 +551,9 @@ export function LeadOpsPanel({
       }
 
       setBulkProgress({ current: 0, total: queued.total });
-
-      // 2. Poll for progress every 2 seconds
-      const poll = async (): Promise<void> => {
-        for (let i = 0; i < 600; i++) {
-          await new Promise((r) => setTimeout(r, 2000));
-          try {
-            const status = await pollBulkInsightJob(jobId);
-            setBulkProgress({ current: status.processed, total: status.total });
-            setBulkResult(status);
-
-            if (status.status === "completed" || status.status === "failed") {
-              if (status.errorMessage) setError(status.errorMessage);
-              // Refresh lead list
-              const refreshed = await listLeadsByJob(selectedJob.id);
-              setJobLeads(refreshed);
-              return;
-            }
-          } catch {
-            // Polling error — keep trying
-          }
-        }
-        setError("Bulk generation is still running in the background. Refresh the page to see updated leads.");
-      };
-
-      await poll();
+      setBulkJobId(jobId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to start bulk insight generation.");
-    } finally {
       setBulkGenerating(false);
     }
   }, [companyId, selectedJob, jobLeads.length, selectedAiProvider]);

@@ -626,6 +626,24 @@ export const pollBulkInsightJob = async (jobId: string): Promise<BulkGenerateIns
   return requestBackend<BulkGenerateInsightsResult>(`/api/Leads/bulk-generate-insights/${encodeURIComponent(jobId)}`);
 };
 
+/** Check if there's an active bulk insight job for this company (queued or running) */
+export const getActiveInsightJob = async (companyId: number): Promise<BulkGenerateInsightsResult | null> => {
+  try {
+    const response = await fetch(`${getOkestriaApiBaseUrl()}/api/Leads/active-insight-job/${companyId}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(getBrowserAccessToken() ? { Authorization: `Bearer ${getBrowserAccessToken()}` } : {}),
+      },
+      cache: "no-store",
+    });
+    if (response.status === 204 || !response.ok) return null;
+    const data = await response.json();
+    return data as BulkGenerateInsightsResult;
+  } catch {
+    return null;
+  }
+};
+
 export const listLeadEmailBatchJobs = async (companyId?: number | null, sourceLeadJobId?: number | null): Promise<LeadEmailBatchJob[]> => {
   const resolvedCompanyId = companyId ?? getBrowserCompanyId();
   const params = new URLSearchParams();
