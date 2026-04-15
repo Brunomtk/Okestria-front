@@ -351,207 +351,234 @@ export const createStarterOfficeMap = (params: {
   height: number;
 }): OfficeMap => {
   const base = createEmptyOfficeMap(params);
-
-  // ── Zone definitions (aligned with the retro-office 3D layout) ──
-
-  const meetingZone: OfficeZone = {
-    id: "zone_meeting",
-    type: "meeting_room",
-    name: "Meeting Room",
-    shape: {
-      points: [
-        { x: 40, y: 20 },
-        { x: 320, y: 20 },
-        { x: 320, y: 220 },
-        { x: 40, y: 220 },
-      ],
-    },
-    capacity: 5,
-  };
-
   const hallwayZone: OfficeZone = {
     id: "zone_hallway",
     type: "hallway",
     name: "Hallway",
     shape: {
       points: [
-        { x: 320, y: 20 },
-        { x: 760, y: 20 },
-        { x: 760, y: 240 },
-        { x: 320, y: 240 },
+        { x: 80, y: 120 },
+        { x: 1500, y: 120 },
+        { x: 1500, y: 230 },
+        { x: 80, y: 230 },
       ],
     },
   };
-
-  const coffeeZone: OfficeZone = {
-    id: "zone_coffee",
-    type: "coffee_area",
-    name: "Kitchen & Break",
-    shape: {
-      points: [
-        { x: 760, y: 20 },
-        { x: 1070, y: 20 },
-        { x: 1070, y: 280 },
-        { x: 760, y: 280 },
-      ],
-    },
-  };
-
   const deskZone: OfficeZone = {
     id: "zone_desks",
     type: "desk_zone",
-    name: "Workspace",
+    name: "Desk Area",
     shape: {
       points: [
-        { x: 60, y: 260 },
-        { x: 1060, y: 260 },
-        { x: 1060, y: 560 },
-        { x: 60, y: 560 },
+        { x: 120, y: 270 },
+        { x: 980, y: 270 },
+        { x: 980, y: 780 },
+        { x: 120, y: 780 },
       ],
     },
-    capacity: 8,
   };
-
+  const meetingZone: OfficeZone = {
+    id: "zone_meeting",
+    type: "meeting_room",
+    name: "Meeting Room",
+    shape: {
+      points: [
+        { x: 1030, y: 270 },
+        { x: 1480, y: 270 },
+        { x: 1480, y: 540 },
+        { x: 1030, y: 540 },
+      ],
+    },
+  };
   const loungeZone: OfficeZone = {
     id: "zone_lounge",
     type: "lounge",
-    name: "Recreation",
+    name: "Lounge",
     shape: {
       points: [
-        { x: 400, y: 570 },
-        { x: 1060, y: 570 },
-        { x: 1060, y: 720 },
-        { x: 400, y: 720 },
+        { x: 1030, y: 560 },
+        { x: 1480, y: 560 },
+        { x: 1480, y: 780 },
+        { x: 1030, y: 780 },
       ],
     },
   };
-
+  const coffeeZone: OfficeZone = {
+    id: "zone_coffee",
+    type: "coffee_area",
+    name: "Coffee",
+    shape: {
+      points: [
+        { x: 80, y: 20 },
+        { x: 330, y: 20 },
+        { x: 330, y: 110 },
+        { x: 80, y: 110 },
+      ],
+    },
+  };
   const gameZone: OfficeZone = {
     id: "zone_game",
     type: "game_room",
     name: "Game Room",
     shape: {
       points: [
-        { x: 1080, y: 20 },
-        { x: 1500, y: 20 },
-        { x: 1500, y: 350 },
-        { x: 1080, y: 350 },
+        { x: 1340, y: 20 },
+        { x: 1540, y: 20 },
+        { x: 1540, y: 110 },
+        { x: 1340, y: 110 },
       ],
     },
   };
 
-  // ── Objects (Phaser 2D layer – kept lean; 3D retro-office is primary) ──
-
-  const obj = (
-    id: string,
-    assetId: string,
-    layerId: OfficeLayerId,
-    x: number,
-    y: number,
-    zIndex: number,
-    tags: string[] = [],
-  ): OfficeMapObject => ({
-    id,
-    assetId,
-    layerId,
-    x,
-    y,
-    rotation: 0,
-    flipX: false,
-    flipY: false,
-    zIndex,
-    tags,
-  });
-
   return {
     ...base,
     objects: [
-      // Floor
-      obj("floor_a", "floor_tile", "floor", 540, 400, 10),
-      // Desks – row 1 (4 desks, 200 px spacing)
-      obj("desk_a", "desk_modern", "furniture", 140, 340, 200, ["desk"]),
-      obj("desk_b", "desk_modern", "furniture", 340, 340, 201, ["desk"]),
-      obj("desk_c", "desk_modern", "furniture", 540, 340, 202, ["desk"]),
-      obj("desk_d", "desk_modern", "furniture", 740, 340, 203, ["desk"]),
-      // Desks – row 2
-      obj("desk_e", "desk_modern", "furniture", 140, 520, 204, ["desk"]),
-      obj("desk_f", "desk_modern", "furniture", 340, 520, 205, ["desk"]),
-      obj("desk_g", "desk_modern", "furniture", 540, 520, 206, ["desk"]),
-      obj("desk_h", "desk_modern", "furniture", 740, 520, 207, ["desk"]),
-      // Meeting table
-      obj("meeting_table", "meeting_table", "furniture", 180, 120, 240, ["meeting"]),
-      // Kitchen / break
-      obj("coffee_bar", "coffee_station", "decor", 880, 50, 260, ["coffee"]),
-      // Recreation
-      obj("arcade_a", "arcade_machine", "decor", 1300, 180, 261, ["arcade"]),
-      obj("tv_lounge", "tv_wall", "decor", 660, 620, 262, ["tv"]),
+      {
+        id: "floor_a",
+        assetId: "floor_tile",
+        layerId: "floor",
+        x: 420,
+        y: 350,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 10,
+        tags: [],
+      },
+      {
+        id: "desk_a",
+        assetId: "desk_modern",
+        layerId: "furniture",
+        x: 260,
+        y: 350,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 200,
+        tags: ["desk"],
+      },
+      {
+        id: "desk_b",
+        assetId: "desk_modern",
+        layerId: "furniture",
+        x: 480,
+        y: 350,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 201,
+        tags: ["desk"],
+      },
+      {
+        id: "desk_c",
+        assetId: "desk_modern",
+        layerId: "furniture",
+        x: 700,
+        y: 350,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 202,
+        tags: ["desk"],
+      },
+      {
+        id: "meeting_table",
+        assetId: "meeting_table",
+        layerId: "furniture",
+        x: 1240,
+        y: 390,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 240,
+        tags: ["meeting"],
+      },
+      {
+        id: "tv_lounge",
+        assetId: "tv_wall",
+        layerId: "decor",
+        x: 1260,
+        y: 610,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 260,
+        tags: ["tv"],
+      },
+      {
+        id: "arcade_a",
+        assetId: "arcade_machine",
+        layerId: "decor",
+        x: 1440,
+        y: 70,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 261,
+        tags: ["arcade"],
+      },
+      {
+        id: "coffee_bar",
+        assetId: "coffee_station",
+        layerId: "decor",
+        x: 210,
+        y: 70,
+        rotation: 0,
+        flipX: false,
+        flipY: false,
+        zIndex: 262,
+        tags: ["coffee"],
+      },
     ],
     zones: [
-      meetingZone,
       hallwayZone,
-      coffeeZone,
       deskZone,
+      meetingZone,
       loungeZone,
+      coffeeZone,
       gameZone,
     ],
     lights: [
-      // Workspace ceiling – large radius covers both desk rows
       {
         id: "light_ceiling_desks",
         preset: "ceiling_lamp",
         animationPreset: "soft_flicker",
-        x: 440,
-        y: 420,
-        radius: 320,
-        baseIntensity: 0.45,
+        x: 520,
+        y: 220,
+        radius: 240,
+        baseIntensity: 0.42,
         enabled: true,
-        flicker: { speed: 1.0, amplitude: 0.06 },
       },
-      // Meeting room spotlight
       {
         id: "light_meeting",
         preset: "meeting_spotlight",
         animationPreset: "breathing_pulse",
-        x: 180,
-        y: 120,
-        radius: 160,
+        x: 1240,
+        y: 320,
+        radius: 180,
         baseIntensity: 0.38,
         enabled: true,
         roomId: "zone_meeting",
       },
-      // Kitchen warm glow
-      {
-        id: "light_kitchen",
-        preset: "ceiling_lamp",
-        animationPreset: "steady",
-        x: 900,
-        y: 140,
-        radius: 180,
-        baseIntensity: 0.32,
-        enabled: true,
-        roomId: "zone_coffee",
-      },
-      // Recreation / TV glow
       {
         id: "light_tv",
         preset: "tv_glow",
         animationPreset: "steady",
-        x: 660,
-        y: 630,
-        radius: 140,
-        baseIntensity: 0.28,
+        x: 1260,
+        y: 610,
+        radius: 130,
+        baseIntensity: 0.3,
         enabled: true,
         binding: { zoneId: "zone_lounge", state: "idle" },
       },
-      // Error indicator (bound to agent error state)
       {
         id: "light_error_demo",
         preset: "emergency_error",
         animationPreset: "error_strobe_subtle",
-        x: 140,
-        y: 340,
-        radius: 80,
-        baseIntensity: 0.2,
+        x: 260,
+        y: 320,
+        radius: 90,
+        baseIntensity: 0.22,
         enabled: true,
         binding: { state: "error" },
       },
@@ -562,31 +589,23 @@ export const createStarterOfficeMap = (params: {
         preset: "coffee_steam",
         zoneId: "zone_coffee",
         maxParticles: 16,
-        spawnRate: 0.14,
+        spawnRate: 0.16,
         enabled: true,
       },
       {
         id: "emit_window",
         preset: "window_dust",
         zoneId: "zone_hallway",
-        maxParticles: 12,
-        spawnRate: 0.06,
+        maxParticles: 14,
+        spawnRate: 0.08,
         enabled: true,
       },
       {
         id: "emit_game",
         preset: "game_sparkle",
         zoneId: "zone_game",
-        maxParticles: 10,
-        spawnRate: 0.1,
-        enabled: true,
-      },
-      {
-        id: "emit_plants",
-        preset: "plant_pollen",
-        zoneId: "zone_lounge",
-        maxParticles: 8,
-        spawnRate: 0.05,
+        maxParticles: 12,
+        spawnRate: 0.12,
         enabled: true,
       },
     ],
@@ -594,44 +613,32 @@ export const createStarterOfficeMap = (params: {
       {
         id: "point_tv_watch",
         kind: "tv_watch",
-        x: 600,
+        x: 1190,
         y: 650,
         zoneId: "zone_lounge",
-        facingDegrees: 0,
         tags: [],
       },
       {
         id: "point_arcade_stand",
         kind: "arcade_stand",
-        x: 1250,
-        y: 200,
+        x: 1390,
+        y: 90,
         zoneId: "zone_game",
-        facingDegrees: 90,
         tags: [],
       },
       {
         id: "point_coffee",
         kind: "window_stand",
-        x: 880,
+        x: 200,
         y: 100,
         zoneId: "zone_coffee",
-        facingDegrees: 0,
-        tags: [],
-      },
-      {
-        id: "point_meeting_sit",
-        kind: "couch_sit",
-        x: 180,
-        y: 140,
-        zoneId: "zone_meeting",
-        facingDegrees: 180,
         tags: [],
       },
     ],
     deskAssignments: {
       main: {
         deskObjectId: "desk_a",
-        seatAnchor: { x: 140, y: 365 },
+        seatAnchor: { x: 260, y: 375 },
         facingDegrees: 180,
       },
     },

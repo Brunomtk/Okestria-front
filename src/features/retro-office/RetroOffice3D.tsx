@@ -702,15 +702,12 @@ function CameraRig({
   target,
   position,
   zoom,
-  orbitRef,
 }: {
   target: [number, number, number];
   position?: [number, number, number];
   zoom?: number;
-  orbitRef?: RefObject<{ target: THREE.Vector3; update: () => void } | null>;
 }) {
   const { camera } = useThree();
-  const appliedRef = useRef(false);
   useLayoutEffect(() => {
     if (position) {
       camera.position.set(...position);
@@ -720,19 +717,7 @@ function CameraRig({
     }
     camera.lookAt(...target);
     camera.updateProjectionMatrix();
-    appliedRef.current = false;
   }, [camera, position, target, zoom]);
-
-  /* Sync OrbitControls target once it is available (ref may be null on first layout). */
-  useFrame(() => {
-    if (appliedRef.current) return;
-    const orbit = orbitRef?.current;
-    if (!orbit) return;
-    orbit.target.set(...target);
-    orbit.update();
-    appliedRef.current = true;
-  });
-
   return null;
 }
 
@@ -1156,29 +1141,52 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
   );
 });
 
-/**
- * Fixed-DPR controller — sets a stable DPR once on mount and only lowers it
- * when the tab is hidden. No per-frame adjustments, so zero stutter from
- * renderer resizes mid-interaction.
- */
 function AdaptiveDprController() {
-  const { setDpr } = useThree();
+  const { gl, setDpr } = useThree();
+  const currentDprRef = useRef(1);
+  const frameCounterRef = useRef(0);
+  const avgDeltaRef = useRef(1 / 60);
 
   useEffect(() => {
-    const fixedDpr = Math.min(window.devicePixelRatio || 1, 0.9);
-    setDpr(fixedDpr);
-
+    const initialDpr = Math.min(window.devicePixelRatio || 1, 0.95);
+    currentDprRef.current = initialDpr;
+    setDpr(initialDpr);
     const handleVisibilityChange = () => {
-      setDpr(
-        document.visibilityState === "visible"
-          ? Math.min(window.devicePixelRatio || 1, 0.9)
-          : 0.6,
-      );
+      if (document.visibilityState !== "visible") {
+        currentDprRef.current = 0.72;
+        setDpr(0.72);
+        return;
+      }
+      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.95);
+      currentDprRef.current = restoredDpr;
+      setDpr(restoredDpr);
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
+    return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [setDpr]);
+
+  useFrame((_, delta) => {
+    if (document.visibilityState !== "visible") return;
+    avgDeltaRef.current = avgDeltaRef.current * 0.92 + delta * 0.08;
+    frameCounterRef.current += 1;
+    if (frameCounterRef.current < 24) return;
+    frameCounterRef.current = 0;
+
+    const maxDpr = Math.min(window.devicePixelRatio || 1, 0.95);
+    const minDpr = 0.55;
+    let nextDpr = currentDprRef.current;
+    if (avgDeltaRef.current > 1 / 50) {
+      nextDpr = Math.max(minDpr, currentDprRef.current - 0.1);
+    } else if (avgDeltaRef.current < 1 / 64) {
+      nextDpr = Math.min(maxDpr, currentDprRef.current + 0.03);
+    }
+    if (Math.abs(nextDpr - currentDprRef.current) < 0.025) return;
+    currentDprRef.current = nextDpr;
+    setDpr(Number(nextDpr.toFixed(2)));
+    gl.info.reset();
+  });
 
   return null;
 }
@@ -1391,7 +1399,6 @@ export function RetroOffice3D({
   onAgentChatSelect,
   squads = [],
   onSquadOps,
-  onSquadDetail,
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
@@ -1486,7 +1493,6 @@ export function RetroOffice3D({
   onAgentChatSelect?: (agentId: string) => void;
   squads?: SquadSummary[];
   onSquadOps?: (squadId: string) => void;
-  onSquadDetail?: (squadId: string) => void;
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
@@ -1622,8 +1628,6 @@ export function RetroOffice3D({
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [hoverUid, setHoverUid] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState>({ kind: "idle" });
-  const dragRef = useRef<DragState>(drag);
-  dragRef.current = drag;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activePaletteCategory, setActivePaletteCategory] = useState<string>("office");
   const [ghostPos, setGhostPos] = useState<[number, number, number] | null>(
@@ -1711,7 +1715,6 @@ export function RetroOffice3D({
   const prevGithubViewRef = useRef<string | null>(null);
   const prevQaViewRef = useRef<string | null>(null);
   const currentCameraSnapshotRef = useRef<CameraPreset | null>(null);
-  const cameraInstantRef = useRef(false);
   const preservedOfficeCameraRef = useRef<CameraPreset | null>(null);
   const previousFocusedViewActiveRef = useRef(false);
   const initialCameraStorageKeyRef = useRef<string | null>(null);
@@ -1762,16 +1765,13 @@ export function RetroOffice3D({
     const preservedCamera = preservedOfficeCameraRef.current;
     if (preservedCamera) {
       cameraPresetRef.current = preservedCamera;
-      cameraInstantRef.current = true;
       persistCameraPreset(cameraPersistenceKey, preservedCamera);
       initialPersistedCameraRef.current = preservedCamera;
       lastPersistedCameraJsonRef.current = JSON.stringify(preservedCamera);
-      preservedOfficeCameraRef.current = null; // clear after consuming
       return;
     }
     if (currentCameraSnapshotRef.current) {
       cameraPresetRef.current = currentCameraSnapshotRef.current;
-      cameraInstantRef.current = true;
       persistCameraPreset(cameraPersistenceKey, currentCameraSnapshotRef.current);
       initialPersistedCameraRef.current = currentCameraSnapshotRef.current;
       lastPersistedCameraJsonRef.current = JSON.stringify(currentCameraSnapshotRef.current);
@@ -2527,21 +2527,6 @@ export function RetroOffice3D({
       window.clearInterval(interval);
     };
   }, [cameraPersistenceKey, focusedOverlayViewActive, followAgentId]);
-
-  /* Save camera on F5 / tab close so it restores on next visit. */
-  useEffect(() => {
-    const key = cameraPersistenceKey;
-    const handleBeforeUnload = () => {
-      const snapshot = currentCameraSnapshotRef.current;
-      if (snapshot) {
-        persistCameraPreset(key, snapshot);
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [cameraPersistenceKey]);
 
   const closeManualPhoneBoothView = useCallback(() => {
     activePhoneCallFlowKeyRef.current = null;
@@ -3933,12 +3918,6 @@ export function RetroOffice3D({
     [drag, furniture, wallDrawStart, worldToCanvas],
   );
 
-  // Stable handler — avoids new closure on every render which would cause
-  // the entire Canvas tree to re-mount and stutter.
-  const handleCanvasPointerUp = useCallback(() => {
-    if (dragRef.current.kind === "moving") setDrag({ kind: "idle" });
-  }, []);
-
   const startPlacing = useCallback((type: string) => {
     setDrag({ kind: "placing", itemType: type });
     setSelectedUid(null);
@@ -4334,14 +4313,15 @@ export function RetroOffice3D({
               preserveDrawingBuffer: false,
             }}
             style={{ width: "100%", height: "100%" }}
-            onPointerUp={handleCanvasPointerUp}
+            onPointerUp={() => {
+              if (drag.kind === "moving") setDrag({ kind: "idle" });
+            }}
           >
             {/* Ensure camera looks at origin after mount. */}
             <CameraRig
               target={cameraTarget}
               position={cameraPosition}
               zoom={cameraZoom}
-              orbitRef={orbitRef}
             />
             <AdaptiveDprController />
 
@@ -4350,7 +4330,7 @@ export function RetroOffice3D({
               ref={orbitRef}
               enabled={followAgentId === null && (!editMode || spaceDown)}
               enableDamping
-              dampingFactor={0.18}
+              dampingFactor={0.06}
               rotateSpeed={0.8}
               zoomSpeed={1.05}
               panSpeed={0.85}
@@ -4371,13 +4351,6 @@ export function RetroOffice3D({
             {/* New Idea 2: Camera preset animator. */}
             <CameraPresetAnimator
               presetRef={cameraPresetRef}
-              orbitRef={orbitRef}
-              instantRef={cameraInstantRef}
-            />
-
-            {/* Camera snapshot tracker — captures camera state every frame for restoration. */}
-            <CameraSnapshotTracker
-              snapshotRef={currentCameraSnapshotRef}
               orbitRef={orbitRef}
             />
 
@@ -5669,26 +5642,20 @@ export function RetroOffice3D({
               </div>
             ) : (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-                {squads.map((squad) => {
-                  const leaderName = squad.members?.find((m) => m.isLeader)?.name;
-                  return (
-                    <button
-                      key={String(squad.id)}
-                      type="button"
-                      onClick={() => {
-                        (onSquadDetail ?? onSquadOps)?.(String(squad.id));
-                        setAgentRosterOpen(false);
-                      }}
-                      className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
-                    >
-                      <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">
-                        <span>{squad.members?.length ?? 0} members</span>
-                        {leaderName && <span className="text-amber-300/50">· {leaderName}</span>}
-                      </div>
-                    </button>
-                  );
-                })}
+                {squads.map((squad) => (
+                  <button
+                    key={String(squad.id)}
+                    type="button"
+                    onClick={() => {
+                      onSquadOps?.(String(squad.id));
+                      setAgentRosterOpen(false);
+                    }}
+                    className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
+                  >
+                    <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
+                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{squad.members?.length ?? 0} members</div>
+                  </button>
+                ))}
                 {squads.length === 0 ? <div className="rounded-xl border border-amber-500/18 bg-[#17120a]/70 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
               </div>
             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Bot,
   Building2,
@@ -25,7 +25,6 @@ import {
   Sparkles,
   Star,
   Target,
-  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -43,15 +42,9 @@ import {
   listLeadsByJob,
   getLeadById,
   generateLeadInsights,
-  bulkGenerateInsights,
-  pollBulkInsightJob,
-  getActiveInsightJob,
   sendSingleLeadEmail,
-  deleteLeads,
-  deleteLeadGenerationJob,
   primeLeadChat,
   primeLeadGenerationJobChat,
-  type BulkGenerateInsightsResult,
   type LeadChatPrimeResult,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
@@ -93,26 +86,6 @@ const formatDateTime = (value?: string | null) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "-";
   return parsed.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  queued: "Queued",
-  starting: "Starting…",
-  "apify-running": "Collecting leads from Google Maps…",
-  normalizing: "Normalizing data…",
-  "enriching-emails": "Enriching emails from websites…",
-  filtering: "Filtering leads without email…",
-  persisting: "Saving leads & generating insights…",
-  finalizing: "Finalizing…",
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  "provider-timeout": "Provider timed out",
-};
-
-const friendlyStage = (stage?: string | null) => {
-  if (!stage) return "Queued";
-  return STAGE_LABELS[stage.toLowerCase()] || stage;
 };
 
 type LeadAgentOption = {
@@ -169,11 +142,6 @@ export function LeadOpsPanel({
   const [sendingBatch, setSendingBatch] = useState(false);
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
   const [chatPriming, setChatPriming] = useState<number | "job" | null>(null);
-  const [bulkGenerating, setBulkGenerating] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
-  const [bulkResult, setBulkResult] = useState<BulkGenerateInsightsResult | null>(null);
-  const [bulkJobId, setBulkJobId] = useState<string | null>(null);
-  const bulkPollRef = useRef(false);
 
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
@@ -182,15 +150,6 @@ export function LeadOpsPanel({
   // Company branding
   const [companyBrandName, setCompanyBrandName] = useState(companyName?.trim() || "");
   const [companyBrandEmail, setCompanyBrandEmail] = useState("");
-
-  // AI provider selection — Claude as default
-  const AI_PROVIDERS = [
-    { value: "claude-sonnet-4-20250514", label: "Claude · Sonnet 4" },
-    { value: "claude-haiku-3-5-20241022", label: "Claude · Haiku 3.5" },
-    { value: "gpt-5.4-nano", label: "OpenAI · GPT-5.4 Nano" },
-    { value: "gpt-4.1-mini", label: "OpenAI · GPT-4.1 Mini" },
-  ];
-  const [selectedAiProvider, setSelectedAiProvider] = useState(AI_PROVIDERS[0].value);
 
   // Email form fields
   const [emailSenderName, setEmailSenderName] = useState(companyName?.trim() || "");
@@ -454,34 +413,6 @@ export function LeadOpsPanel({
     setJobs((c) => c.map((j) => (j.id === jobId ? { ...j, status: "cancelled", currentStage: "Cancelled" } : j)));
   }, []);
 
-  const handleDeleteJob = useCallback(async (jobId: number) => {
-    if (!confirm("Delete this mission and all its data? This cannot be undone.")) return;
-    try {
-      await deleteLeadGenerationJob(jobId);
-      setJobs((c) => c.filter((j) => j.id !== jobId));
-      if (selectedJobId === jobId) {
-        setSelectedJobId(null);
-        setJobLeads([]);
-      }
-      setModalView("none");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete mission.");
-    }
-  }, [selectedJobId]);
-
-  const handleDeleteLead = useCallback(async (leadId: number) => {
-    if (!confirm("Delete this lead? This cannot be undone.")) return;
-    try {
-      await deleteLeads([leadId]);
-      setJobLeads((c) => c.filter((l) => l.id !== leadId));
-      setSelectedLeadId(null);
-      setSelectedLeadDetail(null);
-      setModalView("lead-vault");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete lead.");
-    }
-  }, []);
-
   const handleOpenLeadVault = useCallback((jobId: number) => {
     setSelectedJobId(jobId);
     setLeadBrowserSearch("");
@@ -500,7 +431,7 @@ export function LeadOpsPanel({
     if (!selectedLeadId) return;
     setGeneratingInsights(true);
     try {
-      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: selectedAiProvider });
+      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: "gpt-5.4-nano" });
       if (updated) {
         setSelectedLeadDetail(updated);
         setJobLeads((c) => c.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
@@ -511,103 +442,7 @@ export function LeadOpsPanel({
     } finally {
       setGeneratingInsights(false);
     }
-  }, [selectedLeadId, selectedAiProvider]);
-
-  // On mount, check backend for an active bulk insight job and resume polling
-  useEffect(() => {
-    if (!companyId) return;
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const active = await getActiveInsightJob(companyId);
-        if (cancelled || !active || !active.jobId) return;
-        setBulkJobId(active.jobId);
-        setBulkGenerating(true);
-        setBulkProgress({ current: active.processed, total: active.total });
-        setBulkResult(active);
-      } catch { /* ignore */ }
-    };
-    void check();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [companyId]);
-
-  // Polling effect — runs whenever bulkJobId is set
-  useEffect(() => {
-    if (!bulkJobId) return;
-    if (bulkPollRef.current) return;
-    bulkPollRef.current = true;
-    let cancelled = false;
-
-    const doPoll = async () => {
-      for (let i = 0; i < 600; i++) {
-        if (cancelled) break;
-        await new Promise((r) => setTimeout(r, 2000));
-        if (cancelled) break;
-        try {
-          const status = await pollBulkInsightJob(bulkJobId);
-          if (cancelled) break;
-          setBulkProgress({ current: status.processed, total: status.total });
-          setBulkResult(status);
-
-          if (status.status === "completed" || status.status === "failed") {
-            if (status.errorMessage) setError(status.errorMessage);
-            // Refresh lead list
-            if (selectedJobId) {
-              try {
-                const refreshed = await listLeadsByJob(selectedJobId);
-                if (!cancelled) setJobLeads(refreshed);
-              } catch { /* ignore */ }
-            } else if (companyId) {
-              try {
-                const refreshed = await listLeadsByCompany(companyId);
-                if (!cancelled) setJobLeads(refreshed);
-              } catch { /* ignore */ }
-            }
-            if (!cancelled) {
-              setBulkGenerating(false);
-              setBulkJobId(null);
-            }
-            break;
-          }
-        } catch {
-          // Polling error — keep trying
-        }
-      }
-      bulkPollRef.current = false;
-    };
-
-    void doPoll();
-    return () => { cancelled = true; bulkPollRef.current = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bulkJobId]);
-
-  const handleBulkGenerateInsights = useCallback(async () => {
-    if (!companyId || !selectedJob) return;
-    setBulkGenerating(true);
-    setBulkResult(null);
-    setBulkProgress({ current: 0, total: jobLeads.length || selectedJob.totalInserted || 0 });
-    setError(null);
-    try {
-      const queued = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: true, preferredModel: selectedAiProvider });
-      const jobId = queued.jobId;
-      if (!jobId) {
-        // Fallback: old-style synchronous response (no jobId)
-        setBulkResult(queued);
-        setBulkProgress({ current: queued.total, total: queued.total });
-        const refreshed = await listLeadsByJob(selectedJob.id);
-        setJobLeads(refreshed);
-        setBulkGenerating(false);
-        return;
-      }
-
-      setBulkProgress({ current: 0, total: queued.total });
-      setBulkJobId(jobId);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start bulk insight generation.");
-      setBulkGenerating(false);
-    }
-  }, [companyId, selectedJob, jobLeads.length, selectedAiProvider]);
+  }, [selectedLeadId]);
 
   const handleCreateEmailBatch = useCallback(async () => {
     if (!companyId || !selectedJob) return;
@@ -713,7 +548,7 @@ export function LeadOpsPanel({
         replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
         generateInsightsIfMissing: true,
         forceRegenerateInsights: false,
-        preferredModel: selectedAiProvider,
+        preferredModel: "gpt-5.4-nano",
       });
       setError(`Email sent to ${result.toEmail}`);
       setModalView("lead-detail");
@@ -758,53 +593,47 @@ export function LeadOpsPanel({
     const emailHtml = selectedLeadDetail.outreachEmailHtml?.trim() || buildEmailHtml(selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail);
     const subject = buildEmailSubject(selectedLeadDetail, effectiveCompanyName);
     const hasAi = Boolean(selectedLeadDetail.insightsGeneratedWithAi && !selectedLeadDetail.insightsUsedFallback);
-    const isFallback = Boolean(selectedLeadDetail.insightsUsedFallback);
     const needsInsights = !selectedLeadDetail.ptxFit || !selectedLeadDetail.outreachScript || !selectedLeadDetail.outreachEmailHtml;
-    const generationStatus = selectedLeadDetail.insightsGenerationStatus ?? null;
-    const warningMessage = selectedLeadDetail.insightsWarningMessage ?? null;
-    return { owner, fit, product, insight, script, emailHtml, subject, hasAi, isFallback, needsInsights, generationStatus, warningMessage };
+    return { owner, fit, product, insight, script, emailHtml, subject, hasAi, needsInsights };
   }, [selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail]);
 
   return (
     <section className="flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
       {/* Header */}
-      <header className="relative border-b border-white/5 px-5 py-4">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-500/20 to-transparent" />
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Target className="h-4 w-4 text-cyan-400" />
-              <h1 className="text-sm font-semibold text-white">Lead Ops</h1>
-            </div>
-            <p className="mt-1 text-xs text-white/40">Prospecting missions and outreach automation</p>
-          </div>
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 px-5 py-4">
+        <div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setModalView("new-mission")}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 px-4 py-2.5 text-xs font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400/50 transition hover:from-cyan-400 hover:to-cyan-500 hover:shadow-cyan-500/40"
-            >
-              <Plus className="h-4 w-4" />
-              New Mission
-            </button>
-            <button
-              type="button"
-              onClick={() => void refreshJobs()}
-              className="rounded-lg bg-white/5 p-2.5 text-white/50 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-            {selectedLeadAgent?.gatewayAgentId && (
-              <button
-                type="button"
-                onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId!)}
-                className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/60 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
-              >
-                <Bot className="h-3.5 w-3.5" />
-                Open Agent
-              </button>
-            )}
+            <Target className="h-4 w-4 text-cyan-400" />
+            <h1 className="text-sm font-semibold text-white">Lead Ops</h1>
           </div>
+          <p className="mt-1 text-xs text-white/40">Prospecting missions and outreach automation</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setModalView("new-mission")}
+            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New Mission
+          </button>
+          <button
+            type="button"
+            onClick={() => void refreshJobs()}
+            className="rounded-lg bg-white/5 p-2 text-white/50 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </button>
+          {selectedLeadAgent?.gatewayAgentId && (
+            <button
+              type="button"
+              onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId!)}
+              className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/60 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+            >
+              <Bot className="h-3.5 w-3.5" />
+              Open Agent
+            </button>
+          )}
         </div>
       </header>
 
@@ -821,22 +650,14 @@ export function LeadOpsPanel({
 
           {/* Error */}
           {error && (
-            <div className="flex items-center justify-between rounded-lg bg-rose-500/10 px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/20">
-              <span>{error}</span>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                className="ml-3 text-rose-400 hover:text-rose-200"
-              >
-                <X className="h-4 w-4" />
-              </button>
+            <div className="rounded-lg bg-rose-500/10 px-4 py-3 text-sm text-rose-300 ring-1 ring-rose-500/20">
+              {error}
             </div>
           )}
 
           {/* Selected Mission */}
           {selectedJob && (
-            <div className="relative rounded-2xl bg-gradient-to-br from-slate-900/80 to-slate-950 p-5 ring-1 ring-white/5">
-              <div className="absolute inset-y-0 left-0 w-1 rounded-l-2xl bg-gradient-to-b from-cyan-500 to-emerald-500" />
+            <div className="rounded-2xl bg-gradient-to-br from-slate-900/80 to-slate-950 p-5 ring-1 ring-white/5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-3">
@@ -845,7 +666,7 @@ export function LeadOpsPanel({
                   </div>
                   <p className="mt-2 text-sm text-white/50">{selectedJob.prompt || DEFAULT_PROMPT}</p>
                 </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleOpenLeadVault(selectedJob.id)}
@@ -862,26 +683,6 @@ export function LeadOpsPanel({
                     <Mail className="h-3.5 w-3.5" />
                     Send Batch
                   </button>
-                  <select
-                    value={selectedAiProvider}
-                    onChange={(e) => setSelectedAiProvider(e.target.value)}
-                    className="rounded-lg bg-white/5 px-2.5 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
-                  >
-                    {AI_PROVIDERS.map((p) => (
-                      <option key={p.value} value={p.value} className="bg-slate-900 text-slate-200">
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void handleBulkGenerateInsights()}
-                    disabled={bulkGenerating}
-                    className="inline-flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-300 ring-1 ring-amber-500/20 transition hover:bg-amber-500/20 disabled:opacity-50"
-                  >
-                    {bulkGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                    {bulkGenerating ? "Generating…" : "Generate All Insights"}
-                  </button>
                   {(selectedJob.status === "queued" || selectedJob.status === "running") && (
                     <button
                       type="button"
@@ -891,28 +692,18 @@ export function LeadOpsPanel({
                       Cancel
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteJob(selectedJob.id)}
-                    className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
-                    title="Delete this mission"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
                 </div>
               </div>
 
               {/* Progress */}
               <div className="mt-5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/40">{friendlyStage(selectedJob.currentStage)}</span>
+                  <span className="text-white/40">{selectedJob.currentStage || "Queued"}</span>
                   <span className="text-white/60">{selectedJob.progressPercent}%</span>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
                   <div
-                    className={`h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all ${
-                      selectedJob.status === "running" ? "shadow-lg shadow-cyan-500/50" : ""
-                    }`}
+                    className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500 transition-all"
                     style={{ width: `${Math.min(100, Math.max(0, selectedJob.progressPercent))}%` }}
                   />
                 </div>
@@ -920,90 +711,11 @@ export function LeadOpsPanel({
 
               {/* Stats Grid */}
               <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <MiniStat label="Found" value={selectedJob.totalFound} accent="cyan" />
-                <MiniStat label="Saved" value={selectedJob.totalInserted} accent="emerald" />
-                <MiniStat label="Enriched" value={selectedJob.totalEnriched} accent="amber" />
-                <MiniStat label="Duplicates" value={selectedJob.totalDuplicates} accent="white" />
+                <MiniStat label="Found" value={selectedJob.totalFound} />
+                <MiniStat label="Saved" value={selectedJob.totalInserted} />
+                <MiniStat label="Enriched" value={selectedJob.totalEnriched} />
+                <MiniStat label="Duplicates" value={selectedJob.totalDuplicates} />
               </div>
-
-              {/* Bulk Insights Progress */}
-              {(bulkGenerating || bulkResult) && (
-                <div className="mt-5 rounded-xl bg-amber-500/5 p-4 ring-1 ring-amber-500/15 space-y-3">
-                  {/* Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {bulkGenerating && <Loader2 className="h-4 w-4 animate-spin text-amber-400" />}
-                      <span className="text-xs font-medium text-amber-300">
-                        {bulkGenerating
-                          ? bulkResult?.status === "queued"
-                            ? "Queuing insight generation…"
-                            : `Generating insights — ${bulkProgress?.current ?? 0} of ${bulkProgress?.total ?? 0} leads`
-                          : bulkResult?.status === "failed"
-                            ? "Generation failed"
-                            : "Generation complete"}
-                      </span>
-                    </div>
-                    {!bulkGenerating && bulkResult && (
-                      <button type="button" onClick={() => setBulkResult(null)} className="text-xs text-white/30 hover:text-white/60">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Progress bar */}
-                  {bulkProgress && bulkProgress.total > 0 && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[10px] text-white/40">
-                          {bulkResult?.currentLeadName
-                            ? `Processing: ${bulkResult.currentLeadName}`
-                            : bulkGenerating ? "Processing…" : "Done"}
-                        </span>
-                        <span className="text-[10px] font-mono text-amber-400/80">
-                          {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
-                        </span>
-                      </div>
-                      <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-amber-400 via-emerald-400 to-cyan-400 transition-all duration-700 ease-out"
-                          style={{ width: `${Math.max(2, Math.round((bulkProgress.current / bulkProgress.total) * 100))}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Stats */}
-                  {bulkResult && (bulkResult.processed > 0 || !bulkGenerating) && (
-                    <div className="grid grid-cols-5 gap-2">
-                      <div className="rounded-lg bg-white/5 px-2 py-1.5 text-center">
-                        <div className="text-sm font-semibold text-white">{bulkResult.total}</div>
-                        <div className="text-[10px] text-white/40">Total</div>
-                      </div>
-                      <div className="rounded-lg bg-violet-500/10 px-2 py-1.5 text-center">
-                        <div className="text-sm font-semibold text-violet-400">{bulkResult.processed}</div>
-                        <div className="text-[10px] text-violet-400/60">Processed</div>
-                      </div>
-                      <div className="rounded-lg bg-emerald-500/10 px-2 py-1.5 text-center">
-                        <div className="text-sm font-semibold text-emerald-400">{bulkResult.succeeded}</div>
-                        <div className="text-[10px] text-emerald-400/60">AI Generated</div>
-                      </div>
-                      <div className="rounded-lg bg-cyan-500/10 px-2 py-1.5 text-center">
-                        <div className="text-sm font-semibold text-cyan-400">{bulkResult.skipped}</div>
-                        <div className="text-[10px] text-cyan-400/60">Skipped</div>
-                      </div>
-                      <div className="rounded-lg bg-rose-500/10 px-2 py-1.5 text-center">
-                        <div className="text-sm font-semibold text-rose-400">{bulkResult.failed}</div>
-                        <div className="text-[10px] text-rose-400/60">Failed</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error message */}
-                  {bulkResult?.errorMessage && (
-                    <div className="text-xs text-rose-400/80">{bulkResult.errorMessage}</div>
-                  )}
-                </div>
-              )}
 
               {/* Meta */}
               <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-white/35">
@@ -1095,18 +807,17 @@ export function LeadOpsPanel({
                   return (
                     <div
                       key={job.id}
-                      className={`relative cursor-pointer rounded-xl p-4 transition ${
+                      className={`cursor-pointer rounded-xl p-4 transition ${
                         isSelected
                           ? "bg-cyan-500/10 ring-1 ring-cyan-500/30"
-                          : "bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/[0.04] hover:ring-white/10"
+                          : "bg-white/[0.02] ring-1 ring-white/5 hover:bg-white/[0.04]"
                       }`}
                       onClick={() => setSelectedJobId(job.id)}
                     >
-                      <div className="absolute inset-y-0 left-0 w-1 rounded-l-xl bg-gradient-to-b from-cyan-500/60 to-emerald-500/40 opacity-0 transition-opacity group-hover:opacity-100" style={{ opacity: isSelected ? 0.8 : 0 }} />
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <div className={`h-2.5 w-2.5 rounded-full ${config.dot}`} />
+                            <div className={`h-2 w-2 rounded-full ${config.dot}`} />
                             <span className="truncate text-sm font-medium text-white">{job.title}</span>
                           </div>
                           <p className="mt-1 truncate text-xs text-white/40">{job.query}</p>
@@ -1125,9 +836,9 @@ export function LeadOpsPanel({
                           View <ChevronRight className="h-3 w-3" />
                         </button>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/5">
+                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/5">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-emerald-500"
+                          className="h-full rounded-full bg-cyan-500/50"
                           style={{ width: `${Math.min(100, job.progressPercent)}%` }}
                         />
                       </div>
@@ -1153,7 +864,7 @@ export function LeadOpsPanel({
                   <select
                     value={selectedBackendAgentId || ""}
                     onChange={(e) => setSelectedBackendAgentId(Number(e.target.value) || 0)}
-                    className="w-full appearance-none rounded-lg bg-white/5 px-3 py-2.5 pr-10 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-cyan-500/50 transition"
+                    className="w-full appearance-none rounded-lg bg-white/5 px-3 py-2.5 pr-10 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-cyan-500/50"
                   >
                     {leadAgentOptions.length === 0 && (
                       <option value="" style={{ color: "#0f172a", backgroundColor: "#f8fafc" }}>
@@ -1179,7 +890,7 @@ export function LeadOpsPanel({
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
                   placeholder="City, State or Country"
-                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
                 />
               </div>
             </div>
@@ -1190,18 +901,18 @@ export function LeadOpsPanel({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="e.g. Dental clinics, Law firms, Med spas"
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
-              <div className="mt-3 flex flex-wrap gap-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {LEAD_NICHE_EXAMPLES.map((ex) => (
                   <button
                     key={ex}
                     type="button"
                     onClick={() => setQuery(ex)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
+                    className={`rounded-full px-2.5 py-1 text-[11px] transition ${
                       query.toLowerCase() === ex.toLowerCase()
-                        ? "bg-cyan-500/30 text-cyan-200 ring-1 ring-cyan-500/50 shadow-lg shadow-cyan-500/20"
-                        : "bg-white/5 text-white/60 hover:bg-white/10 hover:text-white/80 ring-1 ring-white/10"
+                        ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/30"
+                        : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/70"
                     }`}
                   >
                     {ex}
@@ -1211,12 +922,9 @@ export function LeadOpsPanel({
             </div>
 
             <div>
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-1.5 flex items-center justify-between">
                 <label className="text-xs font-medium text-white/50">Max Leads</label>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold text-cyan-400">{maxResults}</span>
-                  <span className="text-xs text-white/40">leads</span>
-                </div>
+                <span className="text-xs font-semibold text-cyan-400">{maxResults}</span>
               </div>
               <input
                 type="range"
@@ -1227,7 +935,7 @@ export function LeadOpsPanel({
                 onChange={(e) => setMaxResults(Number(e.target.value))}
                 className="w-full accent-cyan-500"
               />
-              <div className="mt-2 flex justify-between text-[10px] text-white/30">
+              <div className="mt-1 flex justify-between text-[10px] text-white/30">
                 <span>10</span>
                 <span>250</span>
                 <span>500</span>
@@ -1240,7 +948,7 @@ export function LeadOpsPanel({
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 rows={4}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm leading-relaxed text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm leading-relaxed text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
           </div>
@@ -1249,7 +957,7 @@ export function LeadOpsPanel({
             <button
               type="button"
               onClick={() => setModalView("none")}
-              className="rounded-lg px-4 py-2 text-sm text-white/60 hover:text-white transition"
+              className="rounded-lg px-4 py-2 text-sm text-white/60 hover:text-white"
             >
               Cancel
             </button>
@@ -1257,7 +965,7 @@ export function LeadOpsPanel({
               type="button"
               onClick={handleCreateJob}
               disabled={submitting || !query.trim() || leadAgentOptions.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:from-cyan-400 hover:to-cyan-500 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Start Mission
@@ -1274,10 +982,10 @@ export function LeadOpsPanel({
           subtitle={`${stats.total} leads available for this company`}
           size="xl"
         >
-          {/* Search & View Toggle */}
-          <div className="mb-5 flex flex-wrap items-center gap-3">
-            <div className="flex flex-1 items-center gap-2 rounded-lg bg-white/5 px-3 py-2.5 ring-1 ring-white/10 focus-within:ring-cyan-500/50 transition">
-              <Search className="h-4 w-4 text-white/40" />
+          {/* Search & Stats */}
+          <div className="mb-5 flex flex-wrap items-center gap-4">
+            <div className="flex flex-1 items-center gap-2 rounded-lg bg-white/5 px-3 py-2 ring-1 ring-white/10">
+              <Search className="h-4 w-4 text-white/30" />
               <input
                 value={leadBrowserSearch}
                 onChange={(e) => setLeadBrowserSearch(e.target.value)}
@@ -1285,18 +993,18 @@ export function LeadOpsPanel({
                 className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
               />
             </div>
-            <div className="flex items-center gap-0.5 rounded-lg bg-white/5 p-1 ring-1 ring-white/10">
+            <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1 ring-1 ring-white/10">
               <button
                 type="button"
                 onClick={() => setLeadBrowserView("list")}
-                className={`rounded px-3 py-1.5 transition ${leadBrowserView === "list" ? "bg-white/20 text-white font-medium" : "text-white/50 hover:text-white"}`}
+                className={`rounded px-2.5 py-1.5 transition ${leadBrowserView === "list" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => setLeadBrowserView("cards")}
-                className={`rounded px-3 py-1.5 transition ${leadBrowserView === "cards" ? "bg-white/20 text-white font-medium" : "text-white/50 hover:text-white"}`}
+                className={`rounded px-2.5 py-1.5 transition ${leadBrowserView === "cards" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -1305,21 +1013,21 @@ export function LeadOpsPanel({
 
           {/* Quick Stats */}
           <div className="mb-5 grid grid-cols-4 gap-2">
-            <div className="rounded-lg bg-white/5 px-3 py-2.5 text-center ring-1 ring-white/10">
-              <div className="text-lg font-bold text-white">{stats.total}</div>
-              <div className="text-[10px] uppercase text-white/35 font-medium">Total</div>
+            <div className="rounded-lg bg-white/5 px-3 py-2 text-center">
+              <div className="text-lg font-semibold text-white">{stats.total}</div>
+              <div className="text-[10px] uppercase text-white/35">Total</div>
             </div>
-            <div className="rounded-lg bg-emerald-500/10 px-3 py-2.5 text-center ring-1 ring-emerald-500/20">
-              <div className="text-lg font-bold text-emerald-400">{stats.highFit}</div>
-              <div className="text-[10px] uppercase text-emerald-400/60 font-medium">High Fit</div>
+            <div className="rounded-lg bg-emerald-500/10 px-3 py-2 text-center">
+              <div className="text-lg font-semibold text-emerald-400">{stats.highFit}</div>
+              <div className="text-[10px] uppercase text-emerald-400/60">High Fit</div>
             </div>
-            <div className="rounded-lg bg-cyan-500/10 px-3 py-2.5 text-center ring-1 ring-cyan-500/20">
-              <div className="text-lg font-bold text-cyan-400">{stats.withEmail}</div>
-              <div className="text-[10px] uppercase text-cyan-400/60 font-medium">With Email</div>
+            <div className="rounded-lg bg-cyan-500/10 px-3 py-2 text-center">
+              <div className="text-lg font-semibold text-cyan-400">{stats.withEmail}</div>
+              <div className="text-[10px] uppercase text-cyan-400/60">With Email</div>
             </div>
-            <div className="rounded-lg bg-amber-500/10 px-3 py-2.5 text-center ring-1 ring-amber-500/20">
-              <div className="text-lg font-bold text-amber-400">{stats.withPhone}</div>
-              <div className="text-[10px] uppercase text-amber-400/60 font-medium">With Phone</div>
+            <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-center">
+              <div className="text-lg font-semibold text-amber-400">{stats.withPhone}</div>
+              <div className="text-[10px] uppercase text-amber-400/60">With Phone</div>
             </div>
           </div>
 
@@ -1327,13 +1035,11 @@ export function LeadOpsPanel({
           <div className="max-h-[50vh] overflow-y-auto rounded-xl ring-1 ring-white/5">
             {leadBrowserView === "list" ? (
               <div className="divide-y divide-white/5">
-                {filteredLeads.map((lead, idx) => (
+                {filteredLeads.map((lead) => (
                   <div
                     key={lead.id}
                     onClick={() => handleSelectLead(lead.id)}
-                    className={`flex cursor-pointer items-center gap-4 px-4 py-3 transition hover:bg-white/[0.05] ${
-                      idx % 2 === 1 ? "bg-white/[0.015]" : ""
-                    }`}
+                    className="flex cursor-pointer items-center gap-4 px-4 py-3 transition hover:bg-white/[0.03]"
                   >
                     {/* Business Info */}
                     <div className="min-w-0 flex-1">
@@ -1359,13 +1065,9 @@ export function LeadOpsPanel({
 
                     {/* Contact Icons */}
                     <div className="flex shrink-0 items-center gap-2">
-                      {lead.email ? (
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10" title={lead.email}>
+                      {lead.email && (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10">
                           <Mail className="h-3.5 w-3.5 text-cyan-400" />
-                        </span>
-                      ) : (
-                        <span className="flex h-7 items-center gap-1 rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">
-                          <Mail className="h-3 w-3" /> No email
                         </span>
                       )}
                       {lead.phone && (
@@ -1391,7 +1093,7 @@ export function LeadOpsPanel({
                   <div
                     key={lead.id}
                     onClick={() => handleSelectLead(lead.id)}
-                    className="cursor-pointer rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5 transition hover:bg-white/[0.06] hover:ring-cyan-500/40 hover:shadow-lg hover:shadow-cyan-500/10"
+                    className="cursor-pointer rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5 transition hover:bg-white/[0.04] hover:ring-cyan-500/30"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
@@ -1403,13 +1105,7 @@ export function LeadOpsPanel({
                       <FitBadge fit={lead.ptxFit} />
                     </div>
                     <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
-                      {lead.email ? (
-                        <span className="flex items-center gap-1 text-cyan-400"><Mail className="h-3 w-3" /> Email</span>
-                      ) : (
-                        <span className="flex items-center gap-1 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">
-                          <Mail className="h-2.5 w-2.5" /> No email
-                        </span>
-                      )}
+                      {lead.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-cyan-400" /> Email</span>}
                       {lead.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-400" /> Phone</span>}
                       {lead.website && <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> Web</span>}
                     </div>
@@ -1430,12 +1126,12 @@ export function LeadOpsPanel({
           size="lg"
         >
           {/* Tabs */}
-          <div className="mb-5 flex items-center gap-2 rounded-lg bg-white/5 p-1">
+          <div className="mb-5 flex items-center gap-1 rounded-lg bg-white/5 p-1">
             <button
               type="button"
               onClick={() => setLeadDetailTab("overview")}
-              className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${
-                leadDetailTab === "overview" ? "bg-white/20 text-white shadow-lg shadow-white/10" : "text-white/50 hover:text-white"
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+                leadDetailTab === "overview" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"
               }`}
             >
               Overview
@@ -1443,8 +1139,8 @@ export function LeadOpsPanel({
             <button
               type="button"
               onClick={() => setLeadDetailTab("outreach")}
-              className={`flex-1 rounded-full px-4 py-2 text-sm font-medium transition ${
-                leadDetailTab === "outreach" ? "bg-white/20 text-white shadow-lg shadow-white/10" : "text-white/50 hover:text-white"
+              className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+                leadDetailTab === "outreach" ? "bg-white/10 text-white" : "text-white/50 hover:text-white"
               }`}
             >
               Outreach
@@ -1460,16 +1156,16 @@ export function LeadOpsPanel({
               {/* Contact Info */}
               <div className="grid gap-3 sm:grid-cols-2">
                 {selectedLeadDetail.email && (
-                  <ContactRow icon={<Mail className="h-4 w-4" />} label="Email" value={selectedLeadDetail.email} href={`mailto:${selectedLeadDetail.email}`} color="cyan" />
+                  <ContactRow icon={<Mail className="h-4 w-4" />} label="Email" value={selectedLeadDetail.email} href={`mailto:${selectedLeadDetail.email}`} />
                 )}
                 {selectedLeadDetail.phone && (
-                  <ContactRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selectedLeadDetail.phone} href={`tel:${selectedLeadDetail.phone}`} color="emerald" />
+                  <ContactRow icon={<Phone className="h-4 w-4" />} label="Phone" value={selectedLeadDetail.phone} href={`tel:${selectedLeadDetail.phone}`} />
                 )}
                 {selectedLeadDetail.website && (
-                  <ContactRow icon={<Globe className="h-4 w-4" />} label="Website" value={selectedLeadDetail.website.replace(/^https?:\/\//, "")} href={selectedLeadDetail.website} color="amber" />
+                  <ContactRow icon={<Globe className="h-4 w-4" />} label="Website" value={selectedLeadDetail.website.replace(/^https?:\/\//, "")} href={selectedLeadDetail.website} />
                 )}
                 {selectedLeadDetail.address && (
-                  <ContactRow icon={<MapPin className="h-4 w-4" />} label="Address" value={selectedLeadDetail.address} color="white" />
+                  <ContactRow icon={<MapPin className="h-4 w-4" />} label="Address" value={selectedLeadDetail.address} />
                 )}
               </div>
 
@@ -1490,31 +1186,12 @@ export function LeadOpsPanel({
               </div>
 
               {/* Insight */}
-              <div className="relative overflow-hidden rounded-xl bg-cyan-500/5 p-4 ring-1 ring-cyan-500/10">
-                <div className="absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none" style={{ background: "radial-gradient(circle at top right, rgba(34, 211, 238, 0.1), transparent)" }} />
-                <div className="relative mb-2 flex items-center gap-2 text-xs font-medium text-cyan-300">
-                  <Sparkles className="h-4 w-4 animate-pulse" />
+              <div className="rounded-xl bg-cyan-500/5 p-4 ring-1 ring-cyan-500/10">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-cyan-400">
+                  <Sparkles className="h-3.5 w-3.5" />
                   AI Insight
-                  {outreachData.hasAi && (
-                    <span className="ml-auto rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-500/30">
-                      Generated by AI
-                    </span>
-                  )}
-                  {outreachData.isFallback && (
-                    <span className="ml-auto rounded-full bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300 ring-1 ring-amber-500/30">
-                      Fallback — AI unavailable
-                    </span>
-                  )}
-                  {!outreachData.hasAi && !outreachData.isFallback && outreachData.generationStatus && (
-                    <span className="ml-auto rounded-full bg-slate-500/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-300 ring-1 ring-slate-500/30">
-                      Not generated yet
-                    </span>
-                  )}
                 </div>
-                <p className="relative text-sm leading-relaxed text-white/80">{outreachData.insight}</p>
-                {outreachData.warningMessage && (
-                  <p className="mt-2 text-xs text-amber-400/80">{outreachData.warningMessage}</p>
-                )}
+                <p className="text-sm leading-relaxed text-white/80">{outreachData.insight}</p>
               </div>
 
               {/* Recommended Product */}
@@ -1546,86 +1223,34 @@ export function LeadOpsPanel({
                   Opens the selected agent chat already primed with this lead context.
                 </div>
               </div>
-
-              {/* Delete Lead */}
-              <div className="flex items-center justify-end">
-                <button
-                  type="button"
-                  onClick={() => void handleDeleteLead(selectedLeadDetail.id)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-rose-500/10 px-4 py-2 text-xs font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Delete Lead
-                </button>
-              </div>
             </div>
           ) : (
             <div className="space-y-5">
-              {/* AI Status + Generate */}
-              <div className="rounded-xl bg-white/5 p-4 ring-1 ring-white/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 text-sm font-medium text-white">
-                      {outreachData.hasAi ? "AI Outreach Ready" : outreachData.isFallback ? "Fallback Outreach" : outreachData.needsInsights ? "Generate AI Outreach" : "Outreach Available"}
-                      {outreachData.hasAi && (
-                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300 ring-1 ring-emerald-500/30">
-                          AI
-                        </span>
-                      )}
-                      {outreachData.isFallback && (
-                        <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300 ring-1 ring-amber-500/30">
-                          Fallback
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-0.5 text-xs text-white/40">
-                      {outreachData.hasAi
-                        ? "Personalized script and email generated by AI"
-                        : outreachData.isFallback
-                          ? "AI was unavailable — using rule-based content. Try regenerating."
-                          : "Select a provider and click Generate"}
-                    </div>
-                    {outreachData.warningMessage && (
-                      <div className="mt-1 text-xs text-amber-400/80">{outreachData.warningMessage}</div>
-                    )}
+              {/* Generate button */}
+              <div className="flex items-center justify-between rounded-xl bg-white/5 p-4">
+                <div>
+                  <div className="text-sm font-medium text-white">
+                    {outreachData.hasAi ? "AI Outreach Ready" : outreachData.needsInsights ? "Generate AI Outreach" : "Outreach Available"}
+                  </div>
+                  <div className="mt-0.5 text-xs text-white/40">
+                    {outreachData.hasAi ? "Script and email generated by AI" : "Click to generate personalized content"}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={selectedAiProvider}
-                    onChange={(e) => setSelectedAiProvider(e.target.value)}
-                    className="rounded-lg bg-white/5 px-2.5 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-500/40"
-                  >
-                    {AI_PROVIDERS.map((p) => (
-                      <option key={p.value} value={p.value} className="bg-slate-900 text-slate-200">
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleGenerateInsights}
-                    disabled={generatingInsights}
-                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-                      outreachData.needsInsights || outreachData.isFallback
-                        ? "bg-cyan-500/20 text-cyan-200 ring-1 ring-cyan-500/40 hover:bg-cyan-500/30 animate-pulse"
-                        : "bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-500/25 hover:bg-cyan-500/25"
-                    } disabled:opacity-50`}
-                  >
-                    {generatingInsights ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {generatingInsights ? "Generating…" : outreachData.hasAi ? "Regenerate" : "Generate with AI"}
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateInsights}
+                  disabled={generatingInsights}
+                  className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-4 py-2 text-sm font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25 disabled:opacity-50"
+                >
+                  {generatingInsights ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  {outreachData.hasAi ? "Regenerate" : "Generate"}
+                </button>
               </div>
 
               {/* Script */}
               <div className="rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5">
                 <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-white">
-                    Outreach Script
-                    {outreachData.hasAi && <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-300">AI</span>}
-                    {outreachData.isFallback && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">Fallback</span>}
-                  </div>
+                  <div className="text-sm font-medium text-white">Outreach Script</div>
                   <button
                     type="button"
                     onClick={() => copyToClipboard(outreachData.script, "Script copied!")}
@@ -1640,24 +1265,20 @@ export function LeadOpsPanel({
               {/* Email Preview */}
               <div className="rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5">
                 <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-medium text-white">
-                    Email Preview
-                    {outreachData.hasAi && <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-emerald-300">AI</span>}
-                    {outreachData.isFallback && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase text-amber-300">Fallback</span>}
-                  </div>
+                  <div className="text-sm font-medium text-white">Email Preview</div>
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-0.5 rounded-lg bg-white/5 p-1 ring-1 ring-white/10">
+                    <div className="flex items-center gap-1 rounded bg-white/5 p-0.5">
                       <button
                         type="button"
                         onClick={() => setEmailPreviewMode("preview")}
-                        className={`rounded px-2.5 py-1.5 text-xs transition ${emailPreviewMode === "preview" ? "bg-white/20 text-white font-medium" : "text-white/50 hover:text-white"}`}
+                        className={`rounded px-2 py-1 text-xs transition ${emailPreviewMode === "preview" ? "bg-white/10 text-white" : "text-white/50"}`}
                       >
                         <Eye className="h-3.5 w-3.5" />
                       </button>
                       <button
                         type="button"
                         onClick={() => setEmailPreviewMode("html")}
-                        className={`rounded px-2.5 py-1.5 text-xs transition ${emailPreviewMode === "html" ? "bg-white/20 text-white font-medium" : "text-white/50 hover:text-white"}`}
+                        className={`rounded px-2 py-1 text-xs transition ${emailPreviewMode === "html" ? "bg-white/10 text-white" : "text-white/50"}`}
                       >
                         HTML
                       </button>
@@ -1665,17 +1286,17 @@ export function LeadOpsPanel({
                     <button
                       type="button"
                       onClick={() => copyToClipboard(outreachData.emailHtml, "HTML copied!")}
-                      className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white transition"
+                      className="flex items-center gap-1.5 text-xs text-white/50 hover:text-white"
                     >
                       <Copy className="h-3.5 w-3.5" /> Copy
                     </button>
                   </div>
                 </div>
-                <div className="rounded-lg bg-white p-4 text-slate-900 shadow-lg ring-1 ring-black/10">
+                <div className="rounded-lg bg-white p-4 text-slate-900">
                   {emailPreviewMode === "preview" ? (
                     <div dangerouslySetInnerHTML={{ __html: outreachData.emailHtml }} className="text-sm" />
                   ) : (
-                    <pre className="overflow-x-auto text-xs font-mono">{outreachData.emailHtml}</pre>
+                    <pre className="overflow-x-auto text-xs">{outreachData.emailHtml}</pre>
                   )}
                 </div>
               </div>
@@ -1685,7 +1306,7 @@ export function LeadOpsPanel({
                 {selectedLeadDetail.phone && (
                   <a
                     href={`tel:${selectedLeadDetail.phone}`}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-300 ring-1 ring-emerald-500/25 transition hover:bg-emerald-500/25 hover:shadow-lg hover:shadow-emerald-500/20"
+                    className="flex items-center justify-center gap-2 rounded-lg bg-white/5 px-4 py-3 text-sm font-medium text-white/70 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
                   >
                     <Phone className="h-4 w-4" /> Call
                   </a>
@@ -1693,7 +1314,7 @@ export function LeadOpsPanel({
                 <button
                   type="button"
                   onClick={() => setModalView("single-email")}
-                  className="flex items-center justify-center gap-2 rounded-lg bg-cyan-500/15 px-4 py-3 text-sm font-semibold text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25 hover:shadow-lg hover:shadow-cyan-500/20"
+                  className="flex items-center justify-center gap-2 rounded-lg bg-cyan-500/15 px-4 py-3 text-sm font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25"
                 >
                   <Send className="h-4 w-4" /> Send Email
                 </button>
@@ -1702,7 +1323,7 @@ export function LeadOpsPanel({
                     href={selectedLeadDetail.website}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center justify-center gap-2 rounded-lg bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-300 ring-1 ring-amber-500/25 transition hover:bg-amber-500/25 hover:shadow-lg hover:shadow-amber-500/20"
+                    className="flex items-center justify-center gap-2 rounded-lg bg-white/5 px-4 py-3 text-sm font-medium text-white/70 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
                   >
                     <Globe className="h-4 w-4" /> Website
                   </a>
@@ -1717,16 +1338,12 @@ export function LeadOpsPanel({
       {modalView === "email-batch" && selectedJob && (
         <Modal onClose={() => setModalView("none")} title="Send Batch Email" subtitle={`Queue outreach for ${selectedJob.title}`}>
           <div className="space-y-4">
-            <div className="rounded-lg bg-cyan-500/10 px-3 py-2.5 text-sm text-white/70 ring-1 ring-cyan-500/20">
-              <div className="mb-2 font-medium text-white/80">Supported tokens:</div>
-              <div className="flex flex-wrap gap-2">
-                {["{{businessName}}", "{{city}}", "{{ownerName}}", "{{companyName}}"].map((token) => (
-                  <code key={token} className="rounded-full bg-cyan-500/20 px-2.5 py-1 text-xs font-mono text-cyan-300 ring-1 ring-cyan-500/30">
-                    {token}
-                  </code>
-                ))}
-              </div>
-            </div>
+            <p className="text-sm text-white/50">
+              Supported tokens: <code className="rounded bg-white/5 px-1 text-cyan-400">{"{{businessName}}"}</code>, 
+              <code className="rounded bg-white/5 px-1 text-cyan-400">{"{{city}}"}</code>, 
+              <code className="rounded bg-white/5 px-1 text-cyan-400">{"{{ownerName}}"}</code>, 
+              <code className="rounded bg-white/5 px-1 text-cyan-400">{"{{companyName}}"}</code>
+            </p>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -1735,7 +1352,7 @@ export function LeadOpsPanel({
                   value={emailSenderName}
                   onChange={(e) => setEmailSenderName(e.target.value)}
                   placeholder={effectiveCompanyName}
-                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
                 />
               </div>
               <div>
@@ -1744,7 +1361,7 @@ export function LeadOpsPanel({
                   value={emailSenderAddress}
                   onChange={(e) => setEmailSenderAddress(e.target.value)}
                   placeholder={effectiveCompanyEmail || "company@domain.com"}
-                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                  className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
                 />
               </div>
             </div>
@@ -1755,7 +1372,7 @@ export function LeadOpsPanel({
                 value={emailReplyTo}
                 onChange={(e) => setEmailReplyTo(e.target.value)}
                 placeholder={effectiveCompanyEmail || "reply@domain.com"}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
 
@@ -1764,7 +1381,7 @@ export function LeadOpsPanel({
               <input
                 value={emailSubjectTemplate}
                 onChange={(e) => setEmailSubjectTemplate(e.target.value)}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
 
@@ -1774,7 +1391,7 @@ export function LeadOpsPanel({
                 value={emailIntroText}
                 onChange={(e) => setEmailIntroText(e.target.value)}
                 rows={3}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
           </div>
@@ -1791,7 +1408,7 @@ export function LeadOpsPanel({
               type="button"
               onClick={handleCreateEmailBatch}
               disabled={sendingBatch}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-600 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-400/50 transition hover:from-emerald-400 hover:to-emerald-500 hover:shadow-emerald-500/40 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-emerald-400 disabled:opacity-50"
             >
               {sendingBatch ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
               Queue Batch
@@ -1810,7 +1427,7 @@ export function LeadOpsPanel({
                 value={singleLeadRecipient}
                 onChange={(e) => setSingleLeadRecipient(e.target.value)}
                 placeholder={selectedLeadDetail.email || "email@example.com"}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
 
@@ -1819,7 +1436,7 @@ export function LeadOpsPanel({
               <input
                 value={singleLeadSubject}
                 onChange={(e) => setSingleLeadSubject(e.target.value)}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
 
@@ -1829,7 +1446,7 @@ export function LeadOpsPanel({
                 value={emailReplyTo}
                 onChange={(e) => setEmailReplyTo(e.target.value)}
                 placeholder={effectiveCompanyEmail || "reply@domain.com"}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50 transition"
+                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
               />
             </div>
           </div>
@@ -1838,7 +1455,7 @@ export function LeadOpsPanel({
             <button
               type="button"
               onClick={() => setModalView("lead-detail")}
-              className="rounded-lg px-4 py-2 text-sm text-white/60 hover:text-white transition"
+              className="rounded-lg px-4 py-2 text-sm text-white/60 hover:text-white"
             >
               Cancel
             </button>
@@ -1846,7 +1463,7 @@ export function LeadOpsPanel({
               type="button"
               onClick={handleSendSingleEmail}
               disabled={sendingSingleEmail || !singleLeadRecipient.trim()}
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-br from-cyan-500 to-cyan-600 px-6 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-400/50 transition hover:from-cyan-400 hover:to-cyan-500 hover:shadow-cyan-500/40 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:opacity-50"
             >
               {sendingSingleEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               Send Now
@@ -1863,19 +1480,18 @@ export function LeadOpsPanel({
 function Modal({ children, onClose, title, subtitle, size = "md" }: { children: ReactNode; onClose: () => void; title: string; subtitle?: string; size?: "md" | "lg" | "xl" }) {
   const widthClass = size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-3xl" : "max-w-xl";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} />
       <div className={`relative w-full ${widthClass} max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 p-6 shadow-2xl ring-1 ring-white/10`}>
-        <div className="absolute inset-x-0 top-0 h-1 rounded-t-2xl bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
-        <div className="mb-5 flex items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
+        <div className="mb-5 flex items-start justify-between">
+          <div>
             <h2 className="text-lg font-semibold text-white">{title}</h2>
             {subtitle && <p className="mt-1 text-sm text-white/50">{subtitle}</p>}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white shrink-0"
+            className="rounded-lg p-2 text-white/40 transition hover:bg-white/5 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -1889,37 +1505,31 @@ function Modal({ children, onClose, title, subtitle, size = "md" }: { children: 
 function StatCard({ icon, label, value, accent = "white" }: { icon: ReactNode; label: string; value: number; accent?: "cyan" | "emerald" | "white" }) {
   const accentClass = accent === "cyan" ? "text-cyan-400" : accent === "emerald" ? "text-emerald-400" : "text-white";
   return (
-    <div className="rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5 transition hover:bg-white/[0.04] hover:ring-white/10 cursor-pointer">
+    <div className="rounded-xl bg-white/[0.02] p-4 ring-1 ring-white/5">
       <div className="flex items-center gap-2 text-white/40">
         {icon}
-        <span className="text-xs uppercase font-medium">{label}</span>
+        <span className="text-xs uppercase">{label}</span>
       </div>
-      <div className={`mt-3 text-3xl font-bold ${accentClass}`}>{value}</div>
+      <div className={`mt-2 text-2xl font-bold ${accentClass}`}>{value}</div>
     </div>
   );
 }
 
-function MiniStat({ label, value, accent = "white" }: { label: string; value: number; accent?: "cyan" | "emerald" | "amber" | "white" }) {
-  const accentBg = accent === "cyan" ? "bg-cyan-500/10" : accent === "emerald" ? "bg-emerald-500/10" : accent === "amber" ? "bg-amber-500/10" : "bg-white/5";
-  const accentRing = accent === "cyan" ? "ring-cyan-500/20" : accent === "emerald" ? "ring-emerald-500/20" : accent === "amber" ? "ring-amber-500/20" : "ring-white/10";
-  const accentText = accent === "cyan" ? "text-cyan-400" : accent === "emerald" ? "text-emerald-400" : accent === "amber" ? "text-amber-400" : "text-white";
+function MiniStat({ label, value }: { label: string; value: number }) {
   return (
-    <div className={`rounded-lg ${accentBg} px-3 py-2.5 text-center ring-1 ${accentRing}`}>
-      <div className={`text-xl font-bold ${accentText}`}>{value}</div>
-      <div className="text-[10px] uppercase text-white/35 font-medium">{label}</div>
+    <div className="rounded-lg bg-white/5 px-3 py-2 text-center">
+      <div className="text-lg font-semibold text-white">{value}</div>
+      <div className="text-[10px] uppercase text-white/35">{label}</div>
     </div>
   );
 }
 
 function StatusBadge({ status, size = "md" }: { status: string; size?: "sm" | "md" }) {
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.queued;
-  const sizeClass = size === "sm" ? "px-1.5 py-0.5 text-[9px]" : "px-2.5 py-1.5 text-[10px]";
-  const isRunning = status === "running";
+  const sizeClass = size === "sm" ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-1 text-[10px]";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold uppercase ${sizeClass} ${config.bg} ${config.text} ${config.border} border ${
-      isRunning ? "animate-pulse" : ""
-    }`}>
-      <span className={`h-2 w-2 rounded-full ${config.dot} ${isRunning ? "animate-pulse" : ""}`} />
+    <span className={`inline-flex items-center gap-1.5 rounded-full font-medium uppercase ${sizeClass} ${config.bg} ${config.text} ${config.border} border`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${config.dot}`} />
       {status}
     </span>
   );
@@ -1929,30 +1539,27 @@ function FitBadge({ fit }: { fit?: string | null }) {
   const value = (fit || "medium").toLowerCase();
   const isHigh = value.includes("high");
   const isLow = value.includes("low");
-  const colorClass = isHigh ? "bg-emerald-500/25 text-emerald-300 ring-emerald-500/40" : isLow ? "bg-rose-500/25 text-rose-300 ring-rose-500/40" : "bg-amber-500/25 text-amber-300 ring-amber-500/40";
+  const colorClass = isHigh ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/25" : isLow ? "bg-rose-500/15 text-rose-400 ring-rose-500/25" : "bg-amber-500/15 text-amber-400 ring-amber-500/25";
   return (
-    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase ring-1 ${colorClass}`}>
+    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase ring-1 ${colorClass}`}>
       {isHigh ? "High" : isLow ? "Low" : "Medium"}
     </span>
   );
 }
 
-function ContactRow({ icon, label, value, href, color = "white" }: { icon: ReactNode; label: string; value: string; href?: string; color?: "cyan" | "emerald" | "amber" | "white" }) {
-  const bgClass = color === "cyan" ? "bg-cyan-500/10" : color === "emerald" ? "bg-emerald-500/10" : color === "amber" ? "bg-amber-500/10" : "bg-white/5";
-  const textClass = color === "cyan" ? "text-cyan-300" : color === "emerald" ? "text-emerald-300" : color === "amber" ? "text-amber-300" : "text-white/50";
-  const linkClass = color === "cyan" ? "text-cyan-400 hover:text-cyan-300" : color === "emerald" ? "text-emerald-400 hover:text-emerald-300" : color === "amber" ? "text-amber-400 hover:text-amber-300" : "text-white/80";
+function ContactRow({ icon, label, value, href }: { icon: ReactNode; label: string; value: string; href?: string }) {
   const content = href ? (
-    <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} className={linkClass}>
+    <a href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} className="text-cyan-400 hover:text-cyan-300">
       {value}
     </a>
   ) : (
     <span className="text-white/80">{value}</span>
   );
   return (
-    <div className={`flex items-center gap-3 rounded-lg ${bgClass} p-3 ring-1 ring-white/5`}>
-      <div className={`rounded-lg ${bgClass} p-2.5 ${textClass}`}>{icon}</div>
+    <div className="flex items-center gap-3 rounded-lg bg-white/[0.02] p-3 ring-1 ring-white/5">
+      <div className="rounded-lg bg-white/5 p-2 text-white/50">{icon}</div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] uppercase text-white/35 font-medium">{label}</div>
+        <div className="text-[10px] uppercase text-white/35">{label}</div>
         <div className="truncate text-sm">{content}</div>
       </div>
     </div>
@@ -1988,13 +1595,35 @@ function buildEmailHtml(lead?: LeadSummary | null, companyName?: string, company
   const businessName = lead?.businessName || "your business";
   const categoryLabel = lead?.category?.toLowerCase() || "local service";
   const locationLabel = [lead?.city, lead?.state].filter(Boolean).join(", ") || "your market";
+  const ratingBlock = lead?.rating ? `${lead.rating}★${lead?.reviewCount ? ` · ${lead.reviewCount} reviews` : ""}` : "Strong market credibility";
+  const productName = lead?.suggestedProduct?.trim() || "AI outreach";
   const ctaHref = senderEmail ? `mailto:${escapeHtml(senderEmail)}?subject=${encodeURIComponent(`A quick idea for ${businessName}`)}` : "#";
 
-  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#e8f2ff;line-height:1.7;padding:24px;">
-  <p>Hi ${escapeHtml(owner)},</p>
-  <p>I came across ${escapeHtml(businessName)} while looking at ${escapeHtml(categoryLabel)} businesses in ${escapeHtml(locationLabel)} and wanted to reach out. I think there's a great opportunity to help your team capture and follow up with leads faster using a simple AI-powered workflow.</p>
-  <p>We've been helping similar businesses respond to new opportunities quicker and keep their pipeline organized — without adding extra manual work.</p>
-  <p>Would you be open to a quick chat so I can show you how it could work for ${escapeHtml(businessName)}?</p>
-  <p>Best,<br/>${escapeHtml(senderName)}${senderEmail ? `<br/><a href="${ctaHref}" style="color:#2dd4bf;text-decoration:none;">${escapeHtml(senderEmail)}</a>` : ""}</p>
+  return `<div style="background:#07111f;padding:32px;border-radius:24px;border:1px solid rgba(45,212,191,0.18);font-family:Inter,Arial,sans-serif;color:#e8f2ff;line-height:1.7;box-shadow:0 24px 80px rgba(0,0,0,0.35);">
+  <div style="max-width:680px;margin:0 auto;overflow:hidden;border-radius:22px;border:1px solid rgba(255,255,255,0.08);background:linear-gradient(180deg,#0b1728 0%,#09111e 100%);">
+    <div style="padding:30px 32px;background:radial-gradient(circle at top right, rgba(20,184,166,0.22), transparent 42%),linear-gradient(135deg,#0f1d33 0%,#0a1323 100%);border-bottom:1px solid rgba(255,255,255,0.08);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#8ce7d6;font-weight:700;">Tailored outreach</div>
+        <div style="font-size:12px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,0.08);color:#d7fffb;">${escapeHtml(ratingBlock)}</div>
+      </div>
+      <h1 style="margin:16px 0 0 0;font-size:28px;line-height:1.18;color:#ffffff;">A stronger outreach angle for ${escapeHtml(businessName)}</h1>
+      <p style="margin:12px 0 0 0;font-size:15px;color:#b8c7da;">Built by ${escapeHtml(senderName)} for a ${escapeHtml(categoryLabel)} brand in ${escapeHtml(locationLabel)}.</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px 0;font-size:16px;color:#e8f2ff;">Hi ${escapeHtml(owner)},</p>
+      <p style="margin:0 0 16px 0;font-size:16px;color:#d8e4f4;">I came across <strong style="color:#ffffff;">${escapeHtml(businessName)}</strong> and the first thing that stood out was the credibility you already have in the market.</p>
+      <p style="margin:0 0 16px 0;font-size:16px;color:#d8e4f4;">That creates a real opportunity: with a sharper message and a cleaner follow-up flow, that trust can turn into more qualified conversations and more booked opportunities.</p>
+      <div style="margin:22px 0;padding:18px 20px;border-radius:18px;background:rgba(20,184,166,0.08);border:1px solid rgba(45,212,191,0.16);">
+        <div style="font-size:12px;letter-spacing:0.16em;text-transform:uppercase;color:#8ce7d6;font-weight:700;">Recommended angle</div>
+        <p style="margin:10px 0 0 0;font-size:15px;color:#dff7f1;">Use ${escapeHtml(productName)} to make first-touch outreach feel more relevant, more premium, and easier to respond to without adding manual work for the team.</p>
+      </div>
+      <p style="margin:0 0 24px 0;font-size:16px;color:#d8e4f4;">If that is interesting, I can send over the idea we prepared for ${escapeHtml(businessName)} and walk you through it in a quick conversation.</p>
+      <a href="${ctaHref}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:linear-gradient(135deg,#2dd4bf 0%,#22c55e 100%);color:#04111d;text-decoration:none;font-weight:800;">Reply and see the idea</a>
+    </div>
+    <div style="padding:24px 32px;border-top:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.02);font-size:14px;color:#9db0c8;">
+      <div style="font-weight:700;color:#ffffff;">${escapeHtml(senderName)}</div>
+      ${senderEmail ? `<div style="margin-top:4px;">${escapeHtml(senderEmail)}</div>` : ""}
+    </div>
+  </div>
 </div>`;
 }

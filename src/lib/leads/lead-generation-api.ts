@@ -560,7 +560,7 @@ export const generateLeadInsights = async (
   const body = {
     persist: true,
     forceRegenerate: options?.forceRegenerate ?? true,
-    preferredModel: options?.preferredModel ?? null,
+    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
     ...(agentId ? { agentId } : {}),
   };
 
@@ -580,69 +580,6 @@ export const generateLeadInsights = async (
   throw new Error("Failed to generate insights for this lead.");
 };
 
-
-export type BulkGenerateInsightsResult = {
-  total: number;
-  succeeded: number;
-  failed: number;
-  skipped: number;
-  processed: number;
-  jobId: string | null;
-  status: string | null;
-  currentLeadName: string | null;
-  errorMessage: string | null;
-  items: {
-    leadId: number;
-    businessName: string | null;
-    success: boolean;
-    usedAi: boolean;
-    usedFallback: boolean;
-    status: string | null;
-    error: string | null;
-  }[];
-};
-
-/** Queue a bulk insight generation job — returns immediately with jobId */
-export const bulkGenerateInsights = async (
-  companyId: number,
-  jobId?: number | null,
-  options?: { forceRegenerate?: boolean; preferredModel?: string | null },
-): Promise<BulkGenerateInsightsResult> => {
-  const body = {
-    companyId,
-    ...(jobId ? { jobId } : {}),
-    forceRegenerate: options?.forceRegenerate ?? true,
-    preferredModel: options?.preferredModel ?? null,
-  };
-
-  return requestBackend<BulkGenerateInsightsResult>("/api/Leads/bulk-generate-insights", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-};
-
-/** Poll the progress of a bulk insight job */
-export const pollBulkInsightJob = async (jobId: string): Promise<BulkGenerateInsightsResult> => {
-  return requestBackend<BulkGenerateInsightsResult>(`/api/Leads/bulk-generate-insights/${encodeURIComponent(jobId)}`);
-};
-
-/** Check if there's an active bulk insight job for this company (queued or running) */
-export const getActiveInsightJob = async (companyId: number): Promise<BulkGenerateInsightsResult | null> => {
-  try {
-    const response = await fetch(`${getOkestriaApiBaseUrl()}/api/Leads/active-insight-job/${companyId}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...(getBrowserAccessToken() ? { Authorization: `Bearer ${getBrowserAccessToken()}` } : {}),
-      },
-      cache: "no-store",
-    });
-    if (response.status === 204 || !response.ok) return null;
-    const data = await response.json();
-    return data as BulkGenerateInsightsResult;
-  } catch {
-    return null;
-  }
-};
 
 export const listLeadEmailBatchJobs = async (companyId?: number | null, sourceLeadJobId?: number | null): Promise<LeadEmailBatchJob[]> => {
   const resolvedCompanyId = companyId ?? getBrowserCompanyId();
@@ -685,21 +622,6 @@ export const cancelLeadEmailBatchJob = async (jobId: number) => {
   await requestBackend(`/api/LeadEmailBatchJobs/${jobId}/cancel`, { method: "POST" });
 };
 
-/** Delete leads by IDs (bulk delete) */
-export const deleteLeads = async (leadIds: number[]): Promise<boolean> => {
-  return requestBackend<boolean>("/api/Leads/bulk-delete", {
-    method: "DELETE",
-    body: JSON.stringify({ leadIds }),
-  });
-};
-
-/** Delete a lead generation job (cancel first, then delete) */
-export const deleteLeadGenerationJob = async (jobId: number): Promise<boolean> => {
-  // Try cancel first if still running, then delete
-  try { await requestBackend(`/api/LeadGenerationJobs/${jobId}/cancel`, { method: "POST" }); } catch { /* ignore */ }
-  return requestBackend<boolean>(`/api/LeadGenerationJobs/${jobId}`, { method: "DELETE" });
-};
-
 
 const normalizeSingleLeadEmailResult = (value: unknown): SendSingleLeadEmailResult | null => {
   if (!value || typeof value !== "object") return null;
@@ -732,7 +654,7 @@ export const sendSingleLeadEmail = async (leadId: number, payload: SendSingleLea
       replyTo: payload.replyTo,
       generateInsightsIfMissing: payload.generateInsightsIfMissing ?? true,
       forceRegenerateInsights: payload.forceRegenerateInsights ?? false,
-      preferredModel: payload.preferredModel ?? null,
+      preferredModel: payload.preferredModel ?? "gpt-5.4-nano",
     }),
   });
   const normalized = normalizeSingleLeadEmailResult(response);

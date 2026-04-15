@@ -129,9 +129,6 @@ const ROAM_MODEL_ORDER: RoamRouteModel[] = [
   "perimeter_drift",
   "serpentine",
   "diagonal_weave",
-  "meeting_circuit",
-  "east_explorer",
-  "left_wall_patrol",
 ];
 
 const resolveAgentMotionZone = (agentId: string) =>
@@ -751,17 +748,15 @@ export function useRebuiltAgentTick(
       if (intent === "lounge") {
         const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
         const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
-        // 40% chance of napping on the couch, otherwise sitting
-        const loungeState = Math.random() < 0.4 ? "napping" as const : "sitting" as const;
         return {
-          actionKey: loungeState === "napping" ? "lounge_nap" : "lounge",
+          actionKey: "lounge",
           mode,
-          lingerMs: loungeState === "napping" ? 3500 + Math.random() * 2500 : 1800 + Math.random() * 1600,
+          lingerMs: 1800 + Math.random() * 1600,
           targetX: target.targetX,
           targetY: target.targetY,
           facing: point.facing ?? agent.facing,
           path: target.path,
-          state: loungeState,
+          state: "sitting",
           interactionTarget: "lounge",
         };
       }
@@ -769,17 +764,15 @@ export function useRebuiltAgentTick(
       if (intent === "kitchen") {
         const point = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
         const target = buildPathToTarget(agent.id, agent.x, agent.y, point.x, point.y);
-        // 55% chance of drinking coffee, otherwise just standing around
-        const kitchenState = Math.random() < 0.55 ? "drinking_coffee" as const : "standing" as const;
         return {
-          actionKey: kitchenState === "drinking_coffee" ? "kitchen_coffee" : "kitchen",
+          actionKey: "kitchen",
           mode,
-          lingerMs: kitchenState === "drinking_coffee" ? 2200 + Math.random() * 1800 : 1200 + Math.random() * 1600,
+          lingerMs: 1200 + Math.random() * 1600,
           targetX: target.targetX,
           targetY: target.targetY,
           facing: point.facing ?? agent.facing,
           path: target.path,
-          state: kitchenState,
+          state: "standing",
           interactionTarget: "kitchen",
         };
       }
@@ -907,25 +900,15 @@ export function useRebuiltAgentTick(
         return buildIntentPlan(agent, "jukebox", "autonomous", others, point);
       });
 
-      pushCandidate("gym", 0.65, () =>
+      pushCandidate("gym", 0.32, () =>
         gymWorkoutLocations.length > 0 ? buildIntentPlan(agent, "gym", "autonomous", others) : null,
       );
 
-      pushCandidate("qa_lab", 0.5, () =>
+      pushCandidate("qa_lab", 0.26, () =>
         qaLabStations.length > 0 ? buildIntentPlan(agent, "qa_lab", "autonomous", others) : null,
       );
 
-      pushCandidate("server_room", 0.35, () => buildIntentPlan(agent, "server_room", "autonomous", others));
-
-      pushCandidate("phone_booth", 0.45, () => {
-        const booth = (furnitureRef.current ?? []).find((item) => item.type === "phone_booth");
-        return booth ? buildIntentPlan(agent, "phone_booth", "autonomous", others) : null;
-      });
-
-      pushCandidate("sms_booth", 0.4, () => {
-        const booth = (furnitureRef.current ?? []).find((item) => item.type === "sms_booth");
-        return booth ? buildIntentPlan(agent, "sms_booth", "autonomous", others) : null;
-      });
+      pushCandidate("server_room", 0.2, () => buildIntentPlan(agent, "server_room", "autonomous", others));
 
       const winner = chooseWeighted(candidates)?.plan;
       if (winner) {
@@ -961,9 +944,6 @@ export function useRebuiltAgentTick(
       if (qaHoldByAgentId[agent.id]) return "qa_lab";
       if (githubReviewByAgentId[agent.id]) return "server_room";
       if (deskHoldByAgentId[agent.id] || typeof assignedDeskIndexByAgentId[agent.id] === "number") return "desk";
-      // When an agent is actively working (running a task), automatically send
-      // them to their desk so the office visually reflects who is busy.
-      if (agent.status === "working") return "desk";
       return null;
     },
     [

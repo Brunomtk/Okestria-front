@@ -11,15 +11,8 @@ import {
   AGENT_AVATAR_SHOE_COLOR_OPTIONS,
   AGENT_AVATAR_SKIN_TONE_OPTIONS,
   AGENT_AVATAR_TOP_STYLE_OPTIONS,
-  AGENT_AVATAR_FACIAL_HAIR_OPTIONS,
-  AGENT_AVATAR_GLASSES_STYLE_OPTIONS,
-  AGENT_AVATAR_EARRING_STYLE_OPTIONS,
-  AGENT_AVATAR_WATCH_STYLE_OPTIONS,
-  AGENT_AVATAR_NECKWEAR_OPTIONS,
-  AGENT_AVATAR_BODY_BUILD_OPTIONS,
   type AgentAvatarProfile,
   createDefaultAgentAvatarProfile,
-  normalizeAgentAvatarProfile,
 } from "@/lib/avatars/profile";
 import { AgentAvatarPreview3D } from "@/features/agents/components/AgentAvatarPreview3D";
 import { randomUUID } from "@/lib/uuid";
@@ -69,10 +62,7 @@ export const AgentAvatarEditorPanel = forwardRef<
     () => createDefaultAgentAvatarProfile(agentId),
     [agentId]
   );
-  const resolvedInitialProfile = useMemo(
-    () => initialProfile ? normalizeAgentAvatarProfile(initialProfile, agentId) : fallbackProfile,
-    [initialProfile, fallbackProfile, agentId]
-  );
+  const resolvedInitialProfile = initialProfile ?? fallbackProfile;
   const [draft, setDraft] = useState<AgentAvatarProfile>(resolvedInitialProfile);
   const [saving, setSaving] = useState(false);
 
@@ -412,199 +402,17 @@ export const AgentAvatarEditorPanel = forwardRef<
             </div>
           </section>
 
-          {/* ── Body build ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Body build
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_BODY_BUILD_OPTIONS.map((option) => {
-                const selected = draft.body.build === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        body: { ...current.body, build: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Facial hair ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Facial hair
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_FACIAL_HAIR_OPTIONS.map((option) => {
-                const selected = draft.face.facialHair === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        face: { ...current.face, facialHair: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Glasses style ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Glasses
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_GLASSES_STYLE_OPTIONS.map((option) => {
-                const selected = draft.accessories.glasses === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        accessories: { ...current.accessories, glasses: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Earrings ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Earrings
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_EARRING_STYLE_OPTIONS.map((option) => {
-                const selected = draft.accessories.earrings === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        accessories: { ...current.accessories, earrings: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Neckwear ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Neckwear
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_NECKWEAR_OPTIONS.map((option) => {
-                const selected = draft.accessories.neckwear === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        accessories: { ...current.accessories, neckwear: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Watch ── */}
-          <section className="space-y-3">
-            <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Watch
-            </h3>
-            <div className="flex flex-wrap gap-2">
-              {AGENT_AVATAR_WATCH_STYLE_OPTIONS.map((option) => {
-                const selected = draft.accessories.watch === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    className={`${pillClassName} ${
-                      selected
-                        ? "border-primary bg-primary/15 text-foreground"
-                        : "border-border/50 bg-muted/30 text-muted-foreground"
-                    }`}
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        accessories: { ...current.accessories, watch: option.id },
-                      }))
-                    }
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ── Toggles: headset & backpack ── */}
           <section className="space-y-3 xl:col-span-2">
             <h3 className="font-mono text-[11px] font-semibold tracking-[0.06em] text-muted-foreground">
-              Other accessories
+              Accessories
             </h3>
             <div className="flex flex-wrap gap-2">
               {[
+                {
+                  key: "glasses" as const,
+                  label: "Glasses",
+                  enabled: draft.accessories.glasses,
+                },
                 {
                   key: "headset" as const,
                   label: "Headset",

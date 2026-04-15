@@ -75,10 +75,6 @@ export const AGENT_SPAWN_POINTS: FacingPoint[] = [
   { x: 860, y: 410, facing: -0.9 },
   { x: 1080, y: 620, facing: -1.9 },
   { x: 380, y: 650, facing: -0.2 },
-  { x: 140, y: 180, facing: 0.5 },
-  { x: 1200, y: 180, facing: 1.2 },
-  { x: 1140, y: 320, facing: -1.5 },
-  { x: 200, y: 320, facing: 0.8 },
 ];
 
 export const AGENT_PAUSE_EXCLUSION_ZONES = [
@@ -130,32 +126,6 @@ export const ROAM_POINTS = [
   { x: 1040, y: 430 },
   { x: 1180, y: 610 },
   { x: 360, y: 500 },
-  // Meeting area (top-left)
-  { x: 120, y: 140 },
-  { x: 180, y: 120 },
-  { x: 150, y: 200 },
-  // Kitchen/left wall area
-  { x: 120, y: 350 },
-  { x: 100, y: 450 },
-  { x: 140, y: 380 },
-  // Near ATM area
-  { x: 380, y: 180 },
-  { x: 410, y: 210 },
-  // Server room entrance area
-  { x: 140, y: 640 },
-  { x: 180, y: 660 },
-  // East wing corridor
-  { x: 1150, y: 350 },
-  { x: 1220, y: 380 },
-  { x: 1180, y: 420 },
-  { x: 1100, y: 380 },
-  // Jukebox area
-  { x: 850, y: 180 },
-  { x: 900, y: 200 },
-  // Phone/SMS booth area (upper)
-  { x: 500, y: 180 },
-  { x: 550, y: 150 },
-  { x: 480, y: 220 },
 ].filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
 
 
@@ -169,10 +139,7 @@ export type RoamRouteModel =
   | "orbit"
   | "perimeter_drift"
   | "serpentine"
-  | "diagonal_weave"
-  | "meeting_circuit"
-  | "east_explorer"
-  | "left_wall_patrol";
+  | "diagonal_weave";
 
 export const ROAM_ROUTE_MODELS: Record<RoamRouteModel, FacingPoint[]> = {
   loop: [
@@ -274,36 +241,6 @@ export const ROAM_ROUTE_MODELS: Record<RoamRouteModel, FacingPoint[]> = {
     { x: 1180, y: 520, facing: -2.3 },
     { x: 840, y: 610, facing: -2.7 },
     { x: 460, y: 580, facing: -1.8 },
-  ],
-  meeting_circuit: [
-    { x: 150, y: 140, facing: 0.5 },
-    { x: 120, y: 350, facing: 0.3 },
-    { x: 140, y: 500, facing: -0.2 },
-    { x: 300, y: 480, facing: 0.7 },
-    { x: 500, y: 380, facing: 1.1 },
-    { x: 400, y: 250, facing: 0.9 },
-    { x: 280, y: 200, facing: 0.4 },
-    { x: 150, y: 280, facing: -0.1 },
-  ],
-  east_explorer: [
-    { x: 1100, y: 280, facing: 1.8 },
-    { x: 1200, y: 320, facing: 2.0 },
-    { x: 1220, y: 450, facing: -2.5 },
-    { x: 1150, y: 500, facing: -2.1 },
-    { x: 1000, y: 420, facing: -1.4 },
-    { x: 1080, y: 300, facing: 0.8 },
-    { x: 1250, y: 380, facing: 2.3 },
-    { x: 1150, y: 550, facing: -1.8 },
-  ],
-  left_wall_patrol: [
-    { x: 110, y: 200, facing: 0.2 },
-    { x: 100, y: 380, facing: 0.1 },
-    { x: 120, y: 520, facing: -0.1 },
-    { x: 200, y: 600, facing: 0.0 },
-    { x: 350, y: 550, facing: 0.5 },
-    { x: 280, y: 400, facing: -0.3 },
-    { x: 150, y: 300, facing: -0.5 },
-    { x: 100, y: 450, facing: 0.0 },
   ],
 };
 
@@ -704,15 +641,14 @@ export const getDeskLocations = (items: FurnitureItem[]) =>
 export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
   // Meeting seats are inferred from chair placement in the conference area so standup
   // gathering follows the authored layout instead of a hardcoded attendee list.
-  // Detection region expanded to accommodate a 6-chair round table layout.
   const chairs = items
     .filter(
       (item) =>
         item.type === "chair" &&
         item.x >= 0 &&
-        item.x <= 320 &&
+        item.x <= 290 &&
         item.y >= 0 &&
-        item.y <= 280,
+        item.y <= 235,
     )
     .sort((left, right) => left.y - right.y || left.x - right.x);
   if (chairs.length === 0) return [];
@@ -881,13 +817,11 @@ export const getQaLabStations = (
       };
     });
 
-// Overflow standing positions around the meeting table when all chairs are taken.
-// Centred around table at (166, 112) to match the 6-chair layout.
 export const MEETING_OVERFLOW_LOCATIONS = [
-  { x: 20, y: 130, facing: Math.PI / 2 },       // Left standing
-  { x: 300, y: 130, facing: -Math.PI / 2 },      // Right standing
-  { x: 166, y: 20, facing: Math.PI },            // Top standing
-  { x: 166, y: 250, facing: 0 },                 // Bottom standing
+  { x: 18, y: 118, facing: Math.PI / 2 },
+  { x: 270, y: 118, facing: -Math.PI / 2 },
+  { x: 145, y: 24, facing: Math.PI },
+  { x: 145, y: 220, facing: 0 },
 ];
 
 export const resolveDeskIndexForItem = (
