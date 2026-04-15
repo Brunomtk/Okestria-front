@@ -14,7 +14,7 @@ import {
 import type { AgentState as AgentRecord } from "@/features/agents/state/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, ChevronRight, Clock, Cog, Mic, Paperclip, Pencil, Square, Trash2, X } from "lucide-react";
+import { Check, ChevronRight, Clock, Cog, Mic, Paperclip, Pencil, Square, Trash2, Users, X } from "lucide-react";
 import type { GatewayModelChoice } from "@/lib/gateway/models";
 import { rewriteMediaLinesToMarkdown } from "@/lib/text/media-markdown";
 import { normalizeAssistantDisplayText } from "@/lib/text/assistantText";
@@ -193,6 +193,8 @@ type AgentChatPanelProps = {
   pendingExecApprovals?: PendingExecApproval[];
   onResolveExecApproval?: (id: string, decision: ExecApprovalDecision) => void;
   onVoiceSend?: (payload: VoiceSendPayload) => Promise<void>;
+  leadContextLabel?: string | null;
+  onClearLeadContext?: () => void;
   composerToolbarExtra?: ReactNode;
 };
 
@@ -963,6 +965,8 @@ const AgentChatComposer = memo(function AgentChatComposer({
   showThinkingTraces,
   onToolCallingToggle,
   onThinkingTracesToggle,
+  leadContextLabel,
+  onClearLeadContext,
   composerToolbarExtra,
 }: {
   value: string;
@@ -998,6 +1002,8 @@ const AgentChatComposer = memo(function AgentChatComposer({
   showThinkingTraces: boolean;
   onToolCallingToggle: (enabled: boolean) => void;
   onThinkingTracesToggle: (enabled: boolean) => void;
+  leadContextLabel?: string | null;
+  onClearLeadContext?: () => void;
   composerToolbarExtra?: ReactNode;
 }) {
   const [isDragActive, setIsDragActive] = useState(false);
@@ -1274,6 +1280,25 @@ const AgentChatComposer = memo(function AgentChatComposer({
             ))}
           </div>
         ) : null}
+        {leadContextLabel ? (
+          <div className="mb-2 flex flex-wrap gap-1.5" data-testid="agent-lead-context">
+            <div className="flex items-center gap-2 rounded-md border border-cyan-500/40 bg-cyan-500/10 px-2.5 py-1.5 text-[11px] text-cyan-200">
+              <Users className="h-3.5 w-3.5 flex-none text-cyan-400" />
+              <div className="min-w-0">
+                <div className="max-w-[240px] truncate font-medium" title={leadContextLabel}>{leadContextLabel}</div>
+                <div className="text-[10px] text-cyan-400/70">Lead context attached</div>
+              </div>
+              <button
+                type="button"
+                className="inline-flex h-4 w-4 flex-none items-center justify-center rounded-sm text-cyan-400/60 transition hover:bg-cyan-500/20 hover:text-cyan-200"
+                aria-label="Remove lead context"
+                onClick={() => onClearLeadContext?.()}
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        ) : null}
         {voiceStatusText || voiceError ? (
           <div
             className={`mb-2 rounded-md border px-2.5 py-1.5 font-mono text-[10px] tracking-[0.02em] ${
@@ -1380,6 +1405,8 @@ export const AgentChatPanel = ({
   pendingExecApprovals = [],
   onResolveExecApproval,
   onVoiceSend,
+  leadContextLabel,
+  onClearLeadContext,
   composerToolbarExtra,
 }: AgentChatPanelProps) => {
   const [draftValue, setDraftValue] = useState(agent.draft);
@@ -2011,6 +2038,8 @@ export const AgentChatPanel = ({
             showThinkingTraces={agent.showThinkingTraces}
             onToolCallingToggle={onToolCallingToggle}
             onThinkingTracesToggle={onThinkingTracesToggle}
+            leadContextLabel={leadContextLabel}
+            onClearLeadContext={onClearLeadContext}
             composerToolbarExtra={composerToolbarExtra}
           />
         </div>

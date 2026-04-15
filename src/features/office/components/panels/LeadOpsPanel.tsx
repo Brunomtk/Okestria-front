@@ -106,7 +106,7 @@ export function LeadOpsPanel({
 }: {
   agents: AgentState[];
   companyName?: string | null;
-  onSelectAgent: (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; draft?: string | null }) => void;
+  onSelectAgent: (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; leadContextLabel?: string | null; draft?: string | null }) => void;
 }) {
   const companyId = getBrowserCompanyId();
 
@@ -492,6 +492,7 @@ export function LeadOpsPanel({
       });
       onSelectAgent(targetAgent.gatewayAgentId, {
         leadContext: ctx.chatContext,
+        leadContextLabel: ctx.title || "Lead generation job",
         draft: ctx.suggestedUserMessage,
       });
       setModalView("none");
@@ -515,6 +516,7 @@ export function LeadOpsPanel({
       const ctx = await fetchLeadChatContext(selectedLeadDetail.id);
       onSelectAgent(targetAgent.gatewayAgentId, {
         leadContext: ctx.chatContext,
+        leadContextLabel: ctx.title || selectedLeadDetail.companyName || "Lead context",
         draft: ctx.suggestedUserMessage,
       });
       setModalView("none");

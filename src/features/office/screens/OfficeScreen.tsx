@@ -998,6 +998,7 @@ export function OfficeScreen({
   const [leadChatLeads, setLeadChatLeads] = useState<LeadSummary[]>([]);
   const [leadChatBusyKey, setLeadChatBusyKey] = useState<string | null>(null);
   const pendingLeadChatContextRef = useRef<string | null>(null);
+  const [pendingLeadContextLabel, setPendingLeadContextLabel] = useState<string | null>(null);
   const [remoteChatByAgentId, setRemoteChatByAgentId] = useState<
     Record<string, RemoteChatSessionState>
   >({});
@@ -3617,7 +3618,7 @@ export function OfficeScreen({
   }, [leadChatContextLoading, leadChatJobs.length, leadChatLeads.length, loadLeadChatContext]);
 
   const handleOpenAgentChat = useCallback(
-    (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; draft?: string | null }) => {
+    (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; leadContextLabel?: string | null; draft?: string | null }) => {
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId) && options?.sessionKey) {
         const targetAgent = state.agents.find((entry) => entry.agentId === agentId);
         if (targetAgent && targetAgent.sessionKey !== options.sessionKey) {
@@ -3639,6 +3640,7 @@ export function OfficeScreen({
       // Store lead context to prepend on next send
       if (options?.leadContext) {
         pendingLeadChatContextRef.current = options.leadContext;
+        setPendingLeadContextLabel(options.leadContextLabel ?? "Lead context");
       }
       // Set draft if provided
       if (options?.draft && !isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId)) {
@@ -3672,6 +3674,7 @@ export function OfficeScreen({
       // Open agent chat with lead context stored (prepended on next send) and draft pre-filled
       handleOpenAgentChat(selectedChatAgentId, {
         leadContext: ctx.chatContext,
+        leadContextLabel: ctx.title || (target.type === "job" ? "Lead generation job" : "Lead context"),
         draft: ctx.suggestedUserMessage,
       });
       setLeadChatContextOpen(false);
@@ -3960,6 +3963,7 @@ export function OfficeScreen({
       const pendingCtx = pendingLeadChatContextRef.current;
       if (pendingCtx) {
         pendingLeadChatContextRef.current = null;
+        setPendingLeadContextLabel(null);
         trimmed = `${pendingCtx}\n\n---\n\n${trimmed}`;
       }
       if (isRemoteOfficeAgentId(agentId)) {
@@ -5398,6 +5402,11 @@ export function OfficeScreen({
                         openAgentEditor(focusedChatAgent.agentId, "avatar")
                       }
                       onVoiceSend={handleVoiceSend}
+                      leadContextLabel={pendingLeadContextLabel}
+                      onClearLeadContext={() => {
+                        pendingLeadChatContextRef.current = null;
+                        setPendingLeadContextLabel(null);
+                      }}
                       composerToolbarExtra={
                         !isSquadChatTargetId(focusedChatAgent.agentId) && companyId ? (
                           <button
