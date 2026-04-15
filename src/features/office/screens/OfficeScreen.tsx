@@ -997,6 +997,7 @@ export function OfficeScreen({
   const [leadChatJobs, setLeadChatJobs] = useState<LeadGenerationJob[]>([]);
   const [leadChatLeads, setLeadChatLeads] = useState<LeadSummary[]>([]);
   const [leadChatBusyKey, setLeadChatBusyKey] = useState<string | null>(null);
+  const pendingLeadChatContextRef = useRef<string | null>(null);
   const [remoteChatByAgentId, setRemoteChatByAgentId] = useState<
     Record<string, RemoteChatSessionState>
   >({});
@@ -3616,7 +3617,7 @@ export function OfficeScreen({
   }, [leadChatContextLoading, leadChatJobs.length, leadChatLeads.length, loadLeadChatContext]);
 
   const handleOpenAgentChat = useCallback(
-    (agentId: string, options?: { sessionKey?: string | null }) => {
+    (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; draft?: string | null }) => {
       if (!isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId) && options?.sessionKey) {
         const targetAgent = state.agents.find((entry) => entry.agentId === agentId);
         if (targetAgent && targetAgent.sessionKey !== options.sessionKey) {
@@ -3634,6 +3635,18 @@ export function OfficeScreen({
             },
           });
         }
+      }
+      // Store lead context to prepend on next send
+      if (options?.leadContext) {
+        pendingLeadChatContextRef.current = options.leadContext;
+      }
+      // Set draft if provided
+      if (options?.draft && !isRemoteOfficeAgentId(agentId) && !isSquadChatTargetId(agentId)) {
+        dispatch({
+          type: "updateAgent",
+          agentId,
+          patch: { draft: options.draft },
+        });
       }
       setSelectedChatAgentId(agentId);
       setChatTargetView(isSquadChatTargetId(agentId) ? "squads" : "agents");
@@ -3656,25 +3669,18 @@ export function OfficeScreen({
           })
         : await fetchLeadChatContext(target.id);
 
-      // Use the currently selected agent — no need to resolve from a backend prime result
-      const agent = state.agents.find((a) => a.agentId === selectedChatAgentId);
-      if (!agent) {
-        throw new Error("No active chat agent found. Please select an agent first.");
-      }
-
-      // Open the agent chat (keep existing session) and inject context as a message
-      handleOpenAgentChat(selectedChatAgentId);
+      // Open agent chat with lead context stored (prepended on next send) and draft pre-filled
+      handleOpenAgentChat(selectedChatAgentId, {
+        leadContext: ctx.chatContext,
+        draft: ctx.suggestedUserMessage,
+      });
       setLeadChatContextOpen(false);
-
-      // Send the lead context + suggested message as a chat message
-      const contextMessage = `${ctx.chatContext}\n\n---\n\n${ctx.suggestedUserMessage}`;
-      await chatController.handleSend(agent.agentId, agent.sessionKey, { text: contextMessage });
     } catch (error) {
       setLeadChatContextError(error instanceof Error ? error.message : "Unable to pull this lead context into chat.");
     } finally {
       setLeadChatBusyKey(null);
     }
-  }, [chatController, handleOpenAgentChat, selectedChatAgentId, state.agents]);
+  }, [handleOpenAgentChat, selectedChatAgentId]);
   const updateRemoteChatSession = useCallback(
     (
       agentId: string,
@@ -3946,9 +3952,16 @@ export function OfficeScreen({
     async (agentId: string, sessionKey: string, payload: string | ChatSendPayload) => {
       stopVoiceReplyPlayback();
       const resolvedPayload = typeof payload === "string" ? { text: payload } : payload;
-      const trimmed = resolvedPayload.text.trim();
+      let trimmed = resolvedPayload.text.trim();
       const attachments = Array.isArray(resolvedPayload.attachments) ? resolvedPayload.attachments : [];
       if (!trimmed && attachments.length === 0) return;
+
+      // Prepend pending lead context if available
+      const pendingCtx = pendingLeadChatContextRef.current;
+      if (pendingCtx) {
+        pendingLeadChatContextRef.current = null;
+        trimmed = `${pendingCtx}\n\n---\n\n${trimmed}`;
+      }
       if (isRemoteOfficeAgentId(agentId)) {
         if (attachments.length > 0) {
           throw new Error("Remote office chat does not support file attachments yet.");
@@ -4083,7 +4096,7 @@ export function OfficeScreen({
         return;
       }
 
-      await chatController.handleSend(agentId, sessionKey, resolvedPayload);
+      await chatController.handleSend(agentId, sessionKey, { ...resolvedPayload, text: trimmed });
     },
     [
       chatController,
@@ -5076,8 +5089,8 @@ export function OfficeScreen({
               <LeadOpsPanel
                 agents={state.agents}
                 companyName={companyName}
-                onSelectAgent={(agentId) => {
-                  handleOpenAgentChat(agentId);
+                onSelectAgent={(agentId, options) => {
+                  handleOpenAgentChat(agentId, options);
                 }}
               />
             </div>

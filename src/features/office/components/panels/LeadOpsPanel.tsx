@@ -45,11 +45,10 @@ import {
   getLeadById,
   generateLeadInsights,
   sendSingleLeadEmail,
-  primeLeadChat,
-  primeLeadGenerationJobChat,
+  fetchLeadChatContext,
+  fetchJobChatContext,
   bulkGenerateInsights,
   bulkDeleteLeads,
-  type LeadChatPrimeResult,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
   type LeadSummary,
@@ -107,7 +106,7 @@ export function LeadOpsPanel({
 }: {
   agents: AgentState[];
   companyName?: string | null;
-  onSelectAgent: (agentId: string, options?: { sessionKey?: string | null }) => void;
+  onSelectAgent: (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; draft?: string | null }) => void;
 }) {
   const companyId = getBrowserCompanyId();
 
@@ -478,25 +477,6 @@ export function LeadOpsPanel({
     }
   }, [companyId, effectiveCompanyEmail, effectiveCompanyName, emailIntroText, emailReplyTo, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
 
-  const resolveGatewayAgentIdForLeadChat = useCallback((primeResult: LeadChatPrimeResult) => {
-    const selectedOption = leadAgentOptions.find((entry) => entry.backendAgentId === primeResult.agentId);
-    if (selectedOption?.gatewayAgentId) return selectedOption.gatewayAgentId;
-
-    const normalizedSlug = primeResult.agentSlug?.trim().toLowerCase();
-    if (normalizedSlug) {
-      const bySlug = agents.find((agent) => agent.agentId.trim().toLowerCase() === normalizedSlug);
-      if (bySlug) return bySlug.agentId;
-    }
-
-    const normalizedName = primeResult.agentName?.trim().toLowerCase();
-    if (normalizedName) {
-      const byName = agents.find((agent) => agent.name.trim().toLowerCase() === normalizedName);
-      if (byName) return byName.agentId;
-    }
-
-    return null;
-  }, [agents, leadAgentOptions]);
-
   const handlePrimeLeadJobChat = useCallback(async () => {
     if (!selectedJob) return;
     const targetAgent = selectedLeadAgent;
@@ -507,21 +487,20 @@ export function LeadOpsPanel({
     setError(null);
     setChatPriming("job");
     try {
-      const result = await primeLeadGenerationJobChat(selectedJob.id, {
-        agentId: selectedBackendAgentId > 0 ? selectedBackendAgentId : undefined,
-        message: "Use this full lead generation as context. Analyze the leads, prioritize the best opportunities, and continue helping inside the chat.",
-        usePersistentSession: true,
-        timeoutSeconds: 120,
+      const ctx = await fetchJobChatContext(selectedJob.id, {
+        actionPrompt: "Use this full lead generation as context. Analyze the leads, prioritize the best opportunities, and continue helping inside the chat.",
       });
-      onSelectAgent(targetAgent.gatewayAgentId);
+      onSelectAgent(targetAgent.gatewayAgentId, {
+        leadContext: ctx.chatContext,
+        draft: ctx.suggestedUserMessage,
+      });
       setModalView("none");
-      setError(result.warning?.trim() || null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to open this lead mission in chat.");
     } finally {
       setChatPriming(null);
     }
-  }, [onSelectAgent, selectedBackendAgentId, selectedJob, selectedLeadAgent]);
+  }, [onSelectAgent, selectedJob, selectedLeadAgent]);
 
   const handlePrimeSelectedLeadChat = useCallback(async () => {
     if (!selectedLeadDetail) return;
@@ -533,21 +512,18 @@ export function LeadOpsPanel({
     setError(null);
     setChatPriming(selectedLeadDetail.id);
     try {
-      const result = await primeLeadChat(selectedLeadDetail.id, {
-        agentId: selectedBackendAgentId > 0 ? selectedBackendAgentId : undefined,
-        message: "Use this lead as the active context in chat. Review the business, suggest next actions, and help me work this opportunity step by step.",
-        usePersistentSession: true,
-        timeoutSeconds: 120,
+      const ctx = await fetchLeadChatContext(selectedLeadDetail.id);
+      onSelectAgent(targetAgent.gatewayAgentId, {
+        leadContext: ctx.chatContext,
+        draft: ctx.suggestedUserMessage,
       });
-      onSelectAgent(targetAgent.gatewayAgentId);
       setModalView("none");
-      setError(result.warning?.trim() || null);
     } catch (error) {
       setError(error instanceof Error ? error.message : "Unable to open this lead in chat.");
     } finally {
       setChatPriming(null);
     }
-  }, [onSelectAgent, selectedBackendAgentId, selectedLeadDetail, selectedLeadAgent]);
+  }, [onSelectAgent, selectedLeadDetail, selectedLeadAgent]);
 
   const handleSendSingleEmail = useCallback(async () => {
     if (!selectedLeadDetail) return;
