@@ -92,6 +92,26 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
+const STAGE_LABELS: Record<string, string> = {
+  queued: "Queued",
+  starting: "Starting…",
+  "apify-running": "Collecting leads from Google Maps…",
+  normalizing: "Normalizing data…",
+  "enriching-emails": "Enriching emails from websites…",
+  filtering: "Filtering leads without email…",
+  persisting: "Saving leads & generating insights…",
+  finalizing: "Finalizing…",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  "provider-timeout": "Provider timed out",
+};
+
+const friendlyStage = (stage?: string | null) => {
+  if (!stage) return "Queued";
+  return STAGE_LABELS[stage.toLowerCase()] || stage;
+};
+
 type LeadAgentOption = {
   backendAgentId: number;
   gatewayAgentId?: string | null;
@@ -846,7 +866,7 @@ export function LeadOpsPanel({
               {/* Progress */}
               <div className="mt-5">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-white/40">{selectedJob.currentStage || "Queued"}</span>
+                  <span className="text-white/40">{friendlyStage(selectedJob.currentStage)}</span>
                   <span className="text-white/60">{selectedJob.progressPercent}%</span>
                 </div>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
