@@ -150,6 +150,9 @@ export function LeadOpsPanel({
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
+  // AI Model selection
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250514");
+
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -438,7 +441,7 @@ export function LeadOpsPanel({
     if (!selectedLeadId) return;
     setGeneratingInsights(true);
     try {
-      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: "gpt-5.4-nano" });
+      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: selectedModel });
       if (updated) {
         setSelectedLeadDetail(updated);
         setJobLeads((c) => c.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
@@ -449,7 +452,7 @@ export function LeadOpsPanel({
     } finally {
       setGeneratingInsights(false);
     }
-  }, [selectedLeadId]);
+  }, [selectedLeadId, selectedModel]);
 
   const handleCreateEmailBatch = useCallback(async () => {
     if (!companyId || !selectedJob) return;
@@ -555,7 +558,7 @@ export function LeadOpsPanel({
         replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
         generateInsightsIfMissing: true,
         forceRegenerateInsights: false,
-        preferredModel: "gpt-5.4-nano",
+        preferredModel: selectedModel,
       });
       setError(`Email sent to ${result.toEmail}`);
       setModalView("lead-detail");
@@ -567,7 +570,7 @@ export function LeadOpsPanel({
     } finally {
       setSendingSingleEmail(false);
     }
-  }, [effectiveCompanyEmail, emailIntroText, emailReplyTo, selectedLeadDetail, singleLeadRecipient, singleLeadSubject]);
+  }, [effectiveCompanyEmail, emailIntroText, emailReplyTo, selectedLeadDetail, selectedModel, singleLeadRecipient, singleLeadSubject]);
 
   const handleCancelEmailBatch = useCallback(async (batchId: number) => {
     try {
@@ -582,7 +585,7 @@ export function LeadOpsPanel({
     if (!companyId) return;
     setBulkGenerating(true);
     try {
-      await bulkGenerateInsights({ companyId, preferredModel: "gpt-5.4-nano" });
+      await bulkGenerateInsights({ companyId, preferredModel: selectedModel });
       setError("Bulk insight generation started — leads will update shortly.");
       setTimeout(() => setError((c) => (c === "Bulk insight generation started — leads will update shortly." ? null : c)), 3500);
       setRefreshTick((t) => t + 1);
@@ -591,7 +594,7 @@ export function LeadOpsPanel({
     } finally {
       setBulkGenerating(false);
     }
-  }, [companyId]);
+  }, [companyId, selectedModel]);
 
   const handleBulkDelete = useCallback(async () => {
     const leadIds = filteredLeads.map((l) => l.id);
@@ -1050,6 +1053,20 @@ export function LeadOpsPanel({
               </button>
             </div>
 
+            {/* Model Selector */}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="rounded-lg bg-white/5 px-2.5 py-2 text-xs text-white/80 outline-none ring-1 ring-white/10 transition focus:ring-cyan-500/50 [&>option]:bg-slate-900 [&>option]:text-white"
+            >
+              <option value="claude-sonnet-4-5-20250514">Claude Sonnet 4.5</option>
+              <option value="claude-opus-4-0-20250514">Claude Opus 4</option>
+              <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
+              <option value="gpt-4o">GPT-4o</option>
+              <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
+              <option value="gpt-4o-mini">GPT-4o Mini</option>
+            </select>
+
             {/* Bulk Actions */}
             <button
               type="button"
@@ -1147,9 +1164,13 @@ export function LeadOpsPanel({
 
                     {/* Contact Icons */}
                     <div className="flex shrink-0 items-center gap-2">
-                      {lead.email && (
+                      {lead.email ? (
                         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10">
                           <Mail className="h-3.5 w-3.5 text-cyan-400" />
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">
+                          No Email
                         </span>
                       )}
                       {lead.phone && (
@@ -1187,7 +1208,11 @@ export function LeadOpsPanel({
                       <FitBadge fit={lead.ptxFit} />
                     </div>
                     <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
-                      {lead.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-cyan-400" /> Email</span>}
+                      {lead.email ? (
+                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-cyan-400" /> Email</span>
+                      ) : (
+                        <span className="rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">No Email</span>
+                      )}
                       {lead.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-400" /> Phone</span>}
                       {lead.website && <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> Web</span>}
                     </div>
@@ -1308,9 +1333,9 @@ export function LeadOpsPanel({
             </div>
           ) : (
             <div className="space-y-5">
-              {/* Generate button */}
-              <div className="flex items-center justify-between rounded-xl bg-white/5 p-4">
-                <div>
+              {/* Generate button + Model selector */}
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 p-4">
+                <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-white">
                     {outreachData.hasAi ? "AI Outreach Ready" : outreachData.needsInsights ? "Generate AI Outreach" : "Outreach Available"}
                   </div>
@@ -1318,6 +1343,18 @@ export function LeadOpsPanel({
                     {outreachData.hasAi ? "Script and email generated by AI" : "Click to generate personalized content"}
                   </div>
                 </div>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="rounded-lg bg-white/5 px-2.5 py-2 text-xs text-white/80 outline-none ring-1 ring-white/10 transition focus:ring-cyan-500/50 [&>option]:bg-slate-900 [&>option]:text-white"
+                >
+                  <option value="claude-sonnet-4-5-20250514">Claude Sonnet 4.5</option>
+                  <option value="claude-opus-4-0-20250514">Claude Opus 4</option>
+                  <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
+                  <option value="gpt-4o-mini">GPT-4o Mini</option>
+                </select>
                 <button
                   type="button"
                   onClick={handleGenerateInsights}
