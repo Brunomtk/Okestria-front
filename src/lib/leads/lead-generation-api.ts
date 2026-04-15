@@ -560,7 +560,7 @@ export const generateLeadInsights = async (
   const body = {
     persist: true,
     forceRegenerate: options?.forceRegenerate ?? true,
-    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
+    preferredModel: options?.preferredModel ?? null,
     ...(agentId ? { agentId } : {}),
   };
 
@@ -606,7 +606,7 @@ export const bulkGenerateInsights = async (
     companyId,
     ...(jobId ? { jobId } : {}),
     forceRegenerate: options?.forceRegenerate ?? false,
-    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
+    preferredModel: options?.preferredModel ?? null,
   };
 
   const response = await requestBackend<BulkGenerateInsightsResult>("/api/Leads/bulk-generate-insights", {
@@ -690,7 +690,7 @@ export const sendSingleLeadEmail = async (leadId: number, payload: SendSingleLea
       replyTo: payload.replyTo,
       generateInsightsIfMissing: payload.generateInsightsIfMissing ?? true,
       forceRegenerateInsights: payload.forceRegenerateInsights ?? false,
-      preferredModel: payload.preferredModel ?? "gpt-5.4-nano",
+      preferredModel: payload.preferredModel ?? null,
     }),
   });
   const normalized = normalizeSingleLeadEmailResult(response);

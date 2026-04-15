@@ -156,6 +156,15 @@ export function LeadOpsPanel({
   const [companyBrandName, setCompanyBrandName] = useState(companyName?.trim() || "");
   const [companyBrandEmail, setCompanyBrandEmail] = useState("");
 
+  // AI provider selection
+  const AI_PROVIDERS = [
+    { value: "gpt-5.4-nano", label: "OpenAI · GPT-5.4 Nano" },
+    { value: "gpt-4.1-mini", label: "OpenAI · GPT-4.1 Mini" },
+    { value: "claude-sonnet-4-20250514", label: "Claude · Sonnet 4" },
+    { value: "claude-haiku-3-5-20241022", label: "Claude · Haiku 3.5" },
+  ];
+  const [selectedAiProvider, setSelectedAiProvider] = useState(AI_PROVIDERS[0].value);
+
   // Email form fields
   const [emailSenderName, setEmailSenderName] = useState(companyName?.trim() || "");
   const [emailSenderAddress, setEmailSenderAddress] = useState("");
@@ -436,7 +445,7 @@ export function LeadOpsPanel({
     if (!selectedLeadId) return;
     setGeneratingInsights(true);
     try {
-      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: "gpt-5.4-nano" });
+      const updated = await generateLeadInsights(selectedLeadId, null, { forceRegenerate: true, preferredModel: selectedAiProvider });
       if (updated) {
         setSelectedLeadDetail(updated);
         setJobLeads((c) => c.map((l) => (l.id === updated.id ? { ...l, ...updated } : l)));
@@ -447,7 +456,7 @@ export function LeadOpsPanel({
     } finally {
       setGeneratingInsights(false);
     }
-  }, [selectedLeadId]);
+  }, [selectedLeadId, selectedAiProvider]);
 
   const handleBulkGenerateInsights = useCallback(async () => {
     if (!companyId || !selectedJob) return;
@@ -455,7 +464,7 @@ export function LeadOpsPanel({
     setBulkResult(null);
     setBulkProgress({ current: 0, total: jobLeads.length || selectedJob.totalInserted || 0 });
     try {
-      const result = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: false });
+      const result = await bulkGenerateInsights(companyId, selectedJob.id, { forceRegenerate: false, preferredModel: selectedAiProvider });
       setBulkResult(result);
       setBulkProgress({ current: result.total, total: result.total });
       // Refresh lead list
@@ -467,7 +476,7 @@ export function LeadOpsPanel({
     } finally {
       setBulkGenerating(false);
     }
-  }, [companyId, selectedJob, jobLeads.length]);
+  }, [companyId, selectedJob, jobLeads.length, selectedAiProvider]);
 
   const handleCreateEmailBatch = useCallback(async () => {
     if (!companyId || !selectedJob) return;
@@ -573,7 +582,7 @@ export function LeadOpsPanel({
         replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
         generateInsightsIfMissing: true,
         forceRegenerateInsights: false,
-        preferredModel: "gpt-5.4-nano",
+        preferredModel: selectedAiProvider,
       });
       setError(`Email sent to ${result.toEmail}`);
       setModalView("lead-detail");
@@ -719,6 +728,17 @@ export function LeadOpsPanel({
                     <Mail className="h-3.5 w-3.5" />
                     Send Batch
                   </button>
+                  <select
+                    value={selectedAiProvider}
+                    onChange={(e) => setSelectedAiProvider(e.target.value)}
+                    className="rounded-lg bg-white/5 px-2.5 py-2 text-xs font-medium text-slate-200 ring-1 ring-white/10 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                  >
+                    {AI_PROVIDERS.map((p) => (
+                      <option key={p.value} value={p.value} className="bg-slate-900 text-slate-200">
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     onClick={() => void handleBulkGenerateInsights()}
