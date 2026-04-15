@@ -499,6 +499,11 @@ export function LeadOpsPanel({
 
   const handlePrimeLeadJobChat = useCallback(async () => {
     if (!selectedJob) return;
+    const targetAgent = selectedLeadAgent;
+    if (!targetAgent?.gatewayAgentId) {
+      setError("No agent available. Please select an agent first.");
+      return;
+    }
     setError(null);
     setChatPriming("job");
     try {
@@ -508,11 +513,7 @@ export function LeadOpsPanel({
         usePersistentSession: true,
         timeoutSeconds: 120,
       });
-      const gatewayAgentId = resolveGatewayAgentIdForLeadChat(result);
-      if (!gatewayAgentId) {
-        throw new Error(`Lead context was sent to ${result.agentName}, but the front could not map that agent to an available chat target.`);
-      }
-      onSelectAgent(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+      onSelectAgent(targetAgent.gatewayAgentId);
       setModalView("none");
       setError(result.warning?.trim() || null);
     } catch (error) {
@@ -520,10 +521,15 @@ export function LeadOpsPanel({
     } finally {
       setChatPriming(null);
     }
-  }, [onSelectAgent, resolveGatewayAgentIdForLeadChat, selectedBackendAgentId, selectedJob]);
+  }, [onSelectAgent, selectedBackendAgentId, selectedJob, selectedLeadAgent]);
 
   const handlePrimeSelectedLeadChat = useCallback(async () => {
     if (!selectedLeadDetail) return;
+    const targetAgent = selectedLeadAgent;
+    if (!targetAgent?.gatewayAgentId) {
+      setError("No agent available. Please select an agent first.");
+      return;
+    }
     setError(null);
     setChatPriming(selectedLeadDetail.id);
     try {
@@ -533,11 +539,7 @@ export function LeadOpsPanel({
         usePersistentSession: true,
         timeoutSeconds: 120,
       });
-      const gatewayAgentId = resolveGatewayAgentIdForLeadChat(result);
-      if (!gatewayAgentId) {
-        throw new Error(`Lead context was sent to ${result.agentName}, but the front could not map that agent to an available chat target.`);
-      }
-      onSelectAgent(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+      onSelectAgent(targetAgent.gatewayAgentId);
       setModalView("none");
       setError(result.warning?.trim() || null);
     } catch (error) {
@@ -545,7 +547,7 @@ export function LeadOpsPanel({
     } finally {
       setChatPriming(null);
     }
-  }, [onSelectAgent, resolveGatewayAgentIdForLeadChat, selectedBackendAgentId, selectedLeadDetail]);
+  }, [onSelectAgent, selectedBackendAgentId, selectedLeadDetail, selectedLeadAgent]);
 
   const handleSendSingleEmail = useCallback(async () => {
     if (!selectedLeadDetail) return;

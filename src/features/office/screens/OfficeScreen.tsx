@@ -127,8 +127,8 @@ import {
 import {
   listLeadGenerationJobs,
   listLeadsByCompany,
-  primeLeadChat,
-  primeLeadGenerationJobChat,
+  fetchLeadChatContext,
+  fetchJobChatContext,
   type LeadGenerationJob,
   type LeadSummary,
 } from "@/lib/leads/lead-generation-api";
@@ -3650,35 +3650,31 @@ export function OfficeScreen({
     setLeadChatContextError(null);
     setLeadChatBusyKey(`${target.type}:${target.id}`);
     try {
-      const backendAgentId = await resolveBackendAgentIdForGatewayAgent(selectedChatAgentId);
-      const payload = {
-        agentId: backendAgentId ?? undefined,
-        message:
-          target.type === "job"
-            ? "Use this full lead generation as context in the active chat. Analyze the opportunities and continue helping from here."
-            : "Use this lead as the active context in the chat. Analyze it and continue helping from here.",
-        usePersistentSession: true,
-        timeoutSeconds: 120,
-      };
-      const result = target.type === "job"
-        ? await primeLeadGenerationJobChat(target.id, payload)
-        : await primeLeadChat(target.id, payload);
-      const gatewayAgentId = resolveGatewayAgentIdForLeadContext({
-        agentId: result.agentId,
-        agentSlug: result.agentSlug,
-        agentName: result.agentName,
-      });
-      if (!gatewayAgentId) {
-        throw new Error(`Lead context was sent to ${result.agentName}, but no compatible chat agent was found in the UI.`);
+      const ctx = target.type === "job"
+        ? await fetchJobChatContext(target.id, {
+            actionPrompt: "Use this full lead generation as context in the active chat. Analyze the opportunities and continue helping from here.",
+          })
+        : await fetchLeadChatContext(target.id);
+
+      // Use the currently selected agent — no need to resolve from a backend prime result
+      const agent = state.agents.find((a) => a.agentId === selectedChatAgentId);
+      if (!agent) {
+        throw new Error("No active chat agent found. Please select an agent first.");
       }
-      handleOpenAgentChat(gatewayAgentId, { sessionKey: result.sessionKey ?? null });
+
+      // Open the agent chat (keep existing session) and inject context as a message
+      handleOpenAgentChat(selectedChatAgentId);
       setLeadChatContextOpen(false);
+
+      // Send the lead context + suggested message as a chat message
+      const contextMessage = `${ctx.chatContext}\n\n---\n\n${ctx.suggestedUserMessage}`;
+      await chatController.handleSend(agent.agentId, agent.sessionKey, { text: contextMessage });
     } catch (error) {
       setLeadChatContextError(error instanceof Error ? error.message : "Unable to pull this lead context into chat.");
     } finally {
       setLeadChatBusyKey(null);
     }
-  }, [handleOpenAgentChat, resolveBackendAgentIdForGatewayAgent, resolveGatewayAgentIdForLeadContext, selectedChatAgentId]);
+  }, [chatController, handleOpenAgentChat, selectedChatAgentId, state.agents]);
   const updateRemoteChatSession = useCallback(
     (
       agentId: string,

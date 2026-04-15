@@ -146,6 +146,9 @@ export type LeadChatPrimeResult = {
   promptPreview: string;
   warning?: string | null;
   rawResponse?: string | null;
+  chatContext?: string | null;
+  suggestedUserMessage?: string | null;
+  title?: string | null;
 };
 
 export type LeadSummary = {
@@ -719,16 +722,106 @@ export const bulkDeleteLeads = async (payload: BulkDeleteLeadsPayload): Promise<
   });
 };
 
-// ── Chat Priming ───────────────────────────────────────────────────
+// ── Chat Context ──────────────────────────────────────────────────
 
-export const primeLeadChat = async (leadId: number, payload: LeadChatPrimePayload) =>
-  requestBackend<LeadChatPrimeResult>(`/LeadChat/lead/${leadId}/prime`, {
+export type LeadChatContextDTO = {
+  scope: string;
+  companyId: number;
+  leadId?: number | null;
+  jobId?: number | null;
+  title: string;
+  summary: string;
+  suggestedUserMessage: string;
+  chatContext: string;
+  leadCount: number;
+  leadIds: number[];
+};
+
+export const fetchLeadChatContext = async (leadId: number): Promise<LeadChatContextDTO> =>
+  requestBackend<LeadChatContextDTO>(`/api/Leads/${leadId}/chat-context`);
+
+export const fetchJobChatContext = async (
+  jobId: number,
+  options?: { maxLeads?: number; actionPrompt?: string },
+): Promise<LeadChatContextDTO> =>
+  requestBackend<LeadChatContextDTO>(`/api/Leads/chat-context`, {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      jobId,
+      maxLeads: options?.maxLeads ?? 25,
+      includeNotes: true,
+      includeGeneratedContent: true,
+      actionPrompt: options?.actionPrompt ?? null,
+    }),
   });
 
-export const primeLeadGenerationJobChat = async (jobId: number, payload: LeadChatPrimePayload) =>
-  requestBackend<LeadChatPrimeResult>(`/LeadChat/job/${jobId}/prime`, {
-    method: "POST",
-    body: JSON.stringify(payload),
+// ── Chat Priming (client-side) ────────────────────────────────────
+// These functions fetch context from the backend and return a result
+// that callers can use to inject the context into the active chat.
+// No gateway call is made from the backend.
+
+export const primeLeadChat = async (
+  leadId: number,
+  payload: LeadChatPrimePayload,
+): Promise<LeadChatPrimeResult> => {
+  const ctx = await fetchLeadChatContext(leadId);
+  return {
+    sourceType: ctx.scope,
+    sourceId: ctx.leadId ?? leadId,
+    companyId: ctx.companyId,
+    agentId: payload.agentId ?? 0,
+    agentSlug: "",
+    agentName: "",
+    sessionKey: null,
+    persistentSessionRequested: payload.usePersistentSession ?? false,
+    persistentSessionApplied: false,
+    totalLeadCount: ctx.leadCount,
+    includedLeadCount: ctx.leadCount,
+    contextTruncated: false,
+    hookAccepted: true,
+    hookStatusCode: 200,
+    runId: null,
+    taskId: null,
+    result: null,
+    promptPreview: ctx.suggestedUserMessage,
+    warning: null,
+    rawResponse: null,
+    chatContext: ctx.chatContext,
+    suggestedUserMessage: ctx.suggestedUserMessage,
+    title: ctx.title,
+  };
+};
+
+export const primeLeadGenerationJobChat = async (
+  jobId: number,
+  payload: LeadChatPrimePayload,
+): Promise<LeadChatPrimeResult> => {
+  const ctx = await fetchJobChatContext(jobId, {
+    actionPrompt: payload.message,
   });
+  return {
+    sourceType: ctx.scope,
+    sourceId: ctx.jobId ?? jobId,
+    companyId: ctx.companyId,
+    agentId: payload.agentId ?? 0,
+    agentSlug: "",
+    agentName: "",
+    sessionKey: null,
+    persistentSessionRequested: payload.usePersistentSession ?? false,
+    persistentSessionApplied: false,
+    totalLeadCount: ctx.leadCount,
+    includedLeadCount: ctx.leadCount,
+    contextTruncated: false,
+    hookAccepted: true,
+    hookStatusCode: 200,
+    runId: null,
+    taskId: null,
+    result: null,
+    promptPreview: ctx.suggestedUserMessage,
+    warning: null,
+    rawResponse: null,
+    chatContext: ctx.chatContext,
+    suggestedUserMessage: ctx.suggestedUserMessage,
+    title: ctx.title,
+  };
+};
