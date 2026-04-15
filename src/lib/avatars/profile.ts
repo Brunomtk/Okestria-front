@@ -1,7 +1,7 @@
-export type AgentAvatarHairStyle = "short" | "parted" | "spiky" | "bun";
-export type AgentAvatarTopStyle = "tee" | "hoodie" | "jacket";
-export type AgentAvatarBottomStyle = "pants" | "shorts" | "cuffed";
-export type AgentAvatarHatStyle = "none" | "cap" | "beanie";
+export type AgentAvatarHairStyle = "short" | "parted" | "spiky" | "bun" | "long" | "curly" | "mohawk" | "buzz" | "ponytail";
+export type AgentAvatarTopStyle = "tee" | "hoodie" | "jacket" | "vest" | "tank" | "polo" | "sweater";
+export type AgentAvatarBottomStyle = "pants" | "shorts" | "cuffed" | "skirt" | "joggers";
+export type AgentAvatarHatStyle = "none" | "cap" | "beanie" | "fedora" | "headband" | "bandana" | "tophat";
 
 export type AgentAvatarProfile = {
   version: 1;
@@ -25,6 +25,8 @@ export type AgentAvatarProfile = {
     headset: boolean;
     hatStyle: AgentAvatarHatStyle;
     backpack: boolean;
+    scarf: boolean;
+    watch: boolean;
   };
 };
 
@@ -40,66 +42,96 @@ type EnumOption<T extends string> = {
 };
 
 export const AGENT_AVATAR_SKIN_TONE_OPTIONS: ColorOption[] = [
+  { id: "porcelain", label: "Porcelain", color: "#fde8d8" },
   { id: "fair", label: "Fair", color: "#f7d7c2" },
   { id: "light", label: "Light", color: "#f4c58a" },
   { id: "warm", label: "Warm", color: "#d8a06e" },
   { id: "tan", label: "Tan", color: "#b7794e" },
   { id: "deep", label: "Deep", color: "#8a5a3b" },
   { id: "rich", label: "Rich", color: "#5d3a24" },
+  { id: "ebony", label: "Ebony", color: "#3d2516" },
 ];
 
 export const AGENT_AVATAR_HAIR_STYLE_OPTIONS: EnumOption<AgentAvatarHairStyle>[] = [
+  { id: "buzz", label: "Buzz" },
   { id: "short", label: "Short" },
   { id: "parted", label: "Parted" },
   { id: "spiky", label: "Spiky" },
+  { id: "curly", label: "Curly" },
+  { id: "long", label: "Long" },
+  { id: "ponytail", label: "Ponytail" },
+  { id: "mohawk", label: "Mohawk" },
   { id: "bun", label: "Bun" },
 ];
 
 export const AGENT_AVATAR_HAIR_COLOR_OPTIONS: ColorOption[] = [
+  { id: "white", label: "White", color: "#e8e8e8" },
   { id: "ink", label: "Ink", color: "#151515" },
   { id: "espresso", label: "Espresso", color: "#3e2723" },
   { id: "walnut", label: "Walnut", color: "#6b4f3a" },
   { id: "auburn", label: "Auburn", color: "#7b341e" },
+  { id: "ginger", label: "Ginger", color: "#c44e1b" },
   { id: "blonde", label: "Blonde", color: "#d6b56c" },
+  { id: "platinum", label: "Platinum", color: "#e2dcc8" },
   { id: "violet", label: "Violet", color: "#7c3aed" },
   { id: "cyan", label: "Cyan", color: "#0891b2" },
   { id: "pink", label: "Pink", color: "#db2777" },
+  { id: "emerald", label: "Emerald", color: "#059669" },
 ];
 
 export const AGENT_AVATAR_TOP_STYLE_OPTIONS: EnumOption<AgentAvatarTopStyle>[] = [
+  { id: "tank", label: "Tank" },
   { id: "tee", label: "Tee" },
+  { id: "polo", label: "Polo" },
   { id: "hoodie", label: "Hoodie" },
   { id: "jacket", label: "Jacket" },
+  { id: "vest", label: "Vest" },
+  { id: "sweater", label: "Sweater" },
 ];
 
 export const AGENT_AVATAR_BOTTOM_STYLE_OPTIONS: EnumOption<AgentAvatarBottomStyle>[] = [
   { id: "pants", label: "Pants" },
   { id: "shorts", label: "Shorts" },
   { id: "cuffed", label: "Cuffed" },
+  { id: "joggers", label: "Joggers" },
+  { id: "skirt", label: "Skirt" },
 ];
 
 export const AGENT_AVATAR_HAT_STYLE_OPTIONS: EnumOption<AgentAvatarHatStyle>[] = [
   { id: "none", label: "None" },
   { id: "cap", label: "Cap" },
   { id: "beanie", label: "Beanie" },
+  { id: "fedora", label: "Fedora" },
+  { id: "headband", label: "Headband" },
+  { id: "bandana", label: "Bandana" },
+  { id: "tophat", label: "Top Hat" },
 ];
 
 export const AGENT_AVATAR_CLOTHING_COLOR_OPTIONS: ColorOption[] = [
+  { id: "black", label: "Black", color: "#1a1a2e" },
   { id: "graphite", label: "Graphite", color: "#2d3748" },
+  { id: "slate", label: "Slate", color: "#64748b" },
+  { id: "navy", label: "Navy", color: "#1e3a5f" },
   { id: "sky", label: "Sky", color: "#7090ff" },
+  { id: "cyan", label: "Cyan", color: "#06b6d4" },
   { id: "mint", label: "Mint", color: "#34d399" },
+  { id: "forest", label: "Forest", color: "#166534" },
   { id: "amber", label: "Amber", color: "#f59e0b" },
+  { id: "orange", label: "Orange", color: "#ea580c" },
   { id: "rose", label: "Rose", color: "#f43f5e" },
+  { id: "burgundy", label: "Burgundy", color: "#7f1d1d" },
   { id: "violet", label: "Violet", color: "#8b5cf6" },
   { id: "cream", label: "Cream", color: "#f5f5f4" },
-  { id: "slate", label: "Slate", color: "#64748b" },
+  { id: "white", label: "White", color: "#ffffff" },
 ];
 
 export const AGENT_AVATAR_SHOE_COLOR_OPTIONS: ColorOption[] = [
   { id: "black", label: "Black", color: "#1a1a1a" },
   { id: "navy", label: "Navy", color: "#1e3a8a" },
   { id: "brown", label: "Brown", color: "#7c4a2d" },
+  { id: "red", label: "Red", color: "#dc2626" },
   { id: "white", label: "White", color: "#e5e7eb" },
+  { id: "cream", label: "Cream", color: "#d4c5a9" },
 ];
 
 const AGENT_AVATAR_VERSION = 1 as const;
@@ -174,6 +206,8 @@ export const createAgentAvatarProfileFromSeed = (seed: string): AgentAvatarProfi
       headset: Boolean((hash >>> 20) % 2),
       hatStyle,
       backpack: Boolean((hash >>> 21) % 2),
+      scarf: Boolean((hash >>> 22) % 3 === 0),
+      watch: Boolean((hash >>> 23) % 2),
     },
   };
 };
@@ -267,6 +301,14 @@ export const normalizeAgentAvatarProfile = (
         typeof accessories.backpack === "boolean"
           ? accessories.backpack
           : baseProfile.accessories.backpack,
+      scarf:
+        typeof accessories.scarf === "boolean"
+          ? accessories.scarf
+          : baseProfile.accessories.scarf,
+      watch:
+        typeof accessories.watch === "boolean"
+          ? accessories.watch
+          : baseProfile.accessories.watch,
     },
   };
 };

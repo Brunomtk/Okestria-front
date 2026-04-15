@@ -38,8 +38,10 @@ const PreviewFigure = ({
   const shoeColor = profile.clothing.shoesColor;
   const hairColor = profile.hair.color;
   const accessoryColor = topColor;
-  const sleeveColor = profile.clothing.topStyle === "jacket" ? "#dbe4ff" : topColor;
-  const cuffColor = profile.clothing.topStyle === "hoodie" ? "#d1d5db" : sleeveColor;
+  const topStyle = profile.clothing.topStyle;
+  const sleeveColor = topStyle === "jacket" || topStyle === "vest" ? "#dbe4ff" : topColor;
+  const cuffColor = topStyle === "hoodie" || topStyle === "sweater" ? "#d1d5db" : sleeveColor;
+  const hasSleeves = topStyle !== "tank" && topStyle !== "vest";
 
   return (
     <group ref={groupRef} position={[0, -0.72, 0]} scale={[1.45, 1.45, 1.45]}>
@@ -57,58 +59,67 @@ const PreviewFigure = ({
         </group>
       ) : null}
 
-      <group position={[-0.05, 0.12, 0]}>
-        {profile.clothing.bottomStyle === "shorts" ? (
-          <>
-            <mesh position={[0, 0.03, 0]}>
-              <boxGeometry args={[0.07, 0.08, 0.08]} />
-              <meshLambertMaterial color={bottomColor} />
-            </mesh>
-            <mesh position={[0, -0.045, 0]}>
-              <boxGeometry args={[0.05, 0.06, 0.05]} />
-              <meshLambertMaterial color={skin} />
-            </mesh>
-          </>
-        ) : (
-          <mesh>
-            <boxGeometry args={[0.07, 0.14, 0.08]} />
+      {/* ── Skirt (single piece) ── */}
+      {profile.clothing.bottomStyle === "skirt" ? (
+        <group>
+          <mesh position={[0, 0.15, 0]}>
+            <boxGeometry args={[0.22, 0.12, 0.12]} />
             <meshLambertMaterial color={bottomColor} />
           </mesh>
-        )}
-        <mesh position={[0, -0.09, 0]}>
-          <boxGeometry args={[0.07, 0.05, 0.12]} />
-          <meshLambertMaterial color={shoeColor} />
-        </mesh>
-      </group>
-      <group position={[0.05, 0.12, 0]}>
-        {profile.clothing.bottomStyle === "shorts" ? (
-          <>
-            <mesh position={[0, 0.03, 0]}>
-              <boxGeometry args={[0.07, 0.08, 0.08]} />
-              <meshLambertMaterial color={bottomColor} />
-            </mesh>
-            <mesh position={[0, -0.045, 0]}>
-              <boxGeometry args={[0.05, 0.06, 0.05]} />
-              <meshLambertMaterial color={skin} />
-            </mesh>
-          </>
-        ) : (
-          <mesh>
-            <boxGeometry args={[0.07, 0.14, 0.08]} />
-            <meshLambertMaterial color={bottomColor} />
-          </mesh>
-        )}
-        <mesh position={[0, -0.09, 0]}>
-          <boxGeometry args={[0.07, 0.05, 0.12]} />
-          <meshLambertMaterial color={shoeColor} />
-        </mesh>
-      </group>
+          {/* Legs below skirt */}
+          <group position={[-0.05, 0.04, 0]}>
+            <mesh><boxGeometry args={[0.05, 0.08, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+            <mesh position={[0, -0.065, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+          <group position={[0.05, 0.04, 0]}>
+            <mesh><boxGeometry args={[0.05, 0.08, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+            <mesh position={[0, -0.065, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+        </group>
+      ) : (
+        <>
+          <group position={[-0.05, 0.12, 0]}>
+            {profile.clothing.bottomStyle === "shorts" ? (
+              <>
+                <mesh position={[0, 0.03, 0]}><boxGeometry args={[0.07, 0.08, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+                <mesh position={[0, -0.045, 0]}><boxGeometry args={[0.05, 0.06, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+              </>
+            ) : profile.clothing.bottomStyle === "joggers" ? (
+              <>
+                <mesh><boxGeometry args={[0.08, 0.14, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+                <mesh position={[0, -0.06, 0]}><boxGeometry args={[0.084, 0.03, 0.084]} /><meshLambertMaterial color={cuffColor} /></mesh>
+              </>
+            ) : (
+              <mesh><boxGeometry args={[0.07, 0.14, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+            )}
+            <mesh position={[0, -0.09, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+          <group position={[0.05, 0.12, 0]}>
+            {profile.clothing.bottomStyle === "shorts" ? (
+              <>
+                <mesh position={[0, 0.03, 0]}><boxGeometry args={[0.07, 0.08, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+                <mesh position={[0, -0.045, 0]}><boxGeometry args={[0.05, 0.06, 0.05]} /><meshLambertMaterial color={skin} /></mesh>
+              </>
+            ) : profile.clothing.bottomStyle === "joggers" ? (
+              <>
+                <mesh><boxGeometry args={[0.08, 0.14, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+                <mesh position={[0, -0.06, 0]}><boxGeometry args={[0.084, 0.03, 0.084]} /><meshLambertMaterial color={cuffColor} /></mesh>
+              </>
+            ) : (
+              <mesh><boxGeometry args={[0.07, 0.14, 0.08]} /><meshLambertMaterial color={bottomColor} /></mesh>
+            )}
+            <mesh position={[0, -0.09, 0]}><boxGeometry args={[0.07, 0.05, 0.12]} /><meshLambertMaterial color={shoeColor} /></mesh>
+          </group>
+        </>
+      )}
 
+      {/* ── Torso ── */}
       <mesh position={[0, 0.3, 0]}>
         <boxGeometry args={[0.2, 0.22, 0.1]} />
         <meshLambertMaterial color={topColor} />
       </mesh>
-      {profile.clothing.topStyle === "hoodie" ? (
+      {/* Hoodie hood + pocket */}
+      {topStyle === "hoodie" || topStyle === "sweater" ? (
         <>
           <mesh position={[0, 0.37, -0.045]}>
             <boxGeometry args={[0.18, 0.1, 0.03]} />
@@ -120,7 +131,15 @@ const PreviewFigure = ({
           </mesh>
         </>
       ) : null}
-      {profile.clothing.topStyle === "jacket" ? (
+      {/* Sweater collar */}
+      {topStyle === "sweater" ? (
+        <mesh position={[0, 0.41, 0]}>
+          <boxGeometry args={[0.1, 0.03, 0.09]} />
+          <meshLambertMaterial color={cuffColor} />
+        </mesh>
+      ) : null}
+      {/* Jacket front zipper */}
+      {topStyle === "jacket" ? (
         <>
           <mesh position={[0, 0.3, 0.056]}>
             <boxGeometry args={[0.202, 0.23, 0.012]} />
@@ -132,13 +151,41 @@ const PreviewFigure = ({
           </mesh>
         </>
       ) : null}
-
-      <group position={[-0.13, 0.3, 0]}>
-        <mesh position={[0, -0.08, 0]}>
-          <boxGeometry args={[0.06, 0.16, 0.06]} />
-          <meshLambertMaterial color={sleeveColor} />
+      {/* Vest overlay */}
+      {topStyle === "vest" ? (
+        <mesh position={[0, 0.3, 0.056]}>
+          <boxGeometry args={[0.202, 0.23, 0.012]} />
+          <meshLambertMaterial color="#374151" />
         </mesh>
-        {profile.clothing.topStyle === "hoodie" ? (
+      ) : null}
+      {/* Polo collar */}
+      {topStyle === "polo" ? (
+        <>
+          <mesh position={[-0.06, 0.41, 0.04]} rotation={[0.3, 0, -0.15]}>
+            <boxGeometry args={[0.05, 0.025, 0.04]} />
+            <meshLambertMaterial color={topColor} />
+          </mesh>
+          <mesh position={[0.06, 0.41, 0.04]} rotation={[0.3, 0, 0.15]}>
+            <boxGeometry args={[0.05, 0.025, 0.04]} />
+            <meshLambertMaterial color={topColor} />
+          </mesh>
+        </>
+      ) : null}
+
+      {/* ── Arms ── */}
+      <group position={[-0.13, 0.3, 0]}>
+        {hasSleeves ? (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+            <meshLambertMaterial color={sleeveColor} />
+          </mesh>
+        ) : (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.055, 0.16, 0.055]} />
+            <meshLambertMaterial color={skin} />
+          </mesh>
+        )}
+        {(topStyle === "hoodie" || topStyle === "sweater") ? (
           <mesh position={[0, -0.145, 0]}>
             <boxGeometry args={[0.064, 0.03, 0.064]} />
             <meshLambertMaterial color={cuffColor} />
@@ -150,11 +197,18 @@ const PreviewFigure = ({
         </mesh>
       </group>
       <group position={[0.13, 0.3, 0]}>
-        <mesh position={[0, -0.08, 0]}>
-          <boxGeometry args={[0.06, 0.16, 0.06]} />
-          <meshLambertMaterial color={sleeveColor} />
-        </mesh>
-        {profile.clothing.topStyle === "hoodie" ? (
+        {hasSleeves ? (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.06, 0.16, 0.06]} />
+            <meshLambertMaterial color={sleeveColor} />
+          </mesh>
+        ) : (
+          <mesh position={[0, -0.08, 0]}>
+            <boxGeometry args={[0.055, 0.16, 0.055]} />
+            <meshLambertMaterial color={skin} />
+          </mesh>
+        )}
+        {(topStyle === "hoodie" || topStyle === "sweater") ? (
           <mesh position={[0, -0.145, 0]}>
             <boxGeometry args={[0.064, 0.03, 0.064]} />
             <meshLambertMaterial color={cuffColor} />
@@ -165,6 +219,28 @@ const PreviewFigure = ({
           <meshLambertMaterial color={skin} />
         </mesh>
       </group>
+
+      {/* ── Watch on left wrist ── */}
+      {profile.accessories.watch ? (
+        <mesh position={[-0.13, 0.14, 0.02]}>
+          <boxGeometry args={[0.04, 0.018, 0.04]} />
+          <meshLambertMaterial color="#334155" />
+        </mesh>
+      ) : null}
+
+      {/* ── Scarf ── */}
+      {profile.accessories.scarf ? (
+        <>
+          <mesh position={[0, 0.41, 0.03]}>
+            <boxGeometry args={[0.16, 0.04, 0.1]} />
+            <meshLambertMaterial color="#dc2626" />
+          </mesh>
+          <mesh position={[0.04, 0.36, 0.06]}>
+            <boxGeometry args={[0.04, 0.08, 0.03]} />
+            <meshLambertMaterial color="#dc2626" />
+          </mesh>
+        </>
+      ) : null}
 
       <mesh position={[0, 0.42, 0]}>
         <boxGeometry args={[0.07, 0.05, 0.07]} />
@@ -225,6 +301,78 @@ const PreviewFigure = ({
           </mesh>
         </>
       ) : null}
+      {profile.hair.style === "buzz" ? (
+        <mesh position={[0, 0.575, 0]}>
+          <boxGeometry args={[0.175, 0.02, 0.155]} />
+          <meshLambertMaterial color={hairColor} />
+        </mesh>
+      ) : null}
+      {profile.hair.style === "long" ? (
+        <>
+          <mesh position={[0, 0.585, 0]}>
+            <boxGeometry args={[0.19, 0.045, 0.16]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          {/* Side panels flowing down */}
+          <mesh position={[-0.09, 0.49, -0.01]}>
+            <boxGeometry args={[0.04, 0.15, 0.12]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0.09, 0.49, -0.01]}>
+            <boxGeometry args={[0.04, 0.15, 0.12]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.47, -0.07]}>
+            <boxGeometry args={[0.16, 0.18, 0.03]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {profile.hair.style === "curly" ? (
+        <>
+          <mesh position={[0, 0.6, 0]}>
+            <boxGeometry args={[0.22, 0.08, 0.2]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.56, 0]}>
+            <boxGeometry args={[0.21, 0.04, 0.19]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {profile.hair.style === "mohawk" ? (
+        <>
+          <mesh position={[0, 0.58, 0]}>
+            <boxGeometry args={[0.17, 0.03, 0.14]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.64, 0.01]}>
+            <boxGeometry args={[0.04, 0.1, 0.12]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.68, 0.01]}>
+            <boxGeometry args={[0.035, 0.04, 0.08]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
+      {profile.hair.style === "ponytail" ? (
+        <>
+          <mesh position={[0, 0.585, 0]}>
+            <boxGeometry args={[0.18, 0.045, 0.15]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          {/* Ponytail hanging back */}
+          <mesh position={[0, 0.55, -0.09]}>
+            <boxGeometry args={[0.06, 0.04, 0.04]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+          <mesh position={[0, 0.48, -0.1]}>
+            <boxGeometry args={[0.05, 0.1, 0.04]} />
+            <meshLambertMaterial color={hairColor} />
+          </mesh>
+        </>
+      ) : null}
 
       {profile.accessories.hatStyle === "cap" ? (
         <>
@@ -243,6 +391,67 @@ const PreviewFigure = ({
           <boxGeometry args={[0.19, 0.06, 0.17]} />
           <meshLambertMaterial color={accessoryColor} />
         </mesh>
+      ) : null}
+      {profile.accessories.hatStyle === "fedora" ? (
+        <>
+          {/* Brim */}
+          <mesh position={[0, 0.62, 0]}>
+            <boxGeometry args={[0.26, 0.015, 0.22]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          {/* Crown */}
+          <mesh position={[0, 0.65, 0]}>
+            <boxGeometry args={[0.17, 0.06, 0.14]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          {/* Band */}
+          <mesh position={[0, 0.63, 0.001]}>
+            <boxGeometry args={[0.172, 0.015, 0.142]} />
+            <meshLambertMaterial color="#1a1a1a" />
+          </mesh>
+        </>
+      ) : null}
+      {profile.accessories.hatStyle === "headband" ? (
+        <mesh position={[0, 0.58, 0]}>
+          <boxGeometry args={[0.185, 0.025, 0.165]} />
+          <meshLambertMaterial color={accessoryColor} />
+        </mesh>
+      ) : null}
+      {profile.accessories.hatStyle === "bandana" ? (
+        <>
+          <mesh position={[0, 0.59, 0]}>
+            <boxGeometry args={[0.185, 0.035, 0.165]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          {/* Knot at back */}
+          <mesh position={[0, 0.58, -0.085]}>
+            <boxGeometry args={[0.06, 0.03, 0.03]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+          <mesh position={[0.02, 0.56, -0.09]}>
+            <boxGeometry args={[0.025, 0.05, 0.02]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+        </>
+      ) : null}
+      {profile.accessories.hatStyle === "tophat" ? (
+        <>
+          {/* Brim */}
+          <mesh position={[0, 0.62, 0]}>
+            <boxGeometry args={[0.22, 0.015, 0.19]} />
+            <meshLambertMaterial color="#1a1a2e" />
+          </mesh>
+          {/* Tall crown */}
+          <mesh position={[0, 0.69, 0]}>
+            <boxGeometry args={[0.15, 0.12, 0.13]} />
+            <meshLambertMaterial color="#1a1a2e" />
+          </mesh>
+          {/* Band */}
+          <mesh position={[0, 0.635, 0.001]}>
+            <boxGeometry args={[0.152, 0.015, 0.132]} />
+            <meshLambertMaterial color={accessoryColor} />
+          </mesh>
+        </>
       ) : null}
 
       {profile.accessories.headset ? (

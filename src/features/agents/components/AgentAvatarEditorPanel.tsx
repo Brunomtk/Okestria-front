@@ -423,6 +423,16 @@ export const AgentAvatarEditorPanel = forwardRef<
                   label: "Backpack",
                   enabled: draft.accessories.backpack,
                 },
+                {
+                  key: "scarf" as const,
+                  label: "Scarf",
+                  enabled: draft.accessories.scarf,
+                },
+                {
+                  key: "watch" as const,
+                  label: "Watch",
+                  enabled: draft.accessories.watch,
+                },
               ].map((option) => (
                 <button
                   key={option.key}
