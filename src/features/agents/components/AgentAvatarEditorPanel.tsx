@@ -60,8 +60,8 @@ export const AgentAvatarEditorPanel = forwardRef<
     onDraftChange,
     onCancel,
     onSaved,
-    cancelLabel = "Cancelar",
-    saveLabel = "Salvar",
+    cancelLabel = "Cancel",
+    saveLabel = "Save",
     showActions = true,
   }: AgentAvatarEditorPanelProps,
   ref
@@ -110,11 +110,11 @@ export const AgentAvatarEditorPanel = forwardRef<
       {/* ── Left: Preview ── */}
       <div className="border-b border-border/40 p-5 xl:border-b-0 xl:border-r">
         <div className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-400/80">
-          Personalizar Avatar
+          Customize Avatar
         </div>
         <div className="mt-1 text-lg font-semibold text-foreground">{agentName}</div>
         <div className="mt-1 text-[11px] text-muted-foreground/70">
-          Customize a aparência deste agente no escritório.
+          Customize this agent's appearance in the office.
         </div>
         <div className="mt-4 overflow-hidden rounded-xl border border-border/30 bg-[#070b16]">
           <AgentAvatarPreview3D profile={draft} className="h-[340px] w-full" />
@@ -127,7 +127,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             disabled={saving}
           >
             <RefreshCcw className="h-3.5 w-3.5" />
-            Resetar
+            Reset
           </button>
           <button
             type="button"
@@ -136,7 +136,7 @@ export const AgentAvatarEditorPanel = forwardRef<
             disabled={saving}
           >
             <Shuffle className="h-3.5 w-3.5" />
-            Aleatório
+            Randomize
           </button>
         </div>
       </div>
@@ -149,10 +149,10 @@ export const AgentAvatarEditorPanel = forwardRef<
               {saved ? (
                 <span className="inline-flex items-center gap-1.5 text-emerald-400">
                   <Check className="h-3.5 w-3.5" />
-                  Salvo com sucesso!
+                  Saved successfully!
                 </span>
               ) : (
-                "Escolha o visual perfeito"
+                "Choose the perfect look"
               )}
             </div>
             <div className="flex items-center gap-2">
@@ -172,7 +172,7 @@ export const AgentAvatarEditorPanel = forwardRef<
                 }}
                 disabled={saving}
               >
-                {saving ? "Salvando..." : saved ? "Salvo ✓" : saveLabel}
+                {saving ? "Saving..." : saved ? "Saved ✓" : saveLabel}
               </button>
             </div>
           </div>
@@ -180,7 +180,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Pele ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Tom de pele</h3>
+          <h3 className={sectionTitle}>Skin Tone</h3>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {AGENT_AVATAR_SKIN_TONE_OPTIONS.map((option) => {
               const selected = draft.body.skinTone === option.color;
@@ -205,7 +205,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Cabelo ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Cabelo</h3>
+          <h3 className={sectionTitle}>Hair</h3>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {AGENT_AVATAR_HAIR_STYLE_OPTIONS.map((option) => {
               const selected = draft.hair.style === option.id;
@@ -250,7 +250,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Roupa de cima ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Roupa (parte de cima)</h3>
+          <h3 className={sectionTitle}>Top</h3>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {AGENT_AVATAR_TOP_STYLE_OPTIONS.map((option) => {
               const selected = draft.clothing.topStyle === option.id;
@@ -295,7 +295,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Roupa de baixo ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Roupa (parte de baixo)</h3>
+          <h3 className={sectionTitle}>Bottom</h3>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {AGENT_AVATAR_BOTTOM_STYLE_OPTIONS.map((option) => {
               const selected = draft.clothing.bottomStyle === option.id;
@@ -340,7 +340,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Sapatos ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Sapatos</h3>
+          <h3 className={sectionTitle}>Shoes</h3>
           <div className="mt-2.5 flex flex-wrap gap-2">
             {AGENT_AVATAR_SHOE_COLOR_OPTIONS.map((option) => {
               const selected = draft.clothing.shoesColor === option.color;
@@ -365,7 +365,7 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Chapéus ── */}
         <section className="mb-5">
-          <h3 className={sectionTitle}>Chapéu</h3>
+          <h3 className={sectionTitle}>Hat</h3>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {AGENT_AVATAR_HAT_STYLE_OPTIONS.map((option) => {
               const selected = draft.accessories.hatStyle === option.id;
@@ -390,14 +390,14 @@ export const AgentAvatarEditorPanel = forwardRef<
 
         {/* ── Acessórios ── */}
         <section className="mb-3">
-          <h3 className={sectionTitle}>Acessórios</h3>
+          <h3 className={sectionTitle}>Accessories</h3>
           <div className="mt-2.5 flex flex-wrap gap-1.5">
             {([
-              { key: "glasses" as const, label: "Óculos", emoji: "👓" },
+              { key: "glasses" as const, label: "Glasses", emoji: "👓" },
               { key: "headset" as const, label: "Headset", emoji: "🎧" },
-              { key: "backpack" as const, label: "Mochila", emoji: "🎒" },
-              { key: "scarf" as const, label: "Cachecol", emoji: "🧣" },
-              { key: "watch" as const, label: "Relógio", emoji: "⌚" },
+              { key: "backpack" as const, label: "Backpack", emoji: "🎒" },
+              { key: "scarf" as const, label: "Scarf", emoji: "🧣" },
+              { key: "watch" as const, label: "Watch", emoji: "⌚" },
             ]).map((option) => {
               const enabled = draft.accessories[option.key];
               return (

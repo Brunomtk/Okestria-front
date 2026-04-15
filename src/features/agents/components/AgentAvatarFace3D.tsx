@@ -39,7 +39,7 @@ const FaceOnly = ({
   const accessoryColor = topColor;
 
   return (
-    <group ref={groupRef} position={[0, -0.02, 0]} scale={[3.4, 3.4, 3.4]}>
+    <group ref={groupRef} position={[0, -0.01, 0]} scale={[2.9, 2.9, 2.9]}>
       {/* Neck hint */}
       <mesh position={[0, -0.1, 0]}>
         <boxGeometry args={[0.07, 0.04, 0.07]} />
@@ -348,7 +348,7 @@ export const AgentAvatarFace3D = ({
       ) : null}
       <Canvas
         key={profileKey}
-        camera={{ position: [0, 0, 0.7], fov: 36 }}
+        camera={{ position: [0, 0, 0.8], fov: 34 }}
         gl={{ antialias: true, alpha: true }}
         style={{ width: size, height: size }}
       >

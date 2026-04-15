@@ -1795,7 +1795,7 @@ export const AgentChatPanel = ({
               {agent.avatarProfile ? (
                 <AgentAvatarFace3D
                   profile={agent.avatarProfile}
-                  size={52}
+                  size={44}
                 />
               ) : (
                 <AgentAvatar
