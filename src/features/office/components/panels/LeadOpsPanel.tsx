@@ -516,7 +516,7 @@ export function LeadOpsPanel({
       const ctx = await fetchLeadChatContext(selectedLeadDetail.id);
       onSelectAgent(targetAgent.gatewayAgentId, {
         leadContext: ctx.chatContext,
-        leadContextLabel: ctx.title || selectedLeadDetail.companyName || "Lead context",
+        leadContextLabel: ctx.title || selectedLeadDetail.businessName || "Lead context",
         draft: ctx.suggestedUserMessage,
       });
       setModalView("none");
