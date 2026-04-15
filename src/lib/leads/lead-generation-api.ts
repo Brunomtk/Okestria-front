@@ -663,6 +663,64 @@ export const sendSingleLeadEmail = async (leadId: number, payload: SendSingleLea
 };
 
 
+// ── Bulk Operations ────────────────────────────────────────────────
+
+export type BulkGenerateInsightsPayload = {
+  companyId: number;
+  jobId?: number | null;
+  forceRegenerate?: boolean;
+  preferredModel?: string | null;
+};
+
+export type BulkGenerateInsightsResult = {
+  total: number;
+  succeeded: number;
+  failed: number;
+  skipped: number;
+  processed: number;
+  jobId?: string | null;
+  status?: string | null;
+  currentLeadName?: string | null;
+  errorMessage?: string | null;
+};
+
+export const bulkGenerateInsights = async (payload: BulkGenerateInsightsPayload): Promise<BulkGenerateInsightsResult> => {
+  return requestBackend<BulkGenerateInsightsResult>(`/api/Leads/bulk-generate-insights`, {
+    method: "POST",
+    body: JSON.stringify({
+      companyId: payload.companyId,
+      jobId: payload.jobId ?? null,
+      forceRegenerate: payload.forceRegenerate ?? false,
+      preferredModel: payload.preferredModel ?? "gpt-5.4-nano",
+    }),
+  });
+};
+
+export const getBulkInsightJobStatus = async (jobId: string): Promise<BulkGenerateInsightsResult> => {
+  return requestBackend<BulkGenerateInsightsResult>(`/api/Leads/bulk-generate-insights/${jobId}`);
+};
+
+export const getActiveInsightJob = async (companyId: number): Promise<BulkGenerateInsightsResult | null> => {
+  try {
+    return await requestBackend<BulkGenerateInsightsResult>(`/api/Leads/active-insight-job/${companyId}`);
+  } catch {
+    return null;
+  }
+};
+
+export type BulkDeleteLeadsPayload = {
+  leadIds: number[];
+};
+
+export const bulkDeleteLeads = async (payload: BulkDeleteLeadsPayload): Promise<boolean> => {
+  return requestBackend<boolean>(`/api/Leads/bulk-delete`, {
+    method: "DELETE",
+    body: JSON.stringify({ leadIds: payload.leadIds }),
+  });
+};
+
+// ── Chat Priming ───────────────────────────────────────────────────
+
 export const primeLeadChat = async (leadId: number, payload: LeadChatPrimePayload) =>
   requestBackend<LeadChatPrimeResult>(`/LeadChat/lead/${leadId}/prime`, {
     method: "POST",

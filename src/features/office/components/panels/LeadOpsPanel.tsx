@@ -25,7 +25,9 @@ import {
   Sparkles,
   Star,
   Target,
+  Trash2,
   UserRound,
+  Wand2,
   X,
 } from "lucide-react";
 
@@ -45,6 +47,8 @@ import {
   sendSingleLeadEmail,
   primeLeadChat,
   primeLeadGenerationJobChat,
+  bulkGenerateInsights,
+  bulkDeleteLeads,
   type LeadChatPrimeResult,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
@@ -142,6 +146,9 @@ export function LeadOpsPanel({
   const [sendingBatch, setSendingBatch] = useState(false);
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
   const [chatPriming, setChatPriming] = useState<number | "job" | null>(null);
+  const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
@@ -570,6 +577,39 @@ export function LeadOpsPanel({
       setError(e instanceof Error ? e.message : "Failed to cancel batch.");
     }
   }, []);
+
+  const handleBulkGenerateInsights = useCallback(async () => {
+    if (!companyId) return;
+    setBulkGenerating(true);
+    try {
+      await bulkGenerateInsights({ companyId, preferredModel: "gpt-5.4-nano" });
+      setError("Bulk insight generation started — leads will update shortly.");
+      setTimeout(() => setError((c) => (c === "Bulk insight generation started — leads will update shortly." ? null : c)), 3500);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start bulk insight generation.");
+    } finally {
+      setBulkGenerating(false);
+    }
+  }, [companyId]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const leadIds = filteredLeads.map((l) => l.id);
+    if (leadIds.length === 0) return;
+    setBulkDeleting(true);
+    try {
+      await bulkDeleteLeads({ leadIds });
+      setJobLeads((c) => c.filter((l) => !leadIds.includes(l.id)));
+      setConfirmBulkDelete(false);
+      setError(`${leadIds.length} leads deleted.`);
+      setTimeout(() => setError((c) => (c === `${leadIds.length} leads deleted.` ? null : c)), 2400);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete leads.");
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [filteredLeads]);
 
   const copyToClipboard = useCallback(async (text: string | null | undefined, msg: string) => {
     if (!text || !navigator?.clipboard) return;
@@ -1009,6 +1049,48 @@ export function LeadOpsPanel({
                 <LayoutGrid className="h-4 w-4" />
               </button>
             </div>
+
+            {/* Bulk Actions */}
+            <button
+              type="button"
+              onClick={() => void handleBulkGenerateInsights()}
+              disabled={bulkGenerating || filteredLeads.length === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25 disabled:opacity-40"
+            >
+              {bulkGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+              Generate All
+            </button>
+
+            {confirmBulkDelete ? (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void handleBulkDelete()}
+                  disabled={bulkDeleting}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/20 px-3 py-2 text-xs font-medium text-rose-300 ring-1 ring-rose-500/30 transition hover:bg-rose-500/30 disabled:opacity-40"
+                >
+                  {bulkDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Confirm ({filteredLeads.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmBulkDelete(false)}
+                  className="rounded-lg bg-white/5 px-2.5 py-2 text-xs text-white/50 ring-1 ring-white/10 transition hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmBulkDelete(true)}
+                disabled={filteredLeads.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300/70 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20 hover:text-rose-300 disabled:opacity-40"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete All
+              </button>
+            )}
           </div>
 
           {/* Quick Stats */}
