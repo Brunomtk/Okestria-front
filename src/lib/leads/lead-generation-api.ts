@@ -685,6 +685,21 @@ export const cancelLeadEmailBatchJob = async (jobId: number) => {
   await requestBackend(`/api/LeadEmailBatchJobs/${jobId}/cancel`, { method: "POST" });
 };
 
+/** Delete leads by IDs (bulk delete) */
+export const deleteLeads = async (leadIds: number[]): Promise<boolean> => {
+  return requestBackend<boolean>("/api/Leads/bulk-delete", {
+    method: "DELETE",
+    body: JSON.stringify({ leadIds }),
+  });
+};
+
+/** Delete a lead generation job (cancel first, then delete) */
+export const deleteLeadGenerationJob = async (jobId: number): Promise<boolean> => {
+  // Try cancel first if still running, then delete
+  try { await requestBackend(`/api/LeadGenerationJobs/${jobId}/cancel`, { method: "POST" }); } catch { /* ignore */ }
+  return requestBackend<boolean>(`/api/LeadGenerationJobs/${jobId}`, { method: "DELETE" });
+};
+
 
 const normalizeSingleLeadEmailResult = (value: unknown): SendSingleLeadEmailResult | null => {
   if (!value || typeof value !== "object") return null;

@@ -25,6 +25,7 @@ import {
   Sparkles,
   Star,
   Target,
+  Trash2,
   UserRound,
   X,
 } from "lucide-react";
@@ -46,6 +47,8 @@ import {
   pollBulkInsightJob,
   getActiveInsightJob,
   sendSingleLeadEmail,
+  deleteLeads,
+  deleteLeadGenerationJob,
   primeLeadChat,
   primeLeadGenerationJobChat,
   type BulkGenerateInsightsResult,
@@ -449,6 +452,34 @@ export function LeadOpsPanel({
   const handleCancelJob = useCallback(async (jobId: number) => {
     await cancelLeadGenerationJob(jobId);
     setJobs((c) => c.map((j) => (j.id === jobId ? { ...j, status: "cancelled", currentStage: "Cancelled" } : j)));
+  }, []);
+
+  const handleDeleteJob = useCallback(async (jobId: number) => {
+    if (!confirm("Delete this mission and all its data? This cannot be undone.")) return;
+    try {
+      await deleteLeadGenerationJob(jobId);
+      setJobs((c) => c.filter((j) => j.id !== jobId));
+      if (selectedJobId === jobId) {
+        setSelectedJobId(null);
+        setJobLeads([]);
+      }
+      setModalView("none");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete mission.");
+    }
+  }, [selectedJobId]);
+
+  const handleDeleteLead = useCallback(async (leadId: number) => {
+    if (!confirm("Delete this lead? This cannot be undone.")) return;
+    try {
+      await deleteLeads([leadId]);
+      setJobLeads((c) => c.filter((l) => l.id !== leadId));
+      setSelectedLeadId(null);
+      setSelectedLeadDetail(null);
+      setModalView("lead-vault");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete lead.");
+    }
   }, []);
 
   const handleOpenLeadVault = useCallback((jobId: number) => {
@@ -860,6 +891,14 @@ export function LeadOpsPanel({
                       Cancel
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteJob(selectedJob.id)}
+                    className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+                    title="Delete this mission"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
 
@@ -1320,9 +1359,13 @@ export function LeadOpsPanel({
 
                     {/* Contact Icons */}
                     <div className="flex shrink-0 items-center gap-2">
-                      {lead.email && (
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10">
+                      {lead.email ? (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/10" title={lead.email}>
                           <Mail className="h-3.5 w-3.5 text-cyan-400" />
+                        </span>
+                      ) : (
+                        <span className="flex h-7 items-center gap-1 rounded-full bg-rose-500/10 px-2 py-1 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">
+                          <Mail className="h-3 w-3" /> No email
                         </span>
                       )}
                       {lead.phone && (
@@ -1360,7 +1403,13 @@ export function LeadOpsPanel({
                       <FitBadge fit={lead.ptxFit} />
                     </div>
                     <div className="mt-3 flex items-center gap-2 text-xs text-white/40">
-                      {lead.email && <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-cyan-400" /> Email</span>}
+                      {lead.email ? (
+                        <span className="flex items-center gap-1 text-cyan-400"><Mail className="h-3 w-3" /> Email</span>
+                      ) : (
+                        <span className="flex items-center gap-1 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[10px] font-medium text-rose-400 ring-1 ring-rose-500/20">
+                          <Mail className="h-2.5 w-2.5" /> No email
+                        </span>
+                      )}
                       {lead.phone && <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-400" /> Phone</span>}
                       {lead.website && <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> Web</span>}
                     </div>
@@ -1496,6 +1545,18 @@ export function LeadOpsPanel({
                 <div className="text-xs text-white/45">
                   Opens the selected agent chat already primed with this lead context.
                 </div>
+              </div>
+
+              {/* Delete Lead */}
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteLead(selectedLeadDetail.id)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-rose-500/10 px-4 py-2 text-xs font-medium text-rose-300 ring-1 ring-rose-500/20 transition hover:bg-rose-500/20"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Lead
+                </button>
               </div>
             </div>
           ) : (

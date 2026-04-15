@@ -1161,6 +1161,7 @@ function AdaptiveDprController() {
   const currentDprRef = useRef(1);
   const frameCounterRef = useRef(0);
   const avgDeltaRef = useRef(1 / 60);
+  const cooldownRef = useRef(0);
 
   useEffect(() => {
     const initialDpr = Math.min(window.devicePixelRatio || 1, 0.95);
@@ -1184,22 +1185,30 @@ function AdaptiveDprController() {
 
   useFrame((_, delta) => {
     if (document.visibilityState !== "visible") return;
-    avgDeltaRef.current = avgDeltaRef.current * 0.92 + delta * 0.08;
+    avgDeltaRef.current = avgDeltaRef.current * 0.95 + delta * 0.05;
     frameCounterRef.current += 1;
-    if (frameCounterRef.current < 24) return;
+
+    // Cooldown after a DPR change — wait ~90 frames (~1.5s) before next adjustment
+    if (cooldownRef.current > 0) {
+      cooldownRef.current--;
+      return;
+    }
+
+    if (frameCounterRef.current < 60) return;
     frameCounterRef.current = 0;
 
     const maxDpr = Math.min(window.devicePixelRatio || 1, 0.95);
     const minDpr = 0.55;
     let nextDpr = currentDprRef.current;
-    if (avgDeltaRef.current > 1 / 50) {
-      nextDpr = Math.max(minDpr, currentDprRef.current - 0.1);
-    } else if (avgDeltaRef.current < 1 / 64) {
-      nextDpr = Math.min(maxDpr, currentDprRef.current + 0.03);
+    if (avgDeltaRef.current > 1 / 45) {
+      nextDpr = Math.max(minDpr, currentDprRef.current - 0.05);
+    } else if (avgDeltaRef.current < 1 / 62) {
+      nextDpr = Math.min(maxDpr, currentDprRef.current + 0.02);
     }
-    if (Math.abs(nextDpr - currentDprRef.current) < 0.025) return;
+    if (Math.abs(nextDpr - currentDprRef.current) < 0.015) return;
     currentDprRef.current = nextDpr;
     setDpr(Number(nextDpr.toFixed(2)));
+    cooldownRef.current = 90;
     gl.info.reset();
   });
 
@@ -1645,6 +1654,8 @@ export function RetroOffice3D({
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [hoverUid, setHoverUid] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState>({ kind: "idle" });
+  const dragRef = useRef<DragState>(drag);
+  dragRef.current = drag;
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [activePaletteCategory, setActivePaletteCategory] = useState<string>("office");
   const [ghostPos, setGhostPos] = useState<[number, number, number] | null>(
@@ -4350,7 +4361,7 @@ export function RetroOffice3D({
             }}
             style={{ width: "100%", height: "100%" }}
             onPointerUp={() => {
-              if (drag.kind === "moving") setDrag({ kind: "idle" });
+              if (dragRef.current.kind === "moving") setDrag({ kind: "idle" });
             }}
           >
             {/* Ensure camera looks at origin after mount. */}
@@ -4367,7 +4378,7 @@ export function RetroOffice3D({
               ref={orbitRef}
               enabled={followAgentId === null && (!editMode || spaceDown)}
               enableDamping
-              dampingFactor={0.06}
+              dampingFactor={0.12}
               rotateSpeed={0.8}
               zoomSpeed={1.05}
               panSpeed={0.85}
