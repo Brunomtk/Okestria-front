@@ -46,7 +46,7 @@ export function LeadChatContextModal({
 
   return (
     <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-5xl overflow-hidden rounded-3xl border border-white/10 bg-[#050816] shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-[#050816] shadow-[0_30px_120px_rgba(0,0,0,0.45)]">
         <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/70">Lead context</div>
@@ -84,100 +84,102 @@ export function LeadChatContextModal({
           </div>
         </div>
 
-        <div className="grid gap-6 px-6 py-6 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className={`rounded-2xl border p-4 ${activeTab === "jobs" ? "border-cyan-500/30 bg-cyan-500/[0.05]" : "border-white/10 bg-white/[0.03]"}`}>
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-              <Search className="h-4 w-4 text-cyan-300" />
-              Recent lead missions
-            </div>
-            <div className="space-y-3">
-              {loading ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/65">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading lead missions...
-                </div>
-              ) : jobs.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-white/45">
-                  No lead missions found for this company.
-                </div>
-              ) : (
-                jobs.map((job) => {
-                  const busy = busyKey === `job:${job.id}`;
-                  return (
-                    <div key={job.id} className="rounded-2xl border border-white/10 bg-[#0a1024] p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-white">{job.title || `${job.query || "Lead mission"} · ${job.region || "Unknown region"}`}</div>
-                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/45">
-                            <span className="rounded-full border border-white/10 px-2 py-1">{job.status || "unknown"}</span>
-                            {job.query ? <span className="rounded-full border border-white/10 px-2 py-1">{job.query}</span> : null}
-                            {job.region ? <span className="rounded-full border border-white/10 px-2 py-1">{job.region}</span> : null}
-                            <span className="rounded-full border border-white/10 px-2 py-1">Updated {formatDate(job.updatedDate || job.createdDate)}</span>
+        <div className="px-6 py-6">
+          {activeTab === "jobs" ? (
+            <section className="rounded-2xl border border-cyan-500/30 bg-cyan-500/[0.05] p-4">
+              <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                <Search className="h-4 w-4 text-cyan-300" />
+                Recent lead missions
+              </div>
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+                {loading ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/65">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading lead missions...
+                  </div>
+                ) : jobs.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-white/45">
+                    No lead missions found for this company.
+                  </div>
+                ) : (
+                  jobs.map((job) => {
+                    const busy = busyKey === `job:${job.id}`;
+                    return (
+                      <div key={job.id} className="rounded-2xl border border-white/10 bg-[#0a1024] p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-white">{job.title || `${job.query || "Lead mission"} · ${job.region || "Unknown region"}`}</div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/45">
+                              <span className="rounded-full border border-white/10 px-2 py-1">{job.status || "unknown"}</span>
+                              {job.query ? <span className="rounded-full border border-white/10 px-2 py-1">{job.query}</span> : null}
+                              {job.region ? <span className="rounded-full border border-white/10 px-2 py-1">{job.region}</span> : null}
+                              <span className="rounded-full border border-white/10 px-2 py-1">Updated {formatDate(job.updatedDate || job.createdDate)}</span>
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => onUseJob(job.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-medium text-cyan-200 ring-1 ring-cyan-500/30 transition hover:bg-cyan-500/25 disabled:opacity-50"
+                          >
+                            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                            Use mission in chat
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => onUseJob(job.id)}
-                          disabled={busy}
-                          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-medium text-cyan-200 ring-1 ring-cyan-500/30 transition hover:bg-cyan-500/25 disabled:opacity-50"
-                        >
-                          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                          Use mission in chat
-                        </button>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
-
-          <section className={`rounded-2xl border p-4 ${activeTab === "leads" ? "border-violet-500/30 bg-violet-500/[0.05]" : "border-white/10 bg-white/[0.03]"}`}>
-            <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
-              <Building2 className="h-4 w-4 text-violet-300" />
-              Recent leads
-            </div>
-            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
-              {loading ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/65">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Loading leads...
-                </div>
-              ) : leads.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-white/45">
-                  No leads found for this company.
-                </div>
-              ) : (
-                leads.map((lead) => {
-                  const busy = busyKey === `lead:${lead.id}`;
-                  return (
-                    <div key={lead.id} className="rounded-2xl border border-white/10 bg-[#0a1024] p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-semibold text-white">{lead.businessName || `Lead #${lead.id}`}</div>
-                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/45">
-                            {lead.city ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.city}</span> : null}
-                            {lead.category ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.category}</span> : null}
-                            {lead.email ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.email}</span> : null}
-                            {lead.status ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.status}</span> : null}
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="rounded-2xl border border-violet-500/30 bg-violet-500/[0.05] p-4">
+              <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
+                <Building2 className="h-4 w-4 text-violet-300" />
+                Recent leads
+              </div>
+              <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+                {loading ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/65">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Loading leads...
+                  </div>
+                ) : leads.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-white/10 px-4 py-6 text-sm text-white/45">
+                    No leads found for this company.
+                  </div>
+                ) : (
+                  leads.map((lead) => {
+                    const busy = busyKey === `lead:${lead.id}`;
+                    return (
+                      <div key={lead.id} className="rounded-2xl border border-white/10 bg-[#0a1024] p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-semibold text-white">{lead.businessName || `Lead #${lead.id}`}</div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-white/45">
+                              {lead.city ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.city}</span> : null}
+                              {lead.category ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.category}</span> : null}
+                              {lead.email ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.email}</span> : null}
+                              {lead.status ? <span className="rounded-full border border-white/10 px-2 py-1">{lead.status}</span> : null}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => onUseLead(lead.id)}
+                            disabled={busy}
+                            className="inline-flex items-center gap-2 rounded-xl bg-violet-500/15 px-3 py-2 text-sm font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25 disabled:opacity-50"
+                          >
+                            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
+                            Use lead in chat
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => onUseLead(lead.id)}
-                          disabled={busy}
-                          className="inline-flex items-center gap-2 rounded-xl bg-violet-500/15 px-3 py-2 text-sm font-medium text-violet-200 ring-1 ring-violet-500/30 transition hover:bg-violet-500/25 disabled:opacity-50"
-                        >
-                          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquare className="h-4 w-4" />}
-                          Use lead in chat
-                        </button>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </section>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+          )}
         </div>
 
         {error ? (
