@@ -370,7 +370,7 @@ const deskStation = (
 // Larger table to seat 6 comfortably. Centre at (130, 100) gives clearance
 // from walls and keeps all chairs within the meeting-seat detection region
 // defined in navigation.ts (x: 0→320, y: 0→260).
-const MEETING_TABLE_X = 100;
+const MEETING_TABLE_X = 30;
 const MEETING_TABLE_Y = 100;
 const MEETING_TABLE_R = 78;
 
@@ -393,19 +393,19 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "round_table", x: MEETING_TABLE_X, y: MEETING_TABLE_Y, r: MEETING_TABLE_R },
   // Six chairs evenly around the table (every 60°)
   // Table centre = (TABLE_X + R, TABLE_Y + R) = (178, 178).  Chair footprint = 24×24, pivot at +12.
-  // Ring radius from table centre to chair centre = R + 14 = 92 px (chairs hug the table edge).
+  // Ring radius from table centre to chair centre = 72 px (chairs tight against the table).
   // N  (top)
-  { type: "chair", x: MEETING_TABLE_X + 66, y: MEETING_TABLE_Y - 14, facing: 0, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 66, y: MEETING_TABLE_Y - 6, facing: 0, elevation: 0 },
   // NE
-  { type: "chair", x: MEETING_TABLE_X + 146, y: MEETING_TABLE_Y + 32, facing: 300, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 128, y: MEETING_TABLE_Y + 30, facing: 300, elevation: 0 },
   // SE
-  { type: "chair", x: MEETING_TABLE_X + 146, y: MEETING_TABLE_Y + 112, facing: 240, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 128, y: MEETING_TABLE_Y + 102, facing: 240, elevation: 0 },
   // S  (bottom)
-  { type: "chair", x: MEETING_TABLE_X + 66, y: MEETING_TABLE_Y + 158, facing: 180, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 66, y: MEETING_TABLE_Y + 138, facing: 180, elevation: 0 },
   // SW
-  { type: "chair", x: MEETING_TABLE_X - 14, y: MEETING_TABLE_Y + 112, facing: 120, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 4, y: MEETING_TABLE_Y + 102, facing: 120, elevation: 0 },
   // NW
-  { type: "chair", x: MEETING_TABLE_X - 14, y: MEETING_TABLE_Y + 32, facing: 60, elevation: 0 },
+  { type: "chair", x: MEETING_TABLE_X + 4, y: MEETING_TABLE_Y + 30, facing: 60, elevation: 0 },
 
   // ═══════════════════════════════════════════════════════════════════════
   // 2. ATM & CORRIDOR  (between meeting and kitchen)
@@ -447,17 +447,17 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "wall_cabinet", x: KITCHEN_START_X + 108, y: 10, w: 80, h: 20, elevation: 0.9 },
   { type: "wall_cabinet", x: KITCHEN_START_X + 200, y: 10, w: 80, h: 20, elevation: 0.9 },
   // Dining / break table with four chairs
-  // Table centre = (KITCHEN_START_X + 90 + 52, 160 + 52) = (KSX+142, 212)
-  // Chair pivot +12, ring = R + 14 = 66 px from centre → chairs hug the table.
-  { type: "round_table", x: KITCHEN_START_X + 90, y: 160, r: 52 },
+  // Table centre = (KITCHEN_START_X + 50 + 52, 110 + 52) = (KSX+102, 162)
+  // Chair pivot +12, ring = 46 px from centre → chairs tight against table.
+  { type: "round_table", x: KITCHEN_START_X + 50, y: 110, r: 52 },
   // N (facing south)
-  { type: "chair", x: KITCHEN_START_X + 130, y: 146, facing: 0 },
+  { type: "chair", x: KITCHEN_START_X + 90, y: 104, facing: 0 },
   // S (facing north)
-  { type: "chair", x: KITCHEN_START_X + 130, y: 254, facing: 180 },
+  { type: "chair", x: KITCHEN_START_X + 90, y: 196, facing: 180 },
   // W (facing east)
-  { type: "chair", x: KITCHEN_START_X + 64, y: 200, facing: 90 },
+  { type: "chair", x: KITCHEN_START_X + 44, y: 150, facing: 90 },
   // E (facing west)
-  { type: "chair", x: KITCHEN_START_X + 196, y: 200, facing: 270 },
+  { type: "chair", x: KITCHEN_START_X + 136, y: 150, facing: 270 },
 
   // ═══════════════════════════════════════════════════════════════════════
   // 4. WORKSPACE – Row 1  (4 desks, 200 px apart)
