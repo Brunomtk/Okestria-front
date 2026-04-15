@@ -1,21 +1,44 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Check,
   CheckCircle2,
   ChevronRight,
   Clock3,
   Crown,
+  Pencil,
   Play,
   RefreshCcw,
   Rocket,
   Send,
+  Trash2,
   Users2,
   X,
   XCircle,
   Zap,
 } from "lucide-react";
-import type { SquadSummary, SquadTask, SquadTaskDispatchEstimate, SquadTaskSummary } from "@/lib/squads/api";
+import type { SquadExecutionMode, SquadSummary, SquadTask, SquadTaskDispatchEstimate, SquadTaskSummary } from "@/lib/squads/api";
 import type { GatewayModelChoice } from "@/lib/gateway/models";
+
+/* ── Shared constants (same as SquadCreateModal) ── */
+const SQUAD_COLORS = [
+  "#f59e0b", "#ef4444", "#3b82f6", "#10b981", "#8b5cf6",
+  "#ec4899", "#06b6d4", "#f97316", "#14b8a6", "#6366f1",
+  "#a855f7", "#84cc16",
+];
+
+const SQUAD_EMOJIS = [
+  "🚀", "💰", "🛡️", "⚡", "🎯", "📊", "🔥", "💎",
+  "🌟", "🏆", "🧠", "🔧", "📈", "🎨", "💼", "🤖",
+  "🦾", "🌍", "📣", "🧩",
+];
+
+const EXECUTION_MODES: Array<{ value: SquadExecutionMode; label: string; icon: string }> = [
+  { value: "leader", label: "Leader first", icon: "👑" },
+  { value: "all", label: "All at once", icon: "⚡" },
+  { value: "manual", label: "Manual", icon: "✋" },
+  { value: "workflow", label: "Workflow", icon: "🔄" },
+];
 
 type SquadOpsModalProps = {
   open: boolean;
@@ -43,6 +66,14 @@ type SquadOpsModalProps = {
   onPreviewDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
   onConfirmDispatchTask: (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => void;
   onCancelDispatchApproval: () => void;
+  onEditSquad?: (squadId: string, payload: {
+    name?: string;
+    description?: string | null;
+    iconEmoji?: string | null;
+    color?: string | null;
+    executionMode?: SquadExecutionMode | null;
+  }) => Promise<void> | void;
+  onDeleteSquad?: (squadId: string) => Promise<void> | void;
 };
 
 /* ── Helpers ── */
@@ -71,13 +102,64 @@ export function SquadOpsModal({
   error, hooksConfigured, hooksMessage, availableModels,
   onClose, onRefresh, onSelectSquad, onSelectTask,
   onCreateTask, onPreviewDispatchTask, onConfirmDispatchTask, onCancelDispatchApproval,
+  onEditSquad, onDeleteSquad,
 }: SquadOpsModalProps) {
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [preferredModel, setPreferredModel] = useState("");
-  const [tab, setTab] = useState<"create" | "tasks">("tasks");
+  const [tab, setTab] = useState<"create" | "tasks" | "edit">("tasks");
 
-  useEffect(() => { if (!open) return; setTitle(""); setPrompt(""); setPreferredModel(""); setTab("tasks"); }, [open, squad?.id]);
+  /* ── Edit state ── */
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editEmoji, setEditEmoji] = useState("🚀");
+  const [editColor, setEditColor] = useState(SQUAD_COLORS[0]);
+  const [editMode, setEditMode] = useState<SquadExecutionMode>("leader");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editSaved, setEditSaved] = useState(false);
+
+  /* ── Delete state ── */
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle(""); setPrompt(""); setPreferredModel(""); setTab("tasks");
+    setDeleteConfirm(false); setDeleting(false); setEditSaved(false);
+  }, [open, squad?.id]);
+
+  /* Seed edit form from current squad */
+  useEffect(() => {
+    if (!squad) return;
+    setEditName(squad.name);
+    setEditDesc(squad.description ?? "");
+    setEditEmoji(squad.iconEmoji ?? "🚀");
+    setEditColor(squad.color ?? SQUAD_COLORS[0]);
+    setEditMode(squad.executionMode ?? "leader");
+    setEditSaved(false);
+  }, [squad]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!onEditSquad || !selectedSquadId || editSaving) return;
+    setEditSaving(true); setEditSaved(false);
+    try {
+      await onEditSquad(selectedSquadId, {
+        name: editName.trim(),
+        description: editDesc.trim() || null,
+        iconEmoji: editEmoji,
+        color: editColor,
+        executionMode: editMode,
+      });
+      setEditSaved(true);
+      setTimeout(() => setEditSaved(false), 2500);
+    } finally { setEditSaving(false); }
+  }, [onEditSquad, selectedSquadId, editSaving, editName, editDesc, editEmoji, editColor, editMode]);
+
+  const handleDelete = useCallback(async () => {
+    if (!onDeleteSquad || !selectedSquadId || deleting) return;
+    setDeleting(true);
+    try { await onDeleteSquad(selectedSquadId); } finally { setDeleting(false); }
+  }, [onDeleteSquad, selectedSquadId, deleting]);
 
   const submitDisabled = createBusy || !title.trim() || !prompt.trim() || !selectedSquadId;
   const dispatchDisabled = dispatchBusy || !hooksConfigured;
@@ -159,22 +241,20 @@ export function SquadOpsModal({
           <aside className="flex min-h-0 flex-col border-r border-white/10">
             {/* Sidebar tabs */}
             <div className="flex border-b border-white/10">
-              <button
-                type="button"
-                onClick={() => setTab("tasks")}
-                className={`flex-1 py-2.5 text-center text-[11px] font-medium uppercase tracking-wider transition ${tab === "tasks" ? "border-b-2 text-white" : "text-white/35 hover:text-white/55"}`}
-                style={tab === "tasks" ? { borderColor: accent } : undefined}
-              >
-                Tasks ({tasks.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setTab("create")}
-                className={`flex-1 py-2.5 text-center text-[11px] font-medium uppercase tracking-wider transition ${tab === "create" ? "border-b-2 text-white" : "text-white/35 hover:text-white/55"}`}
-                style={tab === "create" ? { borderColor: accent } : undefined}
-              >
-                + New task
-              </button>
+              {(["tasks", "create", "edit"] as const).map((t) => {
+                const labels = { tasks: `Tasks (${tasks.length})`, create: "+ New", edit: "Edit" };
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => { setTab(t); setDeleteConfirm(false); }}
+                    className={`flex-1 py-2.5 text-center text-[11px] font-medium uppercase tracking-wider transition ${tab === t ? "border-b-2 text-white" : "text-white/35 hover:text-white/55"}`}
+                    style={tab === t ? { borderColor: accent } : undefined}
+                  >
+                    {labels[t]}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -275,6 +355,157 @@ export function SquadOpsModal({
                     <Send className="h-4 w-4" />
                     {createBusy ? "Creating..." : "Create task"}
                   </button>
+                </div>
+              )}
+
+              {/* ── Edit tab ── */}
+              {tab === "edit" && squad && (
+                <div className="space-y-4">
+                  {/* Name */}
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Squad name</label>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white outline-none transition focus:border-white/25"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Description</label>
+                    <textarea
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      rows={2}
+                      className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white outline-none transition focus:border-white/25"
+                    />
+                  </div>
+
+                  {/* Icon */}
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Icon</label>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {SQUAD_EMOJIS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => setEditEmoji(emoji)}
+                          className={`flex h-8 w-8 items-center justify-center rounded-lg text-sm transition ${
+                            editEmoji === emoji ? "bg-white/10" : "bg-white/[0.03] hover:bg-white/[0.07]"
+                          }`}
+                          style={editEmoji === emoji ? { boxShadow: `0 0 0 2px ${editColor}` } : undefined}
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Color */}
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Color</label>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {SQUAD_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditColor(c)}
+                          className="relative h-7 w-7 rounded-full border-2 transition hover:scale-110"
+                          style={{
+                            backgroundColor: c,
+                            borderColor: editColor === c ? "#fff" : "transparent",
+                            boxShadow: editColor === c ? `0 0 10px ${c}60` : undefined,
+                          }}
+                        >
+                          {editColor === c && <Check className="absolute inset-0 m-auto h-3 w-3 text-white drop-shadow" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Execution mode */}
+                  <div>
+                    <label className="text-[11px] font-medium uppercase tracking-wider text-white/40">Execution mode</label>
+                    <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                      {EXECUTION_MODES.map((m) => {
+                        const active = m.value === editMode;
+                        return (
+                          <button
+                            key={m.value}
+                            type="button"
+                            onClick={() => setEditMode(m.value)}
+                            className={`rounded-lg border px-3 py-2 text-left text-xs transition ${
+                              active ? "border-white/20 bg-white/[0.07] text-white" : "border-white/[0.06] text-white/40 hover:text-white/60"
+                            }`}
+                            style={active ? { borderColor: `${editColor}50` } : undefined}
+                          >
+                            <span className="mr-1">{m.icon}</span>{m.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Save button */}
+                  <button
+                    type="button"
+                    disabled={editSaving || !editName.trim()}
+                    onClick={() => { void handleSaveEdit(); }}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ backgroundColor: `${editColor}25`, border: `1px solid ${editColor}40` }}
+                  >
+                    {editSaving ? (
+                      <>Saving...</>
+                    ) : editSaved ? (
+                      <><Check className="h-4 w-4" /> Saved!</>
+                    ) : (
+                      <><Pencil className="h-4 w-4" /> Save changes</>
+                    )}
+                  </button>
+
+                  {/* ── Delete zone ── */}
+                  <div className="mt-2 border-t border-white/[0.06] pt-4">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-red-300/50">Danger zone</p>
+                    {!deleteConfirm ? (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirm(true)}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/20 bg-red-500/8 py-2.5 text-sm font-medium text-red-300 transition hover:bg-red-500/15"
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete squad
+                      </button>
+                    ) : (
+                      <div className="mt-2 rounded-xl border border-red-500/25 bg-red-500/10 p-3">
+                        <p className="text-xs text-red-200">
+                          Delete <span className="font-semibold">{squad.name}</span>? This removes the squad and its tasks. <span className="font-semibold text-emerald-300">Agents will NOT be deleted.</span>
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={deleting}
+                            onClick={() => { void handleDelete(); }}
+                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-red-500/20 py-2 text-xs font-semibold text-red-200 transition hover:bg-red-500/30 disabled:opacity-40"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />{deleting ? "Deleting..." : "Yes, delete"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirm(false)}
+                            disabled={deleting}
+                            className="flex-1 rounded-lg border border-white/10 bg-white/5 py-2 text-xs text-white/50 transition hover:text-white disabled:opacity-40"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {tab === "edit" && !squad && (
+                <div className="rounded-xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/25">
+                  Select a squad to edit.
                 </div>
               )}
             </div>

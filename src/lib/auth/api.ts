@@ -518,7 +518,7 @@ export async function createSquad(payload: { companyId: number; name: string; sl
   }, token);
 }
 
-export async function updateSquad(squadId: number, payload: { companyId: number; name: string; slug?: string | null; description?: string | null; leaderAgentId?: number | null; workspaceId?: number | null; defaultExecutionMode?: string | null; status?: boolean; members?: Array<{ agentId: number; isLeader?: boolean; canReceiveTasks?: boolean; order?: number }> }, token: string) {
+export async function updateSquad(squadId: number, payload: { companyId: number; name: string; slug?: string | null; description?: string | null; iconEmoji?: string | null; color?: string | null; avatarUrl?: string | null; leaderAgentId?: number | null; workspaceId?: number | null; defaultExecutionMode?: string | null; status?: boolean; members?: Array<{ agentId: number; isLeader?: boolean; canReceiveTasks?: boolean; order?: number }> }, token: string) {
   return requestJson<unknown>(`/api/Squads/update/${squadId}`, {
     method: 'PUT',
     body: JSON.stringify({ id: squadId, ...payload, members: payload.members ?? [] }),

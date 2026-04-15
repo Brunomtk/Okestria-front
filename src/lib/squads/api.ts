@@ -329,6 +329,67 @@ export const createCompanySquad = async (params: {
   return matched;
 };
 
+export const updateCompanySquad = async (params: {
+  squadId: number;
+  name?: string;
+  description?: string | null;
+  iconEmoji?: string | null;
+  color?: string | null;
+  avatarUrl?: string | null;
+  leaderAgentId?: number | null;
+  executionMode?: SquadExecutionMode | null;
+  workspaceId?: number | null;
+  memberAgentIds?: number[];
+  token?: string | null;
+  companyId?: number | null;
+}): Promise<void> => {
+  const token = params.token ?? getBrowserAccessToken();
+  const body: Record<string, unknown> = {};
+  if (params.name !== undefined) body.name = params.name.trim();
+  if (params.description !== undefined) body.description = params.description?.trim() || null;
+  if (params.iconEmoji !== undefined) body.iconEmoji = params.iconEmoji?.trim() || null;
+  if (params.color !== undefined) body.color = params.color?.trim() || null;
+  if (params.avatarUrl !== undefined) body.avatarUrl = params.avatarUrl?.trim() || null;
+  if (params.leaderAgentId !== undefined) body.leaderAgentId = params.leaderAgentId;
+  if (params.executionMode !== undefined) body.defaultExecutionMode = params.executionMode;
+  if (params.workspaceId !== undefined) body.workspaceId = params.workspaceId;
+
+  await requestBackendJson<unknown>(
+    `/api/Squads/update/${params.squadId}`,
+    { method: "PUT", body: JSON.stringify(body) },
+    token,
+  );
+
+  if (params.memberAgentIds && params.memberAgentIds.length > 0) {
+    await requestBackendJson<unknown>(
+      `/api/Squads/${params.squadId}/members`,
+      {
+        method: "PUT",
+        body: JSON.stringify(
+          params.memberAgentIds.map((agentId, index) => ({
+            agentId,
+            order: index,
+            isLeader: agentId === params.leaderAgentId,
+            canReceiveTasks: true,
+          })),
+        ),
+      },
+      token,
+    );
+  }
+};
+
+export const deleteCompanySquad = async (params: {
+  squadId: number;
+  token?: string | null;
+}): Promise<void> => {
+  await requestBackendJson<unknown>(
+    `/api/Squads/delete/${params.squadId}`,
+    { method: "DELETE" },
+    params.token ?? getBrowserAccessToken(),
+  );
+};
+
 export type SquadTaskRun = {
   id: number;
   squadTaskId: number;

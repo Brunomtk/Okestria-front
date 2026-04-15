@@ -137,12 +137,14 @@ import {
 import {
   createCompanySquad,
   createSquadTask,
+  deleteCompanySquad,
   dispatchSquadTask,
   estimateSquadTaskDispatch,
   fetchCompanySquads,
   fetchSquadCatalog,
   fetchSquadTask,
   fetchSquadTasks,
+  updateCompanySquad,
   type SquadCatalog,
   type SquadExecutionMode,
   type SquadSummary,
@@ -2103,6 +2105,38 @@ export function OfficeScreen({
       } finally {
         setCreateSquadBusy(false);
       }
+    },
+    [loadCompanySquads],
+  );
+
+  const handleEditSquad = useCallback(
+    async (
+      squadId: string,
+      payload: {
+        name?: string;
+        description?: string | null;
+        iconEmoji?: string | null;
+        color?: string | null;
+        executionMode?: SquadExecutionMode | null;
+      },
+    ) => {
+      const numericId = Number(squadId);
+      if (!Number.isFinite(numericId)) return;
+      await updateCompanySquad({ squadId: numericId, ...payload });
+      await loadCompanySquads(true);
+    },
+    [loadCompanySquads],
+  );
+
+  const handleDeleteSquad = useCallback(
+    async (squadId: string) => {
+      const numericId = Number(squadId);
+      if (!Number.isFinite(numericId)) return;
+      await deleteCompanySquad({ squadId: numericId });
+      setSquadOpsModalOpen(false);
+      setSquadOpsSquadId(null);
+      setSquadOpsError(null);
+      await loadCompanySquads(true);
     },
     [loadCompanySquads],
   );
@@ -5896,6 +5930,8 @@ export function OfficeScreen({
           void handleConfirmDispatchSquadTask(taskId, mode);
         }}
         onCancelDispatchApproval={handleCancelSquadTaskDispatchApproval}
+        onEditSquad={handleEditSquad}
+        onDeleteSquad={handleDeleteSquad}
       />
 
       <AgentCreateWizardModal
