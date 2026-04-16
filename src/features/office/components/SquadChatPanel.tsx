@@ -344,7 +344,7 @@ export const SquadChatPanel = memo(function SquadChatPanel({
   const showJumpToLatest = !isPinned && tasks.length > 0;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-[#0e0a04]">
+    <div className="flex h-full w-full flex-col bg-[#0e0a04]">
       {/* Header */}
       <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
         {squad.iconEmoji && (
