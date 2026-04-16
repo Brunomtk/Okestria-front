@@ -102,17 +102,31 @@ function RunCard({ run }: { run: SquadTaskRun }) {
 
       {expanded && (
         <div className="border-t border-white/[0.05] px-3.5 pb-3.5 pt-2.5">
-          {run.dispatchError && (
-            <div className="mb-2 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200">
-              {run.dispatchError}
-            </div>
-          )}
+          {run.dispatchError && (() => {
+            const isConfigWarning = run.dispatchError.startsWith("[CONFIG]");
+            const displayMsg = isConfigWarning ? run.dispatchError.replace("[CONFIG] ", "") : run.dispatchError;
+            return (
+              <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${
+                isConfigWarning
+                  ? "border-amber-500/20 bg-amber-500/8 text-amber-200"
+                  : "border-red-500/20 bg-red-500/8 text-red-200"
+              }`}>
+                {displayMsg}
+              </div>
+            );
+          })()}
           {hasOutput ? (
             <OutputBlock text={run.outputText!} />
           ) : isRunning(run.status) ? (
-            <div className="flex items-center gap-2 text-xs text-cyan-300/60">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Agent is working...
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2 text-xs text-cyan-300/60">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Agent is working...
+                {run.startedAtUtc && (() => {
+                  const mins = Math.floor((Date.now() - new Date(run.startedAtUtc!).getTime()) / 60000);
+                  return mins >= 2 ? <span className="text-white/20">({mins}m)</span> : null;
+                })()}
+              </div>
             </div>
           ) : isFinished(run.status) ? (
             <div className="text-xs text-white/30 italic">No output produced.</div>
