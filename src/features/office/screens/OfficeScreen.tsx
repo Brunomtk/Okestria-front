@@ -3111,6 +3111,8 @@ export function OfficeScreen({
 
   useEffect(() => {
     if (!selectedChatAgentId) return;
+    // Squad chat targets use "squad:{id}" — don't clear those.
+    if (isSquadChatTargetId(selectedChatAgentId)) return;
     const agents = stateRef.current?.agents ?? [];
     if (agents.some((agent) => agent.agentId === selectedChatAgentId)) return;
     if (remoteChatAgentIds.includes(selectedChatAgentId)) return;
