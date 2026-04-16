@@ -502,7 +502,12 @@ const mergeGatewaySettings = (
   if (patch === null) return null;
   const nextUrl =
     patch.url === undefined ? current?.url ?? "" : normalizeGatewayUrl(patch.url);
-  if (!nextUrl) return null;
+  if (!nextUrl) {
+    // ── Defensive: if the current gateway has a valid URL don't wipe it
+    //    just because the patch resolved to an empty URL.
+    if (current?.url) return current;
+    return null;
+  }
   const nextToken =
     patch.token === undefined ? current?.token ?? "" : coerceString(patch.token);
   return {
@@ -676,7 +681,9 @@ const normalizeOffice = (value: unknown): Record<string, StudioOfficePreference>
   if (!isRecord(value)) return {};
   const office: Record<string, StudioOfficePreference> = {};
   for (const [gatewayKeyRaw, officeRaw] of Object.entries(value)) {
-    const gatewayKey = normalizeGatewayKey(gatewayKeyRaw);
+    // Use normalized key if available, but fall back to the raw key
+    // so we never silently drop office entries that have valid data.
+    const gatewayKey = normalizeGatewayKey(gatewayKeyRaw) ?? gatewayKeyRaw;
     if (!gatewayKey) continue;
     office[gatewayKey] = normalizeOfficePreference(officeRaw);
   }
