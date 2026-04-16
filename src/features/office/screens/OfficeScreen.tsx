@@ -66,6 +66,7 @@ import {
 } from "@/features/agents/components/AgentEditorModal";
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
+import { SquadChatPanel } from "@/features/office/components/SquadChatPanel";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
@@ -5576,25 +5577,11 @@ export function OfficeScreen({
                         ) : null
                       }
                     />
-                  ) : focusedSquadChatTarget && focusedSquadChatState ? (
-                    <RemoteAgentChatPanel
-                      agentName={focusedSquadChatTarget.name}
-                      canSend={status === "connected"}
-                      sending={focusedSquadChatState.sending}
-                      draft={focusedSquadChatState.draft}
-                      error={focusedSquadChatState.error}
-                      messages={focusedSquadChatState.messages}
-                      disabledReason={`Squad mode: ${focusedSquadChatTarget.executionMode}. Messages are routed to ${focusedSquadChatTarget.executionMode === "all" ? "all selected members" : "the squad leader"}.`}
-                      onDraftChange={(value) => {
-                        updateSquadChatSession(focusedSquadChatTarget.id, (session) => ({
-                          ...session,
-                          draft: value,
-                          error: null,
-                        }));
-                      }}
-                      onSend={(message) => {
-                        void handleSquadChatSend(focusedSquadChatTarget, message);
-                      }}
+                  ) : focusedSquadChatTarget ? (
+                    <SquadChatPanel
+                      squad={focusedSquadChatTarget}
+                      onSendMessage={(sq, msg) => { void handleSquadChatSend(sq, msg); }}
+                      onOpenOps={(squadId) => { handleOpenSquadOps(squadId); }}
                     />
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel

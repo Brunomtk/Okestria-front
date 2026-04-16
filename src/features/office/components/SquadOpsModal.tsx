@@ -95,6 +95,22 @@ const statusClasses = (s: string | null | undefined) => {
 const statusText = (s: string | null | undefined) => { const n = norm(s); return n ? n.replace(/_/g, " ") : "draft"; };
 const modeText = (m: string | null | undefined) => { const n = (m ?? "leader").trim(); return n || "Leader"; };
 
+/* Format run output with basic markdown-like rendering */
+const formatRunOutput = (text: string): string => {
+  let t = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  // Bold
+  t = t.replace(/\*\*(.*?)\*\*/g, "<strong class='text-white'>$1</strong>");
+  t = t.replace(/__(.*?)__/g, "<strong class='text-white'>$1</strong>");
+  // Headings
+  t = t.replace(/^#{1,3}\s+(.+)$/gm, '<div class="font-semibold text-white mt-3 mb-1">$1</div>');
+  // Horizontal rules
+  t = t.replace(/^[-–—]{3,}$/gm, '<hr class="border-white/10 my-2"/>');
+  return t;
+};
+
 export function SquadOpsModal({
   open, squads, squad, selectedSquadId, tasks, selectedTask,
   loading, refreshingTask, createBusy, dispatchBusy,
@@ -687,8 +703,17 @@ export function SquadOpsModal({
                               <div><div className="text-white/25">Finished</div><div className="mt-0.5 text-white/60">{fmtDate(run.finishedAtUtc)}</div></div>
                               <div><div className="text-white/25">Session</div><div className="mt-0.5 break-all text-white/60">{run.externalSessionKey || "—"}</div></div>
                             </div>
-                            <div className="mt-3 rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm leading-6 text-white/60">
-                              {run.outputText?.trim() || "No output yet."}
+                            <div className="mt-3 max-h-[400px] overflow-y-auto rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm leading-6 text-white/60">
+                              {run.outputText?.trim() ? (
+                                <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatRunOutput(run.outputText.trim()) }} />
+                              ) : norm(run.status) === "running" || norm(run.status) === "queued" ? (
+                                <div className="flex items-center gap-2 text-xs text-cyan-300/50">
+                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
+                                  Agent is working...
+                                </div>
+                              ) : (
+                                <span className="text-white/30 italic">No output yet.</span>
+                              )}
                             </div>
                           </div>
                         </details>
