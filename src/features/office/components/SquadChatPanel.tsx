@@ -1,3 +1,5 @@
+"use client";
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   CheckCircle2,
@@ -469,4 +471,61 @@ export const SquadChatPanel = memo(function SquadChatPanel({
               </div>
             ) : tasks.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12 text-center">
-      
+                <Users2 className="h-8 w-8 text-white/10" />
+                <p className="text-sm text-white/30">No tasks yet for this squad.</p>
+                <p className="max-w-xs text-xs text-white/20">
+                  Create a task from the Ops panel or type a message below to send to the squad agents.
+                </p>
+              </div>
+            ) : (
+              tasks.map((task) => <TaskBlock key={task.id} task={task} accent={accent} />)
+            )}
+            {/* Bottom sentinel for scrollIntoView */}
+            <div ref={bottomRef} />
+          </div>
+        </div>
+
+        {/* Jump to latest button */}
+        {showJumpToLatest && (
+          <button
+            type="button"
+            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-md border border-white/15 bg-[#1a1510]/95 px-3 py-1.5 font-mono text-[11px] font-medium tracking-[0.02em] text-white/70 shadow-lg backdrop-blur transition hover:bg-[#1a1510] hover:text-white/90"
+            onClick={() => {
+              setPinned(true);
+              scrollToBottom();
+            }}
+            aria-label="Jump to latest"
+          >
+            Jump to latest
+          </button>
+        )}
+      </div>
+
+      {/* Composer */}
+      <div className="shrink-0 border-t border-white/10 px-4 py-3">
+        <div className="mb-2 text-[10px] text-white/30">
+          Messages are routed to {squad.executionMode === "all" ? "all members" : "the squad leader"}. Tasks and responses appear above.
+        </div>
+        <div className="flex gap-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Send a message to the squad..."
+            rows={2}
+            className="min-h-[52px] flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none transition focus:border-white/25"
+          />
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!draft.trim() || sending}
+            className="self-end rounded-xl px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-30"
+            style={{ backgroundColor: `${accent}20`, border: `1px solid ${accent}35` }}
+          >
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});

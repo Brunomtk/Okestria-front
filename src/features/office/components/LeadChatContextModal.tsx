@@ -1,3 +1,5 @@
+"use client";
+
 import { Building2, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { LeadGenerationJob, LeadSummary } from "@/lib/leads/lead-generation-api";

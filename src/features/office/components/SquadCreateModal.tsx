@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { Check, Crown, Search, Shuffle, Users2, X, Zap } from "lucide-react";
 import type { SquadCatalogAgent, SquadCatalogWorkspace, SquadExecutionMode } from "@/lib/squads/api";
