@@ -187,6 +187,13 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
 /* ── Scroll threshold ── */
 const NEAR_BOTTOM_PX = 48;
 
+/** Build a lightweight fingerprint of tasks so we only auto-scroll when data actually changes. */
+const buildTaskFingerprint = (tasks: SquadTask[]): string =>
+  tasks.map((t) => {
+    const runParts = (t.runs ?? []).map((r) => `${r.id}:${r.status}:${(r.outputText?.length ?? 0)}`).join(",");
+    return `${t.id}|${t.status}|${runParts}`;
+  }).join(";");
+
 /* ── Main panel ── */
 export const SquadChatPanel = memo(function SquadChatPanel({
   squad,
@@ -198,13 +205,16 @@ export const SquadChatPanel = memo(function SquadChatPanel({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
 
-  /* ── Scroll refs & state (mirrors AgentChatPanel) ── */
+  /* ── Scroll refs & state ── */
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const pinnedRef = useRef(true);
   const [isPinned, setIsPinned] = useState(true);
-  const prevTaskCountRef = useRef(0);
+  const prevFingerprintRef = useRef("");
+  const isFirstLoadRef = useRef(true);
+  /** Block onScroll from re-pinning while we're processing a data update */
+  const scrollLockRef = useRef(false);
 
   const accent = squad.color || "#3b82f6";
 
@@ -224,7 +234,9 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     setIsPinned(next);
   }, []);
 
-  const updatePinnedFromScroll = useCallback(() => {
+  const handleScroll = useCallback(() => {
+    // Don't update pinned state during programmatic scrolls or re-renders from polling
+    if (scrollLockRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
     setPinned(
@@ -235,14 +247,6 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     );
   }, [setPinned]);
 
-  const scheduleScrollToBottom = useCallback(() => {
-    if (scrollFrameRef.current !== null) return;
-    scrollFrameRef.current = requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      scrollToBottom();
-    });
-  }, [scrollToBottom]);
-
   // Load tasks (with full run details)
   const loadTasks = useCallback(async () => {
     const numericId = Number(squad.id);
@@ -250,7 +254,6 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     setLoading(true);
     try {
       const summaries = await fetchSquadTasks({ squadId: numericId });
-      // Fetch full task details for each (to get runs with output)
       const fullTasks = await Promise.all(
         summaries.slice(0, 20).map((s) => fetchSquadTask(s.id).catch(() => null)),
       );
@@ -271,33 +274,46 @@ export const SquadChatPanel = memo(function SquadChatPanel({
 
   /* ── Scroll on squad change: reset to bottom ── */
   useEffect(() => {
-    setPinned(true);
-    prevTaskCountRef.current = 0;
-    const frame = requestAnimationFrame(() => {
-      scrollToBottom();
-      requestAnimationFrame(scrollToBottom);
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [squad.id, scrollToBottom, setPinned]);
+    pinnedRef.current = true;
+    setIsPinned(true);
+    isFirstLoadRef.current = true;
+    prevFingerprintRef.current = "";
+  }, [squad.id]);
 
-  /* ── Smart scroll when tasks change ── */
+  /* ── Smart scroll when task DATA changes (not just reference) ── */
   useEffect(() => {
-    const newCount = tasks.length;
-    const isFirstLoad = prevTaskCountRef.current === 0 && newCount > 0;
-    const hasNewTasks = newCount > prevTaskCountRef.current;
-    prevTaskCountRef.current = newCount;
+    const fp = buildTaskFingerprint(tasks);
+    const changed = fp !== prevFingerprintRef.current;
+    const wasEmpty = prevFingerprintRef.current === "";
+    prevFingerprintRef.current = fp;
 
-    // Always scroll on first load; otherwise only if pinned or new tasks
-    if (isFirstLoad) {
-      // Double-rAF for first load to ensure DOM is fully rendered
+    if (!changed) return; // Same data — polling returned identical results, skip scroll
+
+    if (isFirstLoadRef.current && tasks.length > 0) {
+      // First load after mount or squad switch: always scroll to bottom
+      isFirstLoadRef.current = false;
+      scrollLockRef.current = true;
       requestAnimationFrame(() => {
         scrollToBottom();
-        requestAnimationFrame(scrollToBottom);
+        requestAnimationFrame(() => {
+          scrollToBottom();
+          // Unlock after browser has settled
+          requestAnimationFrame(() => { scrollLockRef.current = false; });
+        });
       });
-    } else if (pinnedRef.current || hasNewTasks) {
-      scheduleScrollToBottom();
+      return;
     }
-  }, [tasks, scrollToBottom, scheduleScrollToBottom]);
+
+    // Data changed (new tasks, status update, output appeared)
+    // Only auto-scroll if user was already at the bottom
+    if (pinnedRef.current) {
+      scrollLockRef.current = true;
+      requestAnimationFrame(() => {
+        scrollToBottom();
+        requestAnimationFrame(() => { scrollLockRef.current = false; });
+      });
+    }
+  }, [tasks, scrollToBottom]);
 
   /* ── Cleanup scroll frames on unmount ── */
   useEffect(() => {
@@ -374,7 +390,7 @@ export const SquadChatPanel = memo(function SquadChatPanel({
         <div
           ref={scrollRef}
           className={`h-full overflow-auto p-4 ${showJumpToLatest ? "pb-16" : ""}`}
-          onScroll={updatePinnedFromScroll}
+          onScroll={handleScroll}
           onWheel={(e) => e.stopPropagation()}
           onWheelCapture={(e) => e.stopPropagation()}
         >
