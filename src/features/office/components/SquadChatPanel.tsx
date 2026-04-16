@@ -7,6 +7,7 @@ import {
   Loader2,
   RefreshCcw,
   Send,
+  Sparkles,
   Users2,
   XCircle,
 } from "lucide-react";
@@ -149,7 +150,15 @@ function RunCard({ run }: { run: SquadTaskRun }) {
 /* ── Task block (looks like a conversation pair) ── */
 function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
   const runs = task.runs ?? [];
-  const hasAnyOutput = runs.some((r) => r.outputText?.trim());
+  const hasAnyRunOutput = runs.some((r) => r.outputText?.trim());
+  const finalResponse = task.finalResponse?.trim();
+  const hasSquadAnswer = !!finalResponse;
+  const taskStatus = norm(task.status);
+  const stillWaiting =
+    !hasSquadAnswer &&
+    !hasAnyRunOutput &&
+    runs.length > 0 &&
+    runs.every((r) => isRunning(r.status) || norm(r.status) === "queued" || norm(r.status) === "pending");
 
   return (
     <div className="space-y-3">
@@ -169,7 +178,7 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
               isRunning(task.status) ? "bg-cyan-500/15 text-cyan-300" :
               "bg-white/[0.07] text-white/40"
             }`}>
-              {norm(task.status) || "draft"}
+              {taskStatus || "draft"}
             </span>
           </div>
           <div className="whitespace-pre-wrap text-[13px] leading-[1.55] text-white/60">
@@ -179,7 +188,35 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
         </div>
       </div>
 
-      {/* Agent responses */}
+      {/* Squad final answer (shown as soon as the backend rolls up FinalResponse) */}
+      {hasSquadAnswer && (
+        <div className="flex justify-start">
+          <div
+            className="max-w-[92%] rounded-2xl rounded-tl-md px-4 py-3"
+            style={{ backgroundColor: `${accent}0d`, border: `1px solid ${accent}22` }}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5" style={{ color: accent }} />
+              <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
+                Squad answer
+              </span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase ${
+                isSuccess(task.status) ? "bg-emerald-500/15 text-emerald-300" :
+                isFailed(task.status) ? "bg-red-500/15 text-red-300" :
+                "bg-cyan-500/15 text-cyan-300"
+              }`}>
+                {taskStatus || "ready"}
+              </span>
+            </div>
+            <OutputBlock text={finalResponse!} />
+            {task.finishedAtUtc && (
+              <div className="mt-2 text-[10px] text-white/25">Finished {fmtDate(task.finishedAtUtc)}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Per-run details (collapsed into a thread) */}
       {runs.length > 0 && (
         <div className="ml-1 space-y-2 border-l-2 pl-3" style={{ borderColor: `${accent}20` }}>
           {runs.map((run) => (
@@ -188,7 +225,7 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
         </div>
       )}
 
-      {!hasAnyOutput && runs.length > 0 && runs.every((r) => isRunning(r.status) || norm(r.status) === "queued") && (
+      {stillWaiting && (
         <div className="ml-4 flex items-center gap-2 text-xs text-cyan-300/50">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           Agents are processing this task...
@@ -205,8 +242,21 @@ const NEAR_BOTTOM_PX = 48;
 const buildTaskFingerprint = (tasks: SquadTask[]): string =>
   tasks.map((t) => {
     const runParts = (t.runs ?? []).map((r) => `${r.id}:${r.status}:${(r.outputText?.length ?? 0)}`).join(",");
-    return `${t.id}|${t.status}|${runParts}`;
+    return `${t.id}|${t.status}|${(t.finalResponse?.length ?? 0)}|${runParts}`;
   }).join(";");
+
+/** True when any task (or any of its runs) is still in-flight. Drives faster polling. */
+const anyTaskInFlight = (tasks: SquadTask[]): boolean =>
+  tasks.some((t) => {
+    const s = (t.status ?? "").trim().toLowerCase();
+    if (["running", "processing", "dispatching", "in_progress", "pending", "queued"].includes(s)) {
+      return true;
+    }
+    return (t.runs ?? []).some((r) => {
+      const rs = (r.status ?? "").trim().toLowerCase();
+      return ["running", "processing", "dispatching", "in_progress", "pending", "queued"].includes(rs);
+    });
+  });
 
 /* ── Main panel ── */
 export const SquadChatPanel = memo(function SquadChatPanel({
@@ -279,12 +329,15 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     }
   }, [squad.id]);
 
-  // Initial load + polling
+  // Recompute flight-state only when it toggles — avoids thrashing the interval on every poll.
+  const inFlight = useMemo(() => anyTaskInFlight(tasks), [tasks]);
+
+  // Initial load + adaptive polling (fast when tasks are still running, slow when idle).
   useEffect(() => {
     void loadTasks();
-    const interval = window.setInterval(() => { void loadTasks(); }, 8000);
-    return () => window.clearInterval(interval);
-  }, [loadTasks]);
+    const interval = window.setInterval(() => { void loadTasks(); }, inFlight ? 4000 : 8000);
+    return () => { window.clearInterval(interval); };
+  }, [loadTasks, inFlight]);
 
   /* ── Scroll on squad change: reset to bottom ── */
   useEffect(() => {
@@ -416,61 +469,4 @@ export const SquadChatPanel = memo(function SquadChatPanel({
               </div>
             ) : tasks.length === 0 ? (
               <div className="flex flex-col items-center gap-3 py-12 text-center">
-                <Users2 className="h-8 w-8 text-white/10" />
-                <p className="text-sm text-white/30">No tasks yet for this squad.</p>
-                <p className="max-w-xs text-xs text-white/20">
-                  Create a task from the Ops panel or type a message below to send to the squad agents.
-                </p>
-              </div>
-            ) : (
-              tasks.map((task) => <TaskBlock key={task.id} task={task} accent={accent} />)
-            )}
-            {/* Bottom sentinel for scrollIntoView */}
-            <div ref={bottomRef} />
-          </div>
-        </div>
-
-        {/* Jump to latest button */}
-        {showJumpToLatest && (
-          <button
-            type="button"
-            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-md border border-white/15 bg-[#1a1510]/95 px-3 py-1.5 font-mono text-[11px] font-medium tracking-[0.02em] text-white/70 shadow-lg backdrop-blur transition hover:bg-[#1a1510] hover:text-white/90"
-            onClick={() => {
-              setPinned(true);
-              scrollToBottom();
-            }}
-            aria-label="Jump to latest"
-          >
-            Jump to latest
-          </button>
-        )}
-      </div>
-
-      {/* Composer */}
-      <div className="shrink-0 border-t border-white/10 px-4 py-3">
-        <div className="mb-2 text-[10px] text-white/30">
-          Messages are routed to {squad.executionMode === "all" ? "all members" : "the squad leader"}. Tasks and responses appear above.
-        </div>
-        <div className="flex gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Send a message to the squad..."
-            rows={2}
-            className="min-h-[52px] flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none transition focus:border-white/25"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!draft.trim() || sending}
-            className="self-end rounded-xl px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-30"
-            style={{ backgroundColor: `${accent}20`, border: `1px solid ${accent}35` }}
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-});
+      

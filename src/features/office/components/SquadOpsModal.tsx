@@ -11,6 +11,7 @@ import {
   RefreshCcw,
   Rocket,
   Send,
+  Sparkles,
   Trash2,
   Users2,
   X,
@@ -570,6 +571,33 @@ export function SquadOpsModal({
                   </div>
                 )}
 
+                {/* Squad final answer — backend rolls up latest completed run output */}
+                {selectedTask.finalResponse?.trim() && (
+                  <div
+                    className="rounded-xl border p-4"
+                    style={{ borderColor: `${accent}35`, backgroundColor: `${accent}0d` }}
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" style={{ color: accent }} />
+                      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
+                        Squad answer
+                      </span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase ${statusClasses(selectedTask.status)}`}>
+                        {statusText(selectedTask.status)}
+                      </span>
+                      {selectedTask.finishedAtUtc && (
+                        <span className="ml-auto text-[10px] text-white/30">
+                          Finished {fmtDate(selectedTask.finishedAtUtc)}
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className="max-h-[360px] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-white/80"
+                      dangerouslySetInnerHTML={{ __html: formatRunOutput(selectedTask.finalResponse.trim()) }}
+                    />
+                  </div>
+                )}
+
                 {/* Run stats */}
                 <div className="grid grid-cols-4 gap-2">
                   <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3 text-center">
@@ -703,36 +731,4 @@ export function SquadOpsModal({
                               <div><div className="text-white/25">Finished</div><div className="mt-0.5 text-white/60">{fmtDate(run.finishedAtUtc)}</div></div>
                               <div><div className="text-white/25">Session</div><div className="mt-0.5 break-all text-white/60">{run.externalSessionKey || "—"}</div></div>
                             </div>
-                            <div className="mt-3 max-h-[400px] overflow-y-auto rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm leading-6 text-white/60">
-                              {run.outputText?.trim() ? (
-                                <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatRunOutput(run.outputText.trim()) }} />
-                              ) : norm(run.status) === "running" || norm(run.status) === "queued" ? (
-                                <div className="flex items-center gap-2 text-xs text-cyan-300/50">
-                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
-                                  Agent is working...
-                                </div>
-                              ) : (
-                                <span className="text-white/30 italic">No output yet.</span>
-                              )}
-                            </div>
-                          </div>
-                        </details>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
-
-        {/* ── Footer error ── */}
-        {error && (
-          <div className="flex items-center gap-2 border-t border-red-500/15 bg-red-500/8 px-6 py-3 text-xs text-red-200">
-            <AlertCircle className="h-4 w-4 shrink-0" />{error}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
+                            <div
