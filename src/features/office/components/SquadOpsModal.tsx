@@ -114,6 +114,61 @@ const formatRunOutput = (text: string): string => {
   return t;
 };
 
+/* ── Provider-error filter ──
+ * Shared with SquadChatPanel — filters transient OpenClaw provider warnings
+ * (rate-limit, overloaded, transport) out of cached output/final-response so
+ * the Ops modal stays clean while the sync worker keeps polling for the real
+ * assistant answer.
+ */
+const TRANSIENT_DISPATCH_PREFIXES = [
+  "[RATE_LIMIT]",
+  "[OVERLOADED]",
+  "[TRANSPORT]",
+  "[RUNNER]",
+  "[SESSION]",
+  "[ROLES]",
+];
+const TRANSIENT_WARNING_NEEDLES = [
+  "api rate limit reached",
+  "rate limit reached",
+  "too many requests",
+  "temporarily overloaded",
+  "service is temporarily overloaded",
+  "high demand",
+  "llm request failed",
+  "llm request timed out",
+  "agent failed before reply",
+  "session history was corrupted",
+  "message ordering conflict",
+];
+
+function isTransientProviderWarning(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const startsWithWarningEmoji =
+    trimmed.startsWith("\u26A0") || trimmed.startsWith("\uFE0F") || trimmed.startsWith("⚠");
+  if (!startsWithWarningEmoji && trimmed.length > 400) return false;
+  const lower = trimmed.toLowerCase();
+  return TRANSIENT_WARNING_NEEDLES.some((n) => lower.includes(n));
+}
+
+function isTransientDispatchError(msg: string | null | undefined): boolean {
+  if (!msg) return false;
+  const trimmed = msg.trim();
+  if (!trimmed) return false;
+  return TRANSIENT_DISPATCH_PREFIXES.some((p) => trimmed.startsWith(p))
+    || isTransientProviderWarning(trimmed);
+}
+
+function cleanOutput(text: string | null | undefined): string {
+  if (!text) return "";
+  const t = text.trim();
+  if (!t) return "";
+  if (isTransientProviderWarning(t)) return "";
+  return t;
+}
+
 export function SquadOpsModal({
   open, squads, squad, selectedSquadId, tasks, selectedTask,
   loading, refreshingTask, createBusy, dispatchBusy,
@@ -574,31 +629,35 @@ export function SquadOpsModal({
                 )}
 
                 {/* Squad final answer — backend rolls up latest completed run output */}
-                {selectedTask.finalResponse?.trim() && (
-                  <div
-                    className="rounded-xl border p-4"
-                    style={{ borderColor: `${accent}35`, backgroundColor: `${accent}0d` }}
-                  >
-                    <div className="mb-2 flex items-center gap-2">
-                      <Sparkles className="h-4 w-4" style={{ color: accent }} />
-                      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
-                        Squad answer
-                      </span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase ${statusClasses(selectedTask.status)}`}>
-                        {statusText(selectedTask.status)}
-                      </span>
-                      {selectedTask.finishedAtUtc && (
-                        <span className="ml-auto text-[10px] text-white/30">
-                          Finished {fmtDate(selectedTask.finishedAtUtc)}
-                        </span>
-                      )}
-                    </div>
+                {(() => {
+                  const cleaned = cleanOutput(selectedTask.finalResponse);
+                  if (!cleaned) return null;
+                  return (
                     <div
-                      className="max-h-[360px] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-white/80"
-                      dangerouslySetInnerHTML={{ __html: formatRunOutput(selectedTask.finalResponse.trim()) }}
-                    />
-                  </div>
-                )}
+                      className="rounded-xl border p-4"
+                      style={{ borderColor: `${accent}35`, backgroundColor: `${accent}0d` }}
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        <Sparkles className="h-4 w-4" style={{ color: accent }} />
+                        <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: accent }}>
+                          Squad answer
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase ${statusClasses(selectedTask.status)}`}>
+                          {statusText(selectedTask.status)}
+                        </span>
+                        {selectedTask.finishedAtUtc && (
+                          <span className="ml-auto text-[10px] text-white/30">
+                            Finished {fmtDate(selectedTask.finishedAtUtc)}
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="max-h-[360px] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-white/80"
+                        dangerouslySetInnerHTML={{ __html: formatRunOutput(cleaned) }}
+                      />
+                    </div>
+                  );
+                })()}
 
                 {/* Run stats */}
                 <div className="grid grid-cols-4 gap-2">
@@ -725,44 +784,10 @@ export function SquadOpsModal({
                             </span>
                           </summary>
                           <div className="border-t border-white/5 px-4 py-3">
-                            {run.dispatchError && (
-                              <div className="mb-3 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-xs text-red-200">{run.dispatchError}</div>
-                            )}
-                            <div className="grid grid-cols-3 gap-3 text-xs text-white/40">
-                              <div><div className="text-white/25">Started</div><div className="mt-0.5 text-white/60">{fmtDate(run.startedAtUtc)}</div></div>
-                              <div><div className="text-white/25">Finished</div><div className="mt-0.5 text-white/60">{fmtDate(run.finishedAtUtc)}</div></div>
-                              <div><div className="text-white/25">Session</div><div className="mt-0.5 break-all text-white/60">{run.externalSessionKey || "—"}</div></div>
-                            </div>
-                            <div className="mt-3 max-h-[400px] overflow-y-auto rounded-lg border border-white/5 bg-white/[0.02] p-3 text-sm leading-6 text-white/60">
-                              {run.outputText?.trim() ? (
-                                <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: formatRunOutput(run.outputText.trim()) }} />
-                              ) : norm(run.status) === "running" || norm(run.status) === "queued" ? (
-                                <div className="flex items-center gap-2 text-xs text-cyan-300/50">
-                                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-cyan-400/30 border-t-cyan-400" />
-                                  Agent is working...
-                                </div>
-                              ) : (
-                                <span className="text-white/30 italic">No output yet.</span>
-                              )}
-                            </div>
-                          </div>
-                        </details>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
-
-        {/* ── Footer error ── */}
-        {error && (
-          <div className="flex items-center gap-2 border-t border-red-500/15 bg-red-500/8 px-6 py-3 text-xs text-red-200">
-            <AlertCircle className="h-4 w-4 shrink-0" />{error}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
+                            {(() => {
+                              const raw = run.dispatchError;
+                              if (!raw) return null;
+                              const cleanedRunOutput = cleanOutput(run.outputText);
+                              const looksRunning = ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(norm(run.status));
+                              const isTransient = isTransientDispatchError(raw);
+                              const isConfig = raw.startsWi

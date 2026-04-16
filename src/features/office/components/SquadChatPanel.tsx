@@ -46,6 +46,63 @@ const isSuccess = (s: string) => ["completed", "done", "success"].includes(norm(
 const isFailed = (s: string) => ["failed", "error", "cancelled"].includes(norm(s));
 const isRunning = (s: string) => ["running", "processing", "dispatching", "in_progress"].includes(norm(s));
 
+/* ── Provider-error filter ──
+ * The backend used to mirror OpenClaw's transient "⚠️ API rate limit reached"
+ * lines straight into OutputText / FinalResponse. The new sync worker skips
+ * those, but older runs may still have them cached in the database. We filter
+ * them out here so the UI shows a "retrying" state instead of the scary
+ * warning string that OpenClaw retries on its own anyway.
+ */
+const TRANSIENT_DISPATCH_PREFIXES = [
+  "[RATE_LIMIT]",
+  "[OVERLOADED]",
+  "[TRANSPORT]",
+  "[RUNNER]",
+  "[SESSION]",
+  "[ROLES]",
+];
+const TRANSIENT_WARNING_NEEDLES = [
+  "api rate limit reached",
+  "rate limit reached",
+  "too many requests",
+  "temporarily overloaded",
+  "service is temporarily overloaded",
+  "high demand",
+  "llm request failed",
+  "llm request timed out",
+  "agent failed before reply",
+  "session history was corrupted",
+  "message ordering conflict",
+];
+
+function isTransientProviderWarning(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  const startsWithWarningEmoji =
+    trimmed.startsWith("\u26A0") || trimmed.startsWith("\uFE0F") || trimmed.startsWith("⚠");
+  if (!startsWithWarningEmoji && trimmed.length > 400) return false;
+  const lower = trimmed.toLowerCase();
+  return TRANSIENT_WARNING_NEEDLES.some((n) => lower.includes(n));
+}
+
+function isTransientDispatchError(msg: string | null | undefined): boolean {
+  if (!msg) return false;
+  const trimmed = msg.trim();
+  if (!trimmed) return false;
+  return TRANSIENT_DISPATCH_PREFIXES.some((p) => trimmed.startsWith(p))
+    || isTransientProviderWarning(trimmed);
+}
+
+/** Returns the output text only if it's a real assistant answer; otherwise "". */
+function cleanOutput(text: string | null | undefined): string {
+  if (!text) return "";
+  const t = text.trim();
+  if (!t) return "";
+  if (isTransientProviderWarning(t)) return "";
+  return t;
+}
+
 const statusIcon = (s: string) => {
   if (isSuccess(s)) return <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />;
   if (isFailed(s)) return <XCircle className="h-3.5 w-3.5 text-red-400" />;
@@ -84,7 +141,12 @@ function OutputBlock({ text }: { text: string }) {
 /* ── Run card ── */
 function RunCard({ run }: { run: SquadTaskRun }) {
   const [expanded, setExpanded] = useState(true);
-  const hasOutput = run.outputText?.trim();
+  const cleanedOutput = cleanOutput(run.outputText);
+  const hasOutput = !!cleanedOutput;
+  // Treat transient ⚠️ states as "still working" rather than "finished without output".
+  const runLooksRunning =
+    isRunning(run.status) ||
+    (!hasOutput && (isTransientDispatchError(run.dispatchError) || isTransientProviderWarning(run.outputText)));
 
   return (
     <div className="rounded-xl border border-white/[0.07] bg-white/[0.02]">
@@ -93,7 +155,7 @@ function RunCard({ run }: { run: SquadTaskRun }) {
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left"
       >
-        {statusIcon(run.status)}
+        {statusIcon(runLooksRunning ? "running" : run.status)}
         <span className="flex-1 truncate text-sm font-medium text-white/80">
           {run.agentName}
         </span>
@@ -106,21 +168,29 @@ function RunCard({ run }: { run: SquadTaskRun }) {
       {expanded && (
         <div className="border-t border-white/[0.05] px-3.5 pb-3.5 pt-2.5">
           {run.dispatchError && (() => {
-            const isConfigWarning = run.dispatchError.startsWith("[CONFIG]");
-            const displayMsg = isConfigWarning ? run.dispatchError.replace("[CONFIG] ", "") : run.dispatchError;
+            const raw = run.dispatchError;
+            const isConfigWarning = raw.startsWith("[CONFIG]");
+            const isTransient = isTransientDispatchError(raw);
+            // Hide transient/rate-limit noise entirely while we're still polling —
+            // the backend retries automatically and the real answer is on its way.
+            if (isTransient && runLooksRunning) return null;
+            const displayMsg = isConfigWarning
+              ? raw.replace("[CONFIG] ", "")
+              : isTransient
+              ? raw.replace(/^\[[A-Z_]+\]\s*/, "")
+              : raw;
+            const tone = isConfigWarning || isTransient
+              ? "border-amber-500/20 bg-amber-500/8 text-amber-200"
+              : "border-red-500/20 bg-red-500/8 text-red-200";
             return (
-              <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${
-                isConfigWarning
-                  ? "border-amber-500/20 bg-amber-500/8 text-amber-200"
-                  : "border-red-500/20 bg-red-500/8 text-red-200"
-              }`}>
+              <div className={`mb-2 rounded-lg border px-3 py-2 text-xs ${tone}`}>
                 {displayMsg}
               </div>
             );
           })()}
           {hasOutput ? (
-            <OutputBlock text={run.outputText!} />
-          ) : isRunning(run.status) ? (
+            <OutputBlock text={cleanedOutput} />
+          ) : runLooksRunning ? (
             <div className="space-y-1.5">
               <div className="flex items-center gap-2 text-xs text-cyan-300/60">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -152,15 +222,31 @@ function RunCard({ run }: { run: SquadTaskRun }) {
 /* ── Task block (looks like a conversation pair) ── */
 function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
   const runs = task.runs ?? [];
-  const hasAnyRunOutput = runs.some((r) => r.outputText?.trim());
-  const finalResponse = task.finalResponse?.trim();
+  // Only count a run as "having output" if it's a REAL assistant answer —
+  // transient provider warnings (rate-limit, overloaded, etc.) don't count.
+  const hasAnyRunOutput = runs.some((r) => !!cleanOutput(r.outputText));
+  // Same filter on the rolled-up FinalResponse so old cached ⚠️ strings from
+  // before the backend fix don't show as a "Squad answer".
+  const finalResponse = cleanOutput(task.finalResponse);
   const hasSquadAnswer = !!finalResponse;
   const taskStatus = norm(task.status);
+  // A run is "still in motion" if it's running OR if it only has transient
+  // noise (⚠️ rate-limit, [RATE_LIMIT] dispatch error, etc.) and no real reply.
+  const runIsSettling = (r: SquadTaskRun) => {
+    if (isRunning(r.status)) return true;
+    const s = norm(r.status);
+    if (s === "queued" || s === "pending") return true;
+    const hasReal = !!cleanOutput(r.outputText);
+    if (hasReal) return false;
+    if (isTransientDispatchError(r.dispatchError)) return true;
+    if (isTransientProviderWarning(r.outputText)) return true;
+    return false;
+  };
   const stillWaiting =
     !hasSquadAnswer &&
     !hasAnyRunOutput &&
     runs.length > 0 &&
-    runs.every((r) => isRunning(r.status) || norm(r.status) === "queued" || norm(r.status) === "pending");
+    runs.every(runIsSettling);
 
   return (
     <div className="space-y-3">
@@ -210,7 +296,7 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
                 {taskStatus || "ready"}
               </span>
             </div>
-            <OutputBlock text={finalResponse!} />
+            <OutputBlock text={finalResponse} />
             {task.finishedAtUtc && (
               <div className="mt-2 text-[10px] text-white/25">Finished {fmtDate(task.finishedAtUtc)}</div>
             )}
@@ -446,86 +532,4 @@ export const SquadChatPanel = memo(function SquadChatPanel({
               type="button"
               onClick={() => onOpenOps(squad.id)}
               className="rounded-lg border px-2.5 py-1 text-[10px] font-medium uppercase tracking-wider transition hover:bg-white/5"
-              style={{ borderColor: `${accent}30`, color: accent }}
-            >
-              Ops
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Messages feed — overflow-hidden wrapper + scrollable inner (matches AgentChatPanel) */}
-      <div className="relative min-h-0 flex-1 overflow-hidden">
-        <div
-          ref={scrollRef}
-          className={`h-full overflow-auto p-4 ${showJumpToLatest ? "pb-16" : ""}`}
-          onScroll={handleScroll}
-          onWheel={(e) => e.stopPropagation()}
-          onWheelCapture={(e) => e.stopPropagation()}
-        >
-          <div className="flex flex-col gap-6">
-            {loading && tasks.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-12 text-white/25">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-xs">Loading squad tasks...</span>
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 py-12 text-center">
-                <Users2 className="h-8 w-8 text-white/10" />
-                <p className="text-sm text-white/30">No tasks yet for this squad.</p>
-                <p className="max-w-xs text-xs text-white/20">
-                  Create a task from the Ops panel or type a message below to send to the squad agents.
-                </p>
-              </div>
-            ) : (
-              tasks.map((task) => <TaskBlock key={task.id} task={task} accent={accent} />)
-            )}
-            {/* Bottom sentinel for scrollIntoView */}
-            <div ref={bottomRef} />
-          </div>
-        </div>
-
-        {/* Jump to latest button */}
-        {showJumpToLatest && (
-          <button
-            type="button"
-            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-md border border-white/15 bg-[#1a1510]/95 px-3 py-1.5 font-mono text-[11px] font-medium tracking-[0.02em] text-white/70 shadow-lg backdrop-blur transition hover:bg-[#1a1510] hover:text-white/90"
-            onClick={() => {
-              setPinned(true);
-              scrollToBottom();
-            }}
-            aria-label="Jump to latest"
-          >
-            Jump to latest
-          </button>
-        )}
-      </div>
-
-      {/* Composer */}
-      <div className="shrink-0 border-t border-white/10 px-4 py-3">
-        <div className="mb-2 text-[10px] text-white/30">
-          Messages are routed to {squad.executionMode === "all" ? "all members" : "the squad leader"}. Tasks and responses appear above.
-        </div>
-        <div className="flex gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Send a message to the squad..."
-            rows={2}
-            className="min-h-[52px] flex-1 resize-none rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm text-white outline-none transition focus:border-white/25"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={!draft.trim() || sending}
-            className="self-end rounded-xl px-4 py-2.5 text-sm font-medium text-white transition disabled:opacity-30"
-            style={{ backgroundColor: `${accent}20`, border: `1px solid ${accent}35` }}
-          >
-            <Send className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-});
+            
