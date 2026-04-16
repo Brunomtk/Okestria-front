@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { SquadSummary, SquadTask, SquadTaskRun } from "@/lib/squads/api";
 import { fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
+import { isNearBottom } from "@/lib/dom";
 
 /* ── Types ── */
 type SquadChatPanelProps = {
@@ -183,6 +184,9 @@ function TaskBlock({ task, accent }: { task: SquadTask; accent: string }) {
   );
 }
 
+/* ── Scroll threshold ── */
+const NEAR_BOTTOM_PX = 48;
+
 /* ── Main panel ── */
 export const SquadChatPanel = memo(function SquadChatPanel({
   squad,
@@ -193,9 +197,51 @@ export const SquadChatPanel = memo(function SquadChatPanel({
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
-  const feedRef = useRef<HTMLDivElement | null>(null);
+
+  /* ── Scroll refs & state (mirrors AgentChatPanel) ── */
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const pinnedRef = useRef(true);
+  const [isPinned, setIsPinned] = useState(true);
+  const prevTaskCountRef = useRef(0);
 
   const accent = squad.color || "#3b82f6";
+
+  /* ── Scroll helpers ── */
+  const scrollToBottom = useCallback(() => {
+    if (!scrollRef.current) return;
+    if (bottomRef.current) {
+      bottomRef.current.scrollIntoView({ block: "end" });
+      return;
+    }
+    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, []);
+
+  const setPinned = useCallback((next: boolean) => {
+    if (pinnedRef.current === next) return;
+    pinnedRef.current = next;
+    setIsPinned(next);
+  }, []);
+
+  const updatePinnedFromScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setPinned(
+      isNearBottom(
+        { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+        NEAR_BOTTOM_PX,
+      ),
+    );
+  }, [setPinned]);
+
+  const scheduleScrollToBottom = useCallback(() => {
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      scrollToBottom();
+    });
+  }, [scrollToBottom]);
 
   // Load tasks (with full run details)
   const loadTasks = useCallback(async () => {
@@ -223,11 +269,45 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     return () => window.clearInterval(interval);
   }, [loadTasks]);
 
-  // Scroll to bottom when tasks change
+  /* ── Scroll on squad change: reset to bottom ── */
   useEffect(() => {
-    if (!feedRef.current) return;
-    feedRef.current.scrollTop = feedRef.current.scrollHeight;
-  }, [tasks]);
+    setPinned(true);
+    prevTaskCountRef.current = 0;
+    const frame = requestAnimationFrame(() => {
+      scrollToBottom();
+      requestAnimationFrame(scrollToBottom);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [squad.id, scrollToBottom, setPinned]);
+
+  /* ── Smart scroll when tasks change ── */
+  useEffect(() => {
+    const newCount = tasks.length;
+    const isFirstLoad = prevTaskCountRef.current === 0 && newCount > 0;
+    const hasNewTasks = newCount > prevTaskCountRef.current;
+    prevTaskCountRef.current = newCount;
+
+    // Always scroll on first load; otherwise only if pinned or new tasks
+    if (isFirstLoad) {
+      // Double-rAF for first load to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        scrollToBottom();
+        requestAnimationFrame(scrollToBottom);
+      });
+    } else if (pinnedRef.current || hasNewTasks) {
+      scheduleScrollToBottom();
+    }
+  }, [tasks, scrollToBottom, scheduleScrollToBottom]);
+
+  /* ── Cleanup scroll frames on unmount ── */
+  useEffect(() => {
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, []);
 
   const handleSend = useCallback(() => {
     const msg = draft.trim();
@@ -245,10 +325,12 @@ export const SquadChatPanel = memo(function SquadChatPanel({
     }
   };
 
+  const showJumpToLatest = !isPinned && tasks.length > 0;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[#0e0a04]">
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+      <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-3">
         {squad.iconEmoji && (
           <div
             className="flex h-8 w-8 items-center justify-center rounded-lg text-sm"
@@ -287,28 +369,55 @@ export const SquadChatPanel = memo(function SquadChatPanel({
         </div>
       </div>
 
-      {/* Messages feed */}
-      <div ref={feedRef} className="flex-1 space-y-6 overflow-y-auto px-4 py-4">
-        {loading && tasks.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-12 text-white/25">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-xs">Loading squad tasks...</span>
+      {/* Messages feed — overflow-hidden wrapper + scrollable inner (matches AgentChatPanel) */}
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={scrollRef}
+          className={`h-full overflow-auto p-4 ${showJumpToLatest ? "pb-16" : ""}`}
+          onScroll={updatePinnedFromScroll}
+          onWheel={(e) => e.stopPropagation()}
+          onWheelCapture={(e) => e.stopPropagation()}
+        >
+          <div className="flex flex-col gap-6">
+            {loading && tasks.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-12 text-white/25">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-xs">Loading squad tasks...</span>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <Users2 className="h-8 w-8 text-white/10" />
+                <p className="text-sm text-white/30">No tasks yet for this squad.</p>
+                <p className="max-w-xs text-xs text-white/20">
+                  Create a task from the Ops panel or type a message below to send to the squad agents.
+                </p>
+              </div>
+            ) : (
+              tasks.map((task) => <TaskBlock key={task.id} task={task} accent={accent} />)
+            )}
+            {/* Bottom sentinel for scrollIntoView */}
+            <div ref={bottomRef} />
           </div>
-        ) : tasks.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-12 text-center">
-            <Users2 className="h-8 w-8 text-white/10" />
-            <p className="text-sm text-white/30">No tasks yet for this squad.</p>
-            <p className="max-w-xs text-xs text-white/20">
-              Create a task from the Ops panel or type a message below to send to the squad agents.
-            </p>
-          </div>
-        ) : (
-          tasks.map((task) => <TaskBlock key={task.id} task={task} accent={accent} />)
+        </div>
+
+        {/* Jump to latest button */}
+        {showJumpToLatest && (
+          <button
+            type="button"
+            className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-md border border-white/15 bg-[#1a1510]/95 px-3 py-1.5 font-mono text-[11px] font-medium tracking-[0.02em] text-white/70 shadow-lg backdrop-blur transition hover:bg-[#1a1510] hover:text-white/90"
+            onClick={() => {
+              setPinned(true);
+              scrollToBottom();
+            }}
+            aria-label="Jump to latest"
+          >
+            Jump to latest
+          </button>
         )}
       </div>
 
       {/* Composer */}
-      <div className="border-t border-white/10 px-4 py-3">
+      <div className="shrink-0 border-t border-white/10 px-4 py-3">
         <div className="mb-2 text-[10px] text-white/30">
           Messages are routed to {squad.executionMode === "all" ? "all members" : "the squad leader"}. Tasks and responses appear above.
         </div>
