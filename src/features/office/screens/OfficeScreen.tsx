@@ -5459,15 +5459,29 @@ export function OfficeScreen({
 
               <div className="flex min-w-0 flex-1 flex-col">
                 <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-                  <div className="min-w-0">
-                    <div className="truncate font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-amber-400/80">
-                      Conversation
-                    </div>
-                    <div className="mt-1 truncate font-mono text-[11px] text-white/40">
-                      {focusedChatAgent?.name ??
-                        focusedSquadChatTarget?.name ??
-                        focusedRemoteChatTarget?.name ??
-                        "Select an agent or squad to start chatting"}
+                  <div className="min-w-0 flex items-center gap-3">
+                    {focusedSquadChatTarget?.iconEmoji && (
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
+                        style={{
+                          backgroundColor: `${focusedSquadChatTarget.color || "#3b82f6"}15`,
+                          border: `1.5px solid ${focusedSquadChatTarget.color || "#3b82f6"}40`,
+                        }}
+                      >
+                        {focusedSquadChatTarget.iconEmoji}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-[12px] font-semibold uppercase tracking-[0.16em]" style={{ color: focusedSquadChatTarget ? (focusedSquadChatTarget.color || "#3b82f6") + "cc" : undefined }}>
+                        {focusedSquadChatTarget ? "Squad" : "Conversation"}
+                      </div>
+                      <div className="mt-1 truncate font-mono text-[11px] text-white/40">
+                        {focusedSquadChatTarget
+                          ? focusedSquadChatTarget.name
+                          : (focusedChatAgent?.name ??
+                            focusedRemoteChatTarget?.name ??
+                            "Select an agent or squad to start chatting")}
+                      </div>
                     </div>
                   </div>
 
