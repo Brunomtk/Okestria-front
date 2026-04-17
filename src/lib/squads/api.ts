@@ -439,6 +439,21 @@ export type SquadTask = SquadTaskSummary & {
   runs: SquadTaskRun[];
 };
 
+
+export type SquadTaskRunUpdatePayload = {
+  status?: string | null;
+  outputText?: string | null;
+  externalRuntime?: string | null;
+  externalTaskId?: string | null;
+  externalRunId?: string | null;
+  externalSessionKey?: string | null;
+  dispatchError?: string | null;
+  metadataJson?: string | null;
+  lastSyncedAtUtc?: string | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+};
+
 export type SquadTaskDispatchRequest = {
   runIds?: number[];
   onlyPendingRuns?: boolean;
@@ -674,4 +689,32 @@ export const dispatchSquadTask = async (
     runtime: readString(record.runtime, "openclaw-hook-agent"),
     runs: Array.isArray(record.runs) ? record.runs.map(normalizeRun) : [],
   };
+};
+
+export const updateSquadTaskRun = async (
+  runId: number,
+  payload: SquadTaskRunUpdatePayload,
+  token?: string | null,
+): Promise<SquadTaskRun> => {
+  const response = await requestBackendJson<unknown>(
+    `/api/Squads/task-runs/${runId}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        status: payload.status ?? null,
+        outputText: payload.outputText ?? null,
+        externalRuntime: payload.externalRuntime ?? null,
+        externalTaskId: payload.externalTaskId ?? null,
+        externalRunId: payload.externalRunId ?? null,
+        externalSessionKey: payload.externalSessionKey ?? null,
+        dispatchError: payload.dispatchError ?? null,
+        metadataJson: payload.metadataJson ?? null,
+        lastSyncedAtUtc: payload.lastSyncedAtUtc ?? null,
+        startedAtUtc: payload.startedAtUtc ?? null,
+        finishedAtUtc: payload.finishedAtUtc ?? null,
+      }),
+    },
+    token,
+  );
+  return normalizeRun(response);
 };

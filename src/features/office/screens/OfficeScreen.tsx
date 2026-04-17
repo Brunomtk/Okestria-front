@@ -146,6 +146,7 @@ import {
   fetchSquadTask,
   fetchSquadTasks,
   updateCompanySquad,
+  updateSquadTaskRun,
   type SquadCatalog,
   type SquadExecutionMode,
   type SquadSummary,
@@ -4001,29 +4002,7 @@ export function OfficeScreen({
     async (squad: SquadSummary, message: string) => {
       const trimmed = message.trim();
       if (!trimmed) return;
-      const memberAgentIds = squad.members
-        .map((member) => member.gatewayAgentId)
-        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        .filter((agentId) => stateRef.current.agents.some((agent) => agent.agentId === agentId));
-      if (memberAgentIds.length === 0) {
-        updateSquadChatSession(squad.id, (session) => ({
-          ...session,
-          sending: false,
-          error: "This squad does not have online company agents available in the office yet.",
-        }));
-        return;
-      }
 
-      const leaderAgentId =
-        squad.leaderGatewayAgentId && memberAgentIds.includes(squad.leaderGatewayAgentId)
-          ? squad.leaderGatewayAgentId
-          : memberAgentIds[0] ?? null;
-      const targetAgentIds =
-        squad.executionMode === "all"
-          ? memberAgentIds
-          : leaderAgentId
-            ? [leaderAgentId]
-            : memberAgentIds.slice(0, 1);
       const sentAt = Date.now();
       updateSquadChatSession(squad.id, (session) => ({
         ...session,
@@ -4041,47 +4020,60 @@ export function OfficeScreen({
         ],
       }));
 
-      const successNames: string[] = [];
-      const failedNames: string[] = [];
-      for (const targetAgentId of targetAgentIds) {
-        const targetAgent = stateRef.current.agents.find((agent) => agent.agentId === targetAgentId) ?? null;
-        if (!targetAgent) {
-          failedNames.push(targetAgentId);
-          continue;
-        }
-        try {
-          await handleChatSend(
-            targetAgent.agentId,
-            targetAgent.sessionKey,
-            { text: `[Squad: ${squad.name}] ${trimmed}` },
-          );
-          successNames.push(targetAgent.name || targetAgent.agentId);
-        } catch {
-          failedNames.push(targetAgent.name || targetAgent.agentId);
-        }
+      try {
+        const createdTask = await createSquadTask({
+          squadId: squad.id,
+          title: trimmed.length > 80 ? `${trimmed.slice(0, 77).trimEnd()}…` : trimmed,
+          prompt: trimmed,
+          executionMode: squad.executionMode ?? "leader",
+          preferredModel: squad.leaderModel ?? squad.preferredModel ?? null,
+          targetAgentId: squad.executionMode === "single" ? squad.leaderAgentId ?? null : null,
+        });
+
+        setSelectedSquadTaskId(createdTask.id);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== createdTask.id);
+          return [createdTask, ...next].sort((left, right) => right.id - left.id);
+        });
+
+        await dispatchSquadTask(createdTask.id, {
+          onlyPendingRuns: true,
+          retryFailedRuns: true,
+          forceRedispatchCompletedRuns: false,
+          deliveryMode: "none",
+          wakeMode: "now",
+          thinking: "medium",
+          model: squad.leaderModel ?? squad.preferredModel ?? null,
+        });
+
+        const hydratedTask = await fetchSquadTask(createdTask.id);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== hydratedTask.id);
+          return [hydratedTask, ...next].sort((left, right) => right.id - left.id);
+        });
+
+        updateSquadChatSession(squad.id, (session) => ({
+          ...session,
+          sending: false,
+          error: null,
+          messages: [
+            ...session.messages,
+            {
+              id: randomUUID(),
+              role: "system",
+              text: `Task #${hydratedTask.id} dispatched to ${squad.executionMode === "all" ? "the squad members" : "the squad leader"}.`,
+              timestampMs: Date.now(),
+            },
+          ],
+        }));
+      } catch (error) {
+        updateSquadChatSession(squad.id, (session) => ({
+          ...session,
+          sending: false,
+          error: error instanceof Error ? error.message : "Unable to dispatch the squad task right now.",
+        }));
+        throw error;
       }
-
-      const summaryParts = [
-        successNames.length > 0 ? `Sent to ${successNames.join(", ")}.` : "",
-        failedNames.length > 0 ? `Failed: ${failedNames.join(", ")}.` : "",
-      ].filter(Boolean);
-
-      updateSquadChatSession(squad.id, (session) => ({
-        ...session,
-        sending: false,
-        error: failedNames.length > 0 && successNames.length === 0 ? "Unable to dispatch the squad message right now." : null,
-        messages: [
-          ...session.messages,
-          {
-            id: randomUUID(),
-            role: "system",
-            text:
-              summaryParts.join(" ") ||
-              `Sent using ${squad.executionMode === "all" ? "all members" : "the squad leader"}.`,
-            timestampMs: Date.now(),
-          },
-        ],
-      }));
     },
     [updateSquadChatSession],
   );
@@ -4341,13 +4333,70 @@ export function OfficeScreen({
     },
   });
 
-  useFinalizedAssistantReplyListener(state.agents, ({ text }) => {
+  const activeSquadRunBySessionKey = useMemo(() => {
+    const map = new Map<string, { taskId: number; runId: number; outputText: string | null; status: string | null }>();
+    for (const task of selectedSquadTasks) {
+      for (const run of task.runs) {
+        const sessionKey = typeof run.externalSessionKey === "string" ? run.externalSessionKey.trim() : "";
+        if (!sessionKey) continue;
+        const normalizedStatus = (run.status ?? "").toLowerCase();
+        if (normalizedStatus !== "running" && normalizedStatus !== "queued" && normalizedStatus !== "pending") continue;
+        map.set(sessionKey, {
+          taskId: task.id,
+          runId: run.id,
+          outputText: run.outputText ?? null,
+          status: run.status ?? null,
+        });
+      }
+    }
+    return map;
+  }, [selectedSquadTasks]);
+
+  useFinalizedAssistantReplyListener(state.agents, ({ sessionKey, text }) => {
     if (!voiceRepliesLoaded || !voiceRepliesEnabled) return;
     enqueueVoiceReply({
       text,
       provider: voiceRepliesPreference.provider,
       voiceId: voiceRepliesPreference.voiceId,
     });
+  });
+
+  const squadRunMirrorInFlightRef = useRef<Set<number>>(new Set());
+
+  useFinalizedAssistantReplyListener(state.agents, ({ sessionKey, text }) => {
+    const normalizedSessionKey = typeof sessionKey === "string" ? sessionKey.trim() : "";
+    if (!normalizedSessionKey) return;
+
+    const trackedRun = activeSquadRunBySessionKey.get(normalizedSessionKey);
+    if (!trackedRun) return;
+
+    const normalizedText = text.trim();
+    if (!normalizedText) return;
+    if ((trackedRun.outputText ?? "").trim() === normalizedText && (trackedRun.status ?? "").toLowerCase() === "completed") return;
+    if (squadRunMirrorInFlightRef.current.has(trackedRun.runId)) return;
+
+    squadRunMirrorInFlightRef.current.add(trackedRun.runId);
+    void updateSquadTaskRun(trackedRun.runId, {
+      status: "completed",
+      outputText: normalizedText,
+      externalSessionKey: normalizedSessionKey,
+      dispatchError: "",
+      lastSyncedAtUtc: new Date().toISOString(),
+      finishedAtUtc: new Date().toISOString(),
+    })
+      .then(async () => {
+        const refreshedTask = await fetchSquadTask(trackedRun.taskId);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== refreshedTask.id);
+          return [refreshedTask, ...next].sort((left, right) => right.id - left.id);
+        });
+      })
+      .catch((error) => {
+        console.error("Failed to mirror squad run result from runtime session.", error);
+      })
+      .finally(() => {
+        squadRunMirrorInFlightRef.current.delete(trackedRun.runId);
+      });
   });
 
   useEffect(() => {

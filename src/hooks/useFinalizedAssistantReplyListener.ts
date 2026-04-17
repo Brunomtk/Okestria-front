@@ -5,6 +5,7 @@ import type { TranscriptEntry } from "@/features/agents/state/transcript";
 
 type AgentReplyListenerItem = {
   agentId: string;
+  sessionKey?: string | null;
   transcriptEntries?: TranscriptEntry[];
 };
 
@@ -34,7 +35,7 @@ const resolveLatestAssistantEntry = (
 
 export const useFinalizedAssistantReplyListener = (
   agents: AgentReplyListenerItem[],
-  onReply: (event: { agentId: string; entryId: string; text: string }) => void
+  onReply: (event: { agentId: string; sessionKey: string | null; entryId: string; text: string }) => void
 ) => {
   const latestByAgentIdRef = useRef<Record<string, LastAssistantEntry>>({});
   const primedRef = useRef(false);
@@ -70,6 +71,7 @@ export const useFinalizedAssistantReplyListener = (
       }
       onReply({
         agentId: agent.agentId,
+        sessionKey: typeof agent.sessionKey === "string" && agent.sessionKey.trim().length > 0 ? agent.sessionKey : null,
         entryId: latest.entryId,
         text: latest.text,
       });
