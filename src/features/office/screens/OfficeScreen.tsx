@@ -4035,7 +4035,7 @@ export function OfficeScreen({
           targetAgentId: null,
         });
 
-        setSelectedSquadTaskId(createdTask.id);
+        setSquadOpsSelectedTask(createdTask);
         setSelectedSquadTasks((current) => {
           const next = current.filter((task) => task.id !== createdTask.id);
           return [createdTask, ...next].sort((left, right) => right.id - left.id);
