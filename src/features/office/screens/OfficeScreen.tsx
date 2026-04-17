@@ -1136,7 +1136,7 @@ export function OfficeScreen({
         handlePlaybackStarted,
       );
     };
-  }, []);
+  }, [companyId]);
   useEffect(() => {
     return () => {
       for (const pendingEntry of pendingJukeboxCommandTimeoutsRef.current.values()) {
@@ -1515,7 +1515,7 @@ export function OfficeScreen({
 
   const loadCompanySquads = useCallback(async (force = false) => {
     try {
-      const squads = await fetchCompanySquads();
+      const squads = await fetchCompanySquads({ companyId: companyId ?? undefined });
       if (force || squads.length > 0 || companySquads.length === 0) {
         setCompanySquads(squads);
       }
@@ -1524,18 +1524,18 @@ export function OfficeScreen({
         setCompanySquads([]);
       }
     }
-  }, [companySquads.length]);
+  }, [companyId, companySquads.length]);
 
   const loadCreateSquadCatalog = useCallback(async () => {
     try {
-      const catalog = await fetchSquadCatalog();
+      const catalog = await fetchSquadCatalog({ companyId: companyId ?? undefined });
       setCreateSquadCatalog(catalog);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load the squad catalog right now.";
       setCreateSquadError(message);
       setCreateSquadCatalog(null);
     }
-  }, []);
+  }, [companyId]);
 
   useEffect(() => {
     void loadCompanySquads(false);
@@ -2097,7 +2097,7 @@ export function OfficeScreen({
       setCreateSquadBusy(true);
       setCreateSquadError(null);
       try {
-        const createdSquad = await createCompanySquad(payload);
+        const createdSquad = await createCompanySquad({ ...payload, companyId: companyId ?? undefined });
         await loadCompanySquads(true);
   setCreateSquadModalOpen(false);
   setSelectedChatAgentId(`squad:${createdSquad.id}`);
@@ -2109,7 +2109,7 @@ export function OfficeScreen({
         setCreateSquadBusy(false);
       }
     },
-    [loadCompanySquads],
+    [companyId, loadCompanySquads],
   );
 
   const handleEditSquad = useCallback(
@@ -2125,23 +2125,23 @@ export function OfficeScreen({
     ) => {
       const numericId = Number(squadId);
       if (!Number.isFinite(numericId)) return;
-      await updateCompanySquad({ squadId: numericId, ...payload });
+      await updateCompanySquad({ squadId: numericId, ...payload, companyId: companyId ?? undefined });
       await loadCompanySquads(true);
     },
-    [loadCompanySquads],
+    [companyId, loadCompanySquads],
   );
 
   const handleDeleteSquad = useCallback(
     async (squadId: string) => {
       const numericId = Number(squadId);
       if (!Number.isFinite(numericId)) return;
-      await deleteCompanySquad({ squadId: numericId });
+      await deleteCompanySquad({ squadId: numericId, companyId: companyId ?? undefined });
       setSquadOpsModalOpen(false);
       setSquadOpsSquadId(null);
       setSquadOpsError(null);
       await loadCompanySquads(true);
     },
-    [loadCompanySquads],
+    [companyId, loadCompanySquads],
   );
 
   const loadSquadOpsRuntimeStatus = useCallback(async () => {
