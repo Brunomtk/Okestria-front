@@ -381,10 +381,16 @@ export const updateCompanySquad = async (params: {
 
 export const deleteCompanySquad = async (params: {
   squadId: number;
+  companyId?: number | null;
   token?: string | null;
 }): Promise<void> => {
+  const query = new URLSearchParams();
+  if (typeof params.companyId === "number" && Number.isFinite(params.companyId)) {
+    query.set("companyId", String(params.companyId));
+  }
+
   await requestBackendJson<unknown>(
-    `/api/Squads/delete/${params.squadId}`,
+    `/api/Squads/delete/${params.squadId}${query.size ? `?${query.toString()}` : ""}`,
     { method: "DELETE" },
     params.token ?? getBrowserAccessToken(),
   );
