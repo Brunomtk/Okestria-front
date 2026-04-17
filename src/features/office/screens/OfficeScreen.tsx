@@ -4362,6 +4362,37 @@ export function OfficeScreen({
   });
 
   const squadRunMirrorInFlightRef = useRef<Set<number>>(new Set());
+  const squadRunHistoryPollInFlightRef = useRef<Set<string>>(new Set());
+
+  const mirrorSquadRunCompletion = useCallback(
+    async (params: { taskId: number; runId: number; sessionKey: string; text: string }) => {
+      const normalizedText = params.text.trim();
+      if (!normalizedText) return;
+      if (squadRunMirrorInFlightRef.current.has(params.runId)) return;
+
+      squadRunMirrorInFlightRef.current.add(params.runId);
+      try {
+        await updateSquadTaskRun(params.runId, {
+          status: "completed",
+          outputText: normalizedText,
+          externalSessionKey: params.sessionKey,
+          dispatchError: "",
+          lastSyncedAtUtc: new Date().toISOString(),
+          finishedAtUtc: new Date().toISOString(),
+        });
+        const refreshedTask = await fetchSquadTask(params.taskId);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== refreshedTask.id);
+          return [refreshedTask, ...next].sort((left, right) => right.id - left.id);
+        });
+      } catch (error) {
+        console.error("Failed to mirror squad run result from runtime session.", error);
+      } finally {
+        squadRunMirrorInFlightRef.current.delete(params.runId);
+      }
+    },
+    [fetchSquadTask, setSelectedSquadTasks],
+  );
 
   useFinalizedAssistantReplyListener(state.agents, ({ sessionKey, text }) => {
     const normalizedSessionKey = typeof sessionKey === "string" ? sessionKey.trim() : "";
@@ -4373,31 +4404,72 @@ export function OfficeScreen({
     const normalizedText = text.trim();
     if (!normalizedText) return;
     if ((trackedRun.outputText ?? "").trim() === normalizedText && (trackedRun.status ?? "").toLowerCase() === "completed") return;
-    if (squadRunMirrorInFlightRef.current.has(trackedRun.runId)) return;
 
-    squadRunMirrorInFlightRef.current.add(trackedRun.runId);
-    void updateSquadTaskRun(trackedRun.runId, {
-      status: "completed",
-      outputText: normalizedText,
-      externalSessionKey: normalizedSessionKey,
-      dispatchError: "",
-      lastSyncedAtUtc: new Date().toISOString(),
-      finishedAtUtc: new Date().toISOString(),
-    })
-      .then(async () => {
-        const refreshedTask = await fetchSquadTask(trackedRun.taskId);
-        setSelectedSquadTasks((current) => {
-          const next = current.filter((task) => task.id !== refreshedTask.id);
-          return [refreshedTask, ...next].sort((left, right) => right.id - left.id);
-        });
-      })
-      .catch((error) => {
-        console.error("Failed to mirror squad run result from runtime session.", error);
-      })
-      .finally(() => {
-        squadRunMirrorInFlightRef.current.delete(trackedRun.runId);
-      });
+    void mirrorSquadRunCompletion({
+      taskId: trackedRun.taskId,
+      runId: trackedRun.runId,
+      sessionKey: normalizedSessionKey,
+      text: normalizedText,
+    });
   });
+
+  useEffect(() => {
+    if (!client || status !== "connected") return;
+    if (activeSquadRunBySessionKey.size === 0) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      const entries = Array.from(activeSquadRunBySessionKey.entries());
+      for (const [sessionKey, trackedRun] of entries) {
+        if (cancelled) return;
+        const normalizedSessionKey = sessionKey.trim();
+        if (!normalizedSessionKey) continue;
+        if (squadRunHistoryPollInFlightRef.current.has(normalizedSessionKey)) continue;
+        if (squadRunMirrorInFlightRef.current.has(trackedRun.runId)) continue;
+
+        squadRunHistoryPollInFlightRef.current.add(normalizedSessionKey);
+        try {
+          const history = await client.call<ChatHistoryResult>("chat.history", {
+            sessionKey: normalizedSessionKey,
+            limit: 100,
+          });
+          if (cancelled) return;
+          const messages = Array.isArray(history?.messages) ? history.messages : [];
+          if (messages.length === 0) continue;
+          const derived = buildHistoryLines(messages);
+          const normalizedText = (derived.lastAssistant ?? "").trim();
+          const normalizedRole = (derived.lastRole ?? "").trim().toLowerCase();
+          if (!normalizedText || normalizedRole !== "assistant") continue;
+          if ((trackedRun.outputText ?? "").trim() === normalizedText && (trackedRun.status ?? "").toLowerCase() === "completed") continue;
+
+          await mirrorSquadRunCompletion({
+            taskId: trackedRun.taskId,
+            runId: trackedRun.runId,
+            sessionKey: normalizedSessionKey,
+            text: normalizedText,
+          });
+        } catch (error) {
+          console.warn("Failed to poll squad run history.", {
+            sessionKey: normalizedSessionKey,
+            error,
+          });
+        } finally {
+          squadRunHistoryPollInFlightRef.current.delete(normalizedSessionKey);
+        }
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeSquadRunBySessionKey, client, mirrorSquadRunCompletion, status]);
 
   useEffect(() => {
     const optionHeldRef = { current: false };
