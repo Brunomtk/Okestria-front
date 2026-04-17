@@ -426,21 +426,6 @@ export type SquadTaskSummary = {
   updatedDate: string | null;
 };
 
-export type SquadTaskMessage = {
-  id: number;
-  squadTaskId: number;
-  squadTaskRunId: number | null;
-  agentId: number | null;
-  agentName: string;
-  userId: number | null;
-  userName: string;
-  role: string;
-  content: string;
-  messageType: string | null;
-  createdDate: string | null;
-  updatedDate: string | null;
-};
-
 export type SquadTask = SquadTaskSummary & {
   companyId: number;
   requestedByUserId: number | null;
@@ -452,15 +437,8 @@ export type SquadTask = SquadTaskSummary & {
   summary: string;
   finalResponse: string;
   runs: SquadTaskRun[];
-  messages: SquadTaskMessage[];
 };
 
-export type SquadTaskAppendMessagePayload = {
-  content: string;
-  title?: string | null;
-  resetRuns?: boolean;
-  messageType?: string | null;
-};
 
 export type SquadTaskRunUpdatePayload = {
   status?: string | null;
@@ -569,29 +547,10 @@ const normalizeTaskSummary = (raw: unknown): SquadTaskSummary => {
   };
 };
 
-const normalizeMessage = (raw: unknown): SquadTaskMessage => {
-  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
-  return {
-    id: readNumber(record.id),
-    squadTaskId: readNumber(record.squadTaskId),
-    squadTaskRunId: readNullableNumber(record.squadTaskRunId),
-    agentId: readNullableNumber(record.agentId),
-    agentName: readString(record.agentName),
-    userId: readNullableNumber(record.userId),
-    userName: readString(record.userName),
-    role: readString(record.role, "user"),
-    content: readString(record.content),
-    messageType: readNullableString(record.messageType),
-    createdDate: readNullableString(record.createdDate),
-    updatedDate: readNullableString(record.updatedDate),
-  };
-};
-
 const normalizeTask = (raw: unknown): SquadTask => {
   const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
   const summary = normalizeTaskSummary(record);
   const runs = Array.isArray(record.runs) ? record.runs.map(normalizeRun) : [];
-  const messages = Array.isArray(record.messages) ? record.messages.map(normalizeMessage) : [];
   return {
     ...summary,
     companyId: readNumber(record.companyId),
@@ -608,7 +567,6 @@ const normalizeTask = (raw: unknown): SquadTask => {
     createdDate: readNullableString(record.createdDate),
     updatedDate: readNullableString(record.updatedDate),
     runs,
-    messages,
   };
 };
 
@@ -664,28 +622,6 @@ export const createSquadTask = async (params: {
     params.token,
   );
   return normalizeTask(payload);
-};
-
-
-export const appendSquadTaskMessage = async (
-  taskId: number,
-  payload: SquadTaskAppendMessagePayload,
-  token?: string | null,
-): Promise<SquadTask> => {
-  const response = await requestBackendJson<unknown>(
-    `/api/Squads/tasks/${taskId}/messages`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        content: payload.content.trim(),
-        title: payload.title?.trim() || null,
-        resetRuns: payload.resetRuns ?? true,
-        messageType: payload.messageType ?? null,
-      }),
-    },
-    token,
-  );
-  return normalizeTask(response);
 };
 
 export const estimateSquadTaskDispatch = async (

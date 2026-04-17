@@ -137,7 +137,6 @@ import {
 } from "@/lib/leads/lead-generation-api";
 import {
   createCompanySquad,
-  appendSquadTaskMessage,
   createSquadTask,
   deleteCompanySquad,
   dispatchSquadTask,
@@ -4001,17 +4000,26 @@ export function OfficeScreen({
   }, [qaTestingAgentId]);
 
   const handleSquadChatSend = useCallback(
-    async (
-      squad: SquadSummary,
-      payload: {
-        text: string;
-        taskId?: number | null;
-        attachments?: Array<{ filename: string; sizeBytes: number }>;
-      },
-    ) => {
-      const trimmed = payload.text.trim();
-      const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
-      if (!trimmed && attachments.length === 0) return;
+    async (squad: SquadSummary, message: string) => {
+      const trimmed = message.trim();
+      if (!trimmed) return;
+
+      const sentAt = Date.now();
+      updateSquadChatSession(squad.id, (session) => ({
+        ...session,
+        draft: "",
+        sending: true,
+        error: null,
+        messages: [
+          ...session.messages,
+          {
+            id: randomUUID(),
+            role: "user",
+            text: trimmed,
+            timestampMs: sentAt,
+          },
+        ],
+      }));
 
       try {
         const numericSquadId = Number(squad.id);
@@ -4019,45 +4027,61 @@ export function OfficeScreen({
           throw new Error(`Invalid squad id: ${squad.id}`);
         }
 
-        const attachmentSummary = attachments.length > 0
-          ? `\n\nAttached files: ${attachments.map((entry) => `${entry.filename} (${Math.max(1, Math.round(entry.sizeBytes / 1024))} KB)`).join(", ")}`
-          : "";
-        const content = `${trimmed}${attachmentSummary}`.trim();
-
-        const updatedTask = payload.taskId
-          ? await appendSquadTaskMessage(payload.taskId, {
-              content,
-              resetRuns: true,
-              messageType: attachments.length > 0 ? "message-with-attachments" : "message",
-            })
-          : await createSquadTask({
-              squadId: numericSquadId,
-              title: content.length > 80 ? `${content.slice(0, 77).trimEnd()}…` : content,
-              prompt: content,
-              executionMode: squad.executionMode ?? "leader",
-              preferredModel: null,
-              targetAgentId: null,
-            });
-
-        setSquadOpsModalOpen(true);
-        setSquadOpsSquadId(String(squad.id));
-        setSquadOpsSelectedTask(updatedTask);
-        setSelectedSquadTasks((current) => {
-          const next = current.filter((task) => task.id !== updatedTask.id);
-          return [updatedTask, ...next].sort((left, right) => right.id - left.id);
+        const createdTask = await createSquadTask({
+          squadId: numericSquadId,
+          title: trimmed.length > 80 ? `${trimmed.slice(0, 77).trimEnd()}…` : trimmed,
+          prompt: trimmed,
+          executionMode: squad.executionMode ?? "leader",
+          preferredModel: null,
+          targetAgentId: null,
         });
 
-        await loadSquadOpsTasks(String(squad.id), updatedTask.id);
-        await handlePreviewDispatchSquadTask(updatedTask.id, "pending");
+        setSquadOpsSelectedTask(createdTask);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== createdTask.id);
+          return [createdTask, ...next].sort((left, right) => right.id - left.id);
+        });
+
+        await dispatchSquadTask(createdTask.id, {
+          onlyPendingRuns: true,
+          retryFailedRuns: true,
+          forceRedispatchCompletedRuns: false,
+          deliveryMode: "none",
+          wakeMode: "now",
+          thinking: "medium",
+          model: null,
+        });
+
+        const hydratedTask = await fetchSquadTask(createdTask.id);
+        setSelectedSquadTasks((current) => {
+          const next = current.filter((task) => task.id !== hydratedTask.id);
+          return [hydratedTask, ...next].sort((left, right) => right.id - left.id);
+        });
+
+        updateSquadChatSession(squad.id, (session) => ({
+          ...session,
+          sending: false,
+          error: null,
+          messages: [
+            ...session.messages,
+            {
+              id: randomUUID(),
+              role: "system",
+              text: `Task #${hydratedTask.id} dispatched to ${squad.executionMode === "all" ? "the squad members" : "the squad leader"}.`,
+              timestampMs: Date.now(),
+            },
+          ],
+        }));
       } catch (error) {
         updateSquadChatSession(squad.id, (session) => ({
           ...session,
-          error: error instanceof Error ? error.message : "Unable to prepare the squad task right now.",
+          sending: false,
+          error: error instanceof Error ? error.message : "Unable to dispatch the squad task right now.",
         }));
         throw error;
       }
     },
-    [handlePreviewDispatchSquadTask, loadSquadOpsTasks, updateSquadChatSession],
+    [updateSquadChatSession],
   );
 
   const handleChatSend = useCallback(
@@ -4315,9 +4339,45 @@ export function OfficeScreen({
     },
   });
 
+  type SquadRunPreviewItem = {
+    role?: string;
+    text?: string;
+    timestamp?: number | string;
+  };
+
+  type SquadRunPreviewEntry = {
+    key?: string;
+    status?: string;
+    items?: SquadRunPreviewItem[];
+  };
+
+  type SquadRunPreviewResult = {
+    previews?: SquadRunPreviewEntry[];
+  };
+
+  type SquadRunSessionListEntry = {
+    key?: string;
+    updatedAt?: number | null;
+    origin?: {
+      label?: string | null;
+    } | null;
+  };
+
+  type SquadRunSessionListResult = {
+    sessions?: SquadRunSessionListEntry[];
+  };
+
   const activeSquadRunBySessionKey = useMemo(() => {
-    const map = new Map<string, { taskId: number; runId: number; outputText: string | null; status: string | null }>();
+    const map = new Map<string, {
+      taskId: number;
+      runId: number;
+      squadId: number;
+      leaderGatewayAgentId: string | null;
+      outputText: string | null;
+      status: string | null;
+    }>();
     for (const task of selectedSquadTasks) {
+      const squad = companySquads.find((entry) => Number(entry.id) === task.squadId) ?? null;
       for (const run of task.runs) {
         const sessionKey = typeof run.externalSessionKey === "string" ? run.externalSessionKey.trim() : "";
         if (!sessionKey) continue;
@@ -4326,13 +4386,15 @@ export function OfficeScreen({
         map.set(sessionKey, {
           taskId: task.id,
           runId: run.id,
+          squadId: task.squadId,
+          leaderGatewayAgentId: squad?.leaderGatewayAgentId?.trim() || null,
           outputText: run.outputText ?? null,
           status: run.status ?? null,
         });
       }
     }
     return map;
-  }, [selectedSquadTasks]);
+  }, [companySquads, selectedSquadTasks]);
 
   useFinalizedAssistantReplyListener(state.agents, ({ sessionKey, text }) => {
     if (!voiceRepliesLoaded || !voiceRepliesEnabled) return;
@@ -4367,13 +4429,149 @@ export function OfficeScreen({
           const next = current.filter((task) => task.id !== refreshedTask.id);
           return [refreshedTask, ...next].sort((left, right) => right.id - left.id);
         });
+        updateSquadChatSession(String(refreshedTask.squadId), (session) => {
+          const alreadyExists = session.messages.some(
+            (message) =>
+              message.role === "assistant" &&
+              message.text.trim() === normalizedText,
+          );
+          if (alreadyExists) {
+            return {
+              ...session,
+              sending: false,
+              error: null,
+            };
+          }
+          return {
+            ...session,
+            sending: false,
+            error: null,
+            messages: [
+              ...session.messages,
+              {
+                id: randomUUID(),
+                role: "assistant",
+                text: normalizedText,
+                timestampMs: Date.now(),
+              },
+            ],
+          };
+        });
       } catch (error) {
         console.error("Failed to mirror squad run result from runtime session.", error);
       } finally {
         squadRunMirrorInFlightRef.current.delete(params.runId);
       }
     },
-    [fetchSquadTask, setSelectedSquadTasks],
+    [fetchSquadTask, setSelectedSquadTasks, updateSquadChatSession],
+  );
+
+
+  const resolveLatestAssistantTextFromPreview = useCallback(
+    (previewResult: SquadRunPreviewResult, sessionKey: string): string | null => {
+      const normalizedSessionKey = sessionKey.trim();
+      if (!normalizedSessionKey) return null;
+      const previews = Array.isArray(previewResult.previews) ? previewResult.previews : [];
+      const preview = previews.find((entry) => (entry.key?.trim() ?? "") === normalizedSessionKey);
+      const items = Array.isArray(preview?.items) ? preview.items : [];
+      for (let index = items.length - 1; index >= 0; index -= 1) {
+        const item = items[index];
+        if (!item) continue;
+        const role = typeof item.role === "string" ? item.role.trim().toLowerCase() : "";
+        const text = typeof item.text === "string" ? item.text.trim() : "";
+        if (role === "assistant" && text) {
+          return text;
+        }
+      }
+      return null;
+    },
+    [],
+  );
+
+  const resolveSquadRunCompletionText = useCallback(
+    async (params: { sessionKey: string; leaderGatewayAgentId: string | null }) => {
+      const requestedSessionKey = params.sessionKey.trim();
+      if (!requestedSessionKey) {
+        return { sessionKey: "", text: null as string | null };
+      }
+
+      const candidateKeys = new Set<string>([requestedSessionKey]);
+      const leaderGatewayAgentId = params.leaderGatewayAgentId?.trim() ?? "";
+
+      const inspectSessionKey = async (candidateSessionKey: string) => {
+        const history = await client.call<{ messages?: Record<string, unknown>[] }>("chat.history", {
+          sessionKey: candidateSessionKey,
+          limit: 80,
+        });
+        const messages = Array.isArray(history.messages) ? history.messages : [];
+        const derived = buildHistoryLines(messages);
+        const assistantText = derived.lastAssistant?.trim() ?? "";
+        if (assistantText) {
+          return { sessionKey: candidateSessionKey, text: assistantText };
+        }
+
+        const previewResult = await client.call<SquadRunPreviewResult>("sessions.preview", {
+          keys: [candidateSessionKey],
+          limit: 16,
+          maxChars: 16000,
+        });
+        const previewText = resolveLatestAssistantTextFromPreview(previewResult, candidateSessionKey)?.trim() ?? "";
+        if (previewText) {
+          return { sessionKey: candidateSessionKey, text: previewText };
+        }
+
+        return { sessionKey: candidateSessionKey, text: null as string | null };
+      };
+
+      const directResult = await inspectSessionKey(requestedSessionKey);
+      if (directResult.text) {
+        return directResult;
+      }
+
+      if (leaderGatewayAgentId) {
+        try {
+          const sessionsResult = await client.call<SquadRunSessionListResult>("sessions.list", {
+            agentId: leaderGatewayAgentId,
+            includeGlobal: false,
+            includeUnknown: true,
+            limit: 16,
+          });
+          const sessions = Array.isArray(sessionsResult.sessions) ? sessionsResult.sessions : [];
+          const requestedLower = requestedSessionKey.toLowerCase();
+          const fallbackKeys = sessions
+            .filter((entry) => {
+              const key = entry.key?.trim() ?? "";
+              if (!key) return false;
+              const normalizedKey = key.toLowerCase();
+              const label = entry.origin?.label?.trim().toLowerCase() ?? "";
+              if (normalizedKey === requestedLower) return true;
+              if (normalizedKey.includes(requestedLower)) return true;
+              if (requestedLower.includes(normalizedKey)) return true;
+              if (requestedLower.startsWith("hook:") && label === "hook") return true;
+              return false;
+            })
+            .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+            .map((entry) => entry.key?.trim() ?? "")
+            .filter((key) => key.length > 0);
+          for (const key of fallbackKeys) {
+            candidateKeys.add(key);
+          }
+        } catch (error) {
+          console.warn("Failed to list leader sessions while resolving squad run completion.", error);
+        }
+      }
+
+      for (const candidateSessionKey of candidateKeys) {
+        if (candidateSessionKey === requestedSessionKey) continue;
+        const result = await inspectSessionKey(candidateSessionKey);
+        if (result.text) {
+          return result;
+        }
+      }
+
+      return { sessionKey: requestedSessionKey, text: null as string | null };
+    },
+    [client, resolveLatestAssistantTextFromPreview],
   );
 
   useFinalizedAssistantReplyListener(state.agents, ({ sessionKey, text }) => {
@@ -4412,23 +4610,19 @@ export function OfficeScreen({
 
         squadRunHistoryPollInFlightRef.current.add(normalizedSessionKey);
         try {
-          const history = await client.call<ChatHistoryResult>("chat.history", {
+          const resolved = await resolveSquadRunCompletionText({
             sessionKey: normalizedSessionKey,
-            limit: 100,
+            leaderGatewayAgentId: trackedRun.leaderGatewayAgentId,
           });
           if (cancelled) return;
-          const messages = Array.isArray(history?.messages) ? history.messages : [];
-          if (messages.length === 0) continue;
-          const derived = buildHistoryLines(messages);
-          const normalizedText = (derived.lastAssistant ?? "").trim();
-          const normalizedRole = (derived.lastRole ?? "").trim().toLowerCase();
-          if (!normalizedText || normalizedRole !== "assistant") continue;
+          const normalizedText = (resolved.text ?? "").trim();
+          if (!normalizedText) continue;
           if ((trackedRun.outputText ?? "").trim() === normalizedText && (trackedRun.status ?? "").toLowerCase() === "completed") continue;
 
           await mirrorSquadRunCompletion({
             taskId: trackedRun.taskId,
             runId: trackedRun.runId,
-            sessionKey: normalizedSessionKey,
+            sessionKey: resolved.sessionKey || normalizedSessionKey,
             text: normalizedText,
           });
         } catch (error) {
@@ -4451,7 +4645,7 @@ export function OfficeScreen({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [activeSquadRunBySessionKey, client, mirrorSquadRunCompletion, status]);
+  }, [activeSquadRunBySessionKey, client, mirrorSquadRunCompletion, resolveSquadRunCompletionText, status]);
 
   useEffect(() => {
     const optionHeldRef = { current: false };

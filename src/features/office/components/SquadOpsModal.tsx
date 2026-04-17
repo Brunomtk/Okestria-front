@@ -108,9 +108,9 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-2 sm:p-4 backdrop-blur-sm">
-      <div className="flex h-[min(92vh,920px)] w-full max-w-[1440px] flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#040b16] shadow-2xl lg:flex-row">
-        <div className="flex w-full shrink-0 flex-col border-b border-white/10 bg-[#050b18] lg:w-[360px] lg:border-b-0 lg:border-r">
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="flex h-[820px] w-full max-w-[1320px] overflow-hidden rounded-[28px] border border-white/10 bg-[#040b16] shadow-2xl">
+        <div className="flex w-[340px] flex-col border-r border-white/10 bg-[#050b18]">
           <div className="flex items-center justify-between px-5 py-5">
             <div>
               <div className="text-3xl font-semibold text-white">{squad?.name ?? "Squad Ops"}</div>
@@ -188,7 +188,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           {!selectedTask ? (
             <div className="flex h-full items-center justify-center text-white/35">Select a task to inspect runs and output.</div>
           ) : (
@@ -204,14 +204,14 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                 <div className="mt-5 whitespace-pre-wrap rounded-3xl border border-white/10 bg-white/[0.03] px-5 py-4 text-lg leading-8 text-white/80">{selectedTask.prompt}</div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 px-4 py-4 sm:px-6 lg:grid-cols-4">
+              <div className="grid grid-cols-4 gap-4 px-6 py-5">
                 <StatCard label="TOTAL" value={stats.total} />
                 <StatCard label="RUNNING" value={stats.running} accent="cyan" />
                 <StatCard label="DONE" value={stats.done} accent="emerald" />
                 <StatCard label="FAILED" value={stats.failed} accent="red" />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6 sm:pb-5">
+              <div className="flex items-center gap-3 px-6 pb-5">
                 <ActionButton busy={dispatchBusy && dispatchApprovalMode === "pending"} onClick={() => dispatchApprovalMode === "pending" ? onConfirmDispatchTask(selectedTask.id, "pending") : onPreviewDispatchTask(selectedTask.id, "pending")}>
                   <Play className="h-4 w-4" />
                   {dispatchApprovalMode === "pending" ? "Confirm dispatch" : "Dispatch pending"}
@@ -236,7 +236,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
 
               {error ? <div className="mx-6 mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
-              <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 sm:px-6 sm:pb-6">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-6">
                 <div className="space-y-4">
                   {selectedRuns.map((run) => {
                     const output = (run.outputText || "").trim();
