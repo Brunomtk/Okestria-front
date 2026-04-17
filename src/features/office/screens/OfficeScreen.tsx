@@ -137,6 +137,7 @@ import {
 } from "@/lib/leads/lead-generation-api";
 import {
   createCompanySquad,
+  appendSquadTaskMessage,
   createSquadTask,
   deleteCompanySquad,
   dispatchSquadTask,
@@ -4000,26 +4001,17 @@ export function OfficeScreen({
   }, [qaTestingAgentId]);
 
   const handleSquadChatSend = useCallback(
-    async (squad: SquadSummary, message: string) => {
-      const trimmed = message.trim();
-      if (!trimmed) return;
-
-      const sentAt = Date.now();
-      updateSquadChatSession(squad.id, (session) => ({
-        ...session,
-        draft: "",
-        sending: true,
-        error: null,
-        messages: [
-          ...session.messages,
-          {
-            id: randomUUID(),
-            role: "user",
-            text: trimmed,
-            timestampMs: sentAt,
-          },
-        ],
-      }));
+    async (
+      squad: SquadSummary,
+      payload: {
+        text: string;
+        taskId?: number | null;
+        attachments?: Array<{ filename: string; sizeBytes: number }>;
+      },
+    ) => {
+      const trimmed = payload.text.trim();
+      const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
+      if (!trimmed && attachments.length === 0) return;
 
       try {
         const numericSquadId = Number(squad.id);
@@ -4027,61 +4019,45 @@ export function OfficeScreen({
           throw new Error(`Invalid squad id: ${squad.id}`);
         }
 
-        const createdTask = await createSquadTask({
-          squadId: numericSquadId,
-          title: trimmed.length > 80 ? `${trimmed.slice(0, 77).trimEnd()}…` : trimmed,
-          prompt: trimmed,
-          executionMode: squad.executionMode ?? "leader",
-          preferredModel: null,
-          targetAgentId: null,
-        });
+        const attachmentSummary = attachments.length > 0
+          ? `\n\nAttached files: ${attachments.map((entry) => `${entry.filename} (${Math.max(1, Math.round(entry.sizeBytes / 1024))} KB)`).join(", ")}`
+          : "";
+        const content = `${trimmed}${attachmentSummary}`.trim();
 
-        setSquadOpsSelectedTask(createdTask);
+        const updatedTask = payload.taskId
+          ? await appendSquadTaskMessage(payload.taskId, {
+              content,
+              resetRuns: true,
+              messageType: attachments.length > 0 ? "message-with-attachments" : "message",
+            })
+          : await createSquadTask({
+              squadId: numericSquadId,
+              title: content.length > 80 ? `${content.slice(0, 77).trimEnd()}…` : content,
+              prompt: content,
+              executionMode: squad.executionMode ?? "leader",
+              preferredModel: null,
+              targetAgentId: null,
+            });
+
+        setSquadOpsModalOpen(true);
+        setSquadOpsSquadId(String(squad.id));
+        setSquadOpsSelectedTask(updatedTask);
         setSelectedSquadTasks((current) => {
-          const next = current.filter((task) => task.id !== createdTask.id);
-          return [createdTask, ...next].sort((left, right) => right.id - left.id);
+          const next = current.filter((task) => task.id !== updatedTask.id);
+          return [updatedTask, ...next].sort((left, right) => right.id - left.id);
         });
 
-        await dispatchSquadTask(createdTask.id, {
-          onlyPendingRuns: true,
-          retryFailedRuns: true,
-          forceRedispatchCompletedRuns: false,
-          deliveryMode: "none",
-          wakeMode: "now",
-          thinking: "medium",
-          model: null,
-        });
-
-        const hydratedTask = await fetchSquadTask(createdTask.id);
-        setSelectedSquadTasks((current) => {
-          const next = current.filter((task) => task.id !== hydratedTask.id);
-          return [hydratedTask, ...next].sort((left, right) => right.id - left.id);
-        });
-
-        updateSquadChatSession(squad.id, (session) => ({
-          ...session,
-          sending: false,
-          error: null,
-          messages: [
-            ...session.messages,
-            {
-              id: randomUUID(),
-              role: "system",
-              text: `Task #${hydratedTask.id} dispatched to ${squad.executionMode === "all" ? "the squad members" : "the squad leader"}.`,
-              timestampMs: Date.now(),
-            },
-          ],
-        }));
+        await loadSquadOpsTasks(String(squad.id), updatedTask.id);
+        await handlePreviewDispatchSquadTask(updatedTask.id, "pending");
       } catch (error) {
         updateSquadChatSession(squad.id, (session) => ({
           ...session,
-          sending: false,
-          error: error instanceof Error ? error.message : "Unable to dispatch the squad task right now.",
+          error: error instanceof Error ? error.message : "Unable to prepare the squad task right now.",
         }));
         throw error;
       }
     },
-    [updateSquadChatSession],
+    [handlePreviewDispatchSquadTask, loadSquadOpsTasks, updateSquadChatSession],
   );
 
   const handleChatSend = useCallback(
