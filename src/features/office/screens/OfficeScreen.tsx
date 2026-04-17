@@ -4021,8 +4021,13 @@ export function OfficeScreen({
       }));
 
       try {
+        const numericSquadId = Number(squad.id);
+        if (!Number.isFinite(numericSquadId) || numericSquadId <= 0) {
+          throw new Error(`Invalid squad id: ${squad.id}`);
+        }
+
         const createdTask = await createSquadTask({
-          squadId: squad.id,
+          squadId: numericSquadId,
           title: trimmed.length > 80 ? `${trimmed.slice(0, 77).trimEnd()}…` : trimmed,
           prompt: trimmed,
           executionMode: squad.executionMode ?? "leader",
