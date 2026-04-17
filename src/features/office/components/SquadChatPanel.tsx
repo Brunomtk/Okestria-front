@@ -141,7 +141,7 @@ function SquadChatPanelInner({ squad, onSendMessage, onOpenOps }: SquadChatPanel
         filename: file.name || `attachment-${prepared.length + 1}`,
         mimeType: resolveMimeType(file),
         sizeBytes: file.size,
-        dataBase64: toBase64(bytes),
+        content: toBase64(bytes),
       });
       runningTotal += file.size;
     }
