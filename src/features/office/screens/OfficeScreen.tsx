@@ -4432,7 +4432,6 @@ export function OfficeScreen({
         updateSquadChatSession(String(refreshedTask.squadId), (session) => {
           const alreadyExists = session.messages.some(
             (message) =>
-              message.role === "assistant" &&
               message.text.trim() === normalizedText,
           );
           if (alreadyExists) {
@@ -4450,7 +4449,7 @@ export function OfficeScreen({
               ...session.messages,
               {
                 id: randomUUID(),
-                role: "assistant",
+                role: "system",
                 text: normalizedText,
                 timestampMs: Date.now(),
               },
