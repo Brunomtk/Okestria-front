@@ -1023,6 +1023,7 @@ export function OfficeScreen({
   const [squadOpsSquadId, setSquadOpsSquadId] = useState<string | null>(null);
   const [squadOpsTasks, setSquadOpsTasks] = useState<SquadTaskSummary[]>([]);
   const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
+  const [selectedSquadTasks, setSelectedSquadTasks] = useState<SquadTask[]>([]);
   const [squadOpsLoading, setSquadOpsLoading] = useState(false);
   const [squadOpsRefreshingTask, setSquadOpsRefreshingTask] = useState(false);
   const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
