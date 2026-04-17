@@ -151,7 +151,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
               <select value={preferredModel} onChange={(e) => setPreferredModel(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white outline-none">
                 <option value="">Default model</option>
                 {availableModels.map((model) => (
-                  <option key={model.id} value={model.id}>{model.label}</option>
+                  <option key={model.id} value={model.id}>{model.name}</option>
                 ))}
               </select>
               <button
