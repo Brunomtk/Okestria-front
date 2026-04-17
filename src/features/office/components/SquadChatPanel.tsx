@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Loader2, RefreshCcw, Send, Users2 } from "lucide-react";
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
-import { fetchSquadTasks } from "@/lib/squads/api";
+import { fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
 
 type SquadChatPanelProps = {
@@ -33,8 +33,10 @@ function SquadChatPanelInner({ squad, onSendMessage, onOpenOps }: SquadChatPanel
     setLoading(true);
     setError(null);
     try {
-      const next = await fetchSquadTasks(squad.id, 12);
-      setTasks(next);
+      const squadId = Number(squad.id);
+      const summaries = await fetchSquadTasks(Number.isFinite(squadId) ? { squadId } : undefined);
+      const detailed = await Promise.all(summaries.slice(0, 12).map((entry) => fetchSquadTask(entry.id)));
+      setTasks(detailed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load squad tasks.");
     } finally {
