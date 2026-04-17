@@ -4031,8 +4031,8 @@ export function OfficeScreen({
           title: trimmed.length > 80 ? `${trimmed.slice(0, 77).trimEnd()}…` : trimmed,
           prompt: trimmed,
           executionMode: squad.executionMode ?? "leader",
-          preferredModel: squad.leaderModel ?? squad.preferredModel ?? null,
-          targetAgentId: squad.executionMode === "single" ? squad.leaderAgentId ?? null : null,
+          preferredModel: null,
+          targetAgentId: null,
         });
 
         setSelectedSquadTaskId(createdTask.id);
@@ -4048,7 +4048,7 @@ export function OfficeScreen({
           deliveryMode: "none",
           wakeMode: "now",
           thinking: "medium",
-          model: squad.leaderModel ?? squad.preferredModel ?? null,
+          model: null,
         });
 
         const hydratedTask = await fetchSquadTask(createdTask.id);
