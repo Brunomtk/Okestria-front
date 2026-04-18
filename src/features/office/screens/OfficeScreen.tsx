@@ -5147,10 +5147,16 @@ export function OfficeScreen({
           entryIdPrefix: `squad-task-session:${activeFocusedSquadTask.id}`,
         });
         const now = Date.now();
-        const lastAssistantMessageAt =
-          sessionState?.messages?.filter((entry) => entry.role === "assistant").at(-1)?.timestampMs ?? now;
+        const assistantMessages = sessionState?.messages?.filter((entry) => entry.role === "assistant") ?? [];
+        const lastAssistantMessageAt = assistantMessages.at(-1)?.timestampMs ?? now;
         const loading = sessionState?.loading ?? false;
         const error = sessionState?.error?.trim() ?? "";
+        const hasAssistantContent = assistantMessages.length > 0 || outputLines.some((line) => line.trim().length > 0);
+        const effectiveStatus: AgentState["status"] = error
+          ? "error"
+          : loading && !hasAssistantContent
+            ? "running"
+            : "idle";
         return {
           agentId: inferredAgentId,
           name: inferredAgentName,
@@ -5165,11 +5171,7 @@ export function OfficeScreen({
           sessionExecAsk: "on-miss",
           toolCallingEnabled: true,
           showThinkingTraces: true,
-          status: activeFocusedSquadTask.status === "failed" || error
-            ? "error"
-            : loading || activeFocusedSquadTask.status === "running"
-              ? "running"
-              : "idle",
+          status: effectiveStatus,
           sessionCreated: true,
           awaitingUserInput: false,
           hasUnseenActivity: false,
