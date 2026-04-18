@@ -1,5 +1,0 @@
-Ajuste solicitado:
-- remove o render do SquadChatPanel da área principal do chat
-- quando houver task/sessão do squad, a tela usa só AgentChatPanel
-- sem cards extras de running/opening/waiting for session key
-- sem task session custom UI no painel principal

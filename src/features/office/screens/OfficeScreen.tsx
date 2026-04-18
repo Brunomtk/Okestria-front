@@ -4843,6 +4843,47 @@ export function OfficeScreen({
       })()
     : null;
 
+  useEffect(() => {
+    if (!focusedSquadChatTarget) return;
+    const hasTaskLoaded = selectedSquadTasks.some((task) => String(task.squadId) === focusedSquadChatTarget.id);
+    if (hasTaskLoaded) return;
+
+    let cancelled = false;
+    const loadFocusedSquadTasks = async () => {
+      try {
+        const summaries = await fetchSquadTasks({ squadId: Number(focusedSquadChatTarget.id), limit: 10 });
+        if (cancelled || summaries.length === 0) return;
+        const detailed = await Promise.all(
+          summaries.slice(0, 5).map(async (summary) => {
+            try {
+              return await fetchSquadTask(summary.id);
+            } catch {
+              return null;
+            }
+          }),
+        );
+        if (cancelled) return;
+        const nextTasks = detailed.filter((entry): entry is SquadTask => Boolean(entry));
+        if (nextTasks.length === 0) return;
+        setSelectedSquadTasks((current) => {
+          const remaining = current.filter((task) => String(task.squadId) !== focusedSquadChatTarget.id);
+          return [...nextTasks, ...remaining].sort((left, right) => right.id - left.id);
+        });
+        setActiveSquadChatTaskBySquadId((current) => ({
+          ...current,
+          [focusedSquadChatTarget.id]: current[focusedSquadChatTarget.id] ?? nextTasks[0]?.id ?? null,
+        }));
+      } catch {
+        // best-effort hydration for squad chat task sessions
+      }
+    };
+
+    void loadFocusedSquadTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusedSquadChatTarget, selectedSquadTasks]);
+
   const focusedSquadSessionAgent = focusedSquadChatTarget && activeFocusedSquadTask
     ? (() => {
         const latestRun = activeFocusedSquadTask.runs[0] ?? null;
