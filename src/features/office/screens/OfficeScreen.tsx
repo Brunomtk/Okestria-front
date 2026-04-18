@@ -4831,6 +4831,73 @@ export function OfficeScreen({
     ? (squadChatById[focusedSquadChatTarget.id] ?? EMPTY_REMOTE_CHAT_SESSION)
     : null;
 
+  const activeFocusedSquadTask = focusedSquadChatTarget
+    ? (() => {
+        const activeTaskId = activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null;
+        const pool = selectedSquadTasks.filter((task) => String(task.squadId) === focusedSquadChatTarget.id);
+        if (typeof activeTaskId === "number") {
+          return pool.find((task) => task.id === activeTaskId) ?? null;
+        }
+        return pool[0] ?? null;
+      })()
+    : null;
+
+  const focusedSquadSessionAgent = focusedSquadChatTarget && activeFocusedSquadTask
+    ? (() => {
+        const latestRun = activeFocusedSquadTask.runs[0] ?? null;
+        const sessionKey = latestRun?.externalSessionKey?.trim() ?? "";
+        if (!sessionKey) return null;
+        const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
+        const outputLines = sessionState?.outputLines ?? [];
+        const now = Date.now();
+        return {
+          agentId: `squad-task-session:${activeFocusedSquadTask.id}`,
+          name: latestRun?.agentName?.trim() || focusedSquadChatTarget.name,
+          sessionKey,
+          avatarSeed: latestRun?.agentName?.trim() || focusedSquadChatTarget.name,
+          avatarProfile: null,
+          avatarUrl: null,
+          model: focusedSquadChatTarget.leaderModel || focusedSquadChatTarget.preferredModel || null,
+          thinkingLevel: null,
+          sessionExecHost: "gateway",
+          sessionExecSecurity: "allowlist",
+          sessionExecAsk: "on-miss",
+          toolCallingEnabled: true,
+          showThinkingTraces: true,
+          status: activeFocusedSquadTask.status === "failed" ? "error" : "idle",
+          sessionCreated: true,
+          awaitingUserInput: false,
+          hasUnseenActivity: false,
+          outputLines,
+          lastResult: null,
+          lastDiff: null,
+          runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
+          runStartedAt: null,
+          streamText: null,
+          thinkingTrace: null,
+          latestOverride: null,
+          latestOverrideKind: null,
+          lastAssistantMessageAt: now,
+          lastActivityAt: now,
+          latestPreview: null,
+          lastUserMessage: null,
+          draft: "",
+          queuedMessages: [],
+          sessionSettingsSynced: true,
+          historyLoadedAt: now,
+          historyFetchLimit: 80,
+          historyFetchedCount: outputLines.length,
+          historyMaybeTruncated: false,
+          transcriptEntries: buildTranscriptEntriesFromLines(outputLines),
+          transcriptRevision: outputLines.length,
+          transcriptSequenceCounter: outputLines.length,
+          sessionEpoch: 0,
+          lastHistoryRequestRevision: outputLines.length,
+          lastAppliedHistoryRequestId: null,
+        } satisfies AgentState;
+      })()
+    : null;
+
   const focusedRemoteChatTarget = selectedChatAgentId
     ? (remoteOfficeAgents.find((agent) => agent.id === selectedChatAgentId) ?? null)
     : null;
