@@ -1,0 +1,5 @@
+Ajuste solicitado:
+- força abertura da sessão mesmo sem externalSessionKey
+- fallback da session do squad para "main"
+- painel tenta abrir como AgentChatPanel independente do filtro/espera da task
+- quando ainda não tem histórico, mostra conteúdo inicial da task em vez de ficar em loop infinito

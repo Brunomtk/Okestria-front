@@ -1,2 +1,0 @@
-Build fix v4:
-- adiciona import real de buildTranscriptEntriesFromLines no bloco já existente de transcript

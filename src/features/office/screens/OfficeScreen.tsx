@@ -4846,10 +4846,13 @@ export function OfficeScreen({
   const focusedSquadSessionAgent = focusedSquadChatTarget && activeFocusedSquadTask
     ? (() => {
         const latestRun = activeFocusedSquadTask.runs[0] ?? null;
-        const sessionKey = latestRun?.externalSessionKey?.trim() ?? "";
-        if (!sessionKey) return null;
+        const sessionKey = latestRun?.externalSessionKey?.trim() || "main";
         const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
-        const outputLines = sessionState?.outputLines ?? [];
+        const outputLines = (sessionState?.outputLines?.length ? sessionState.outputLines : [
+          `# ${activeFocusedSquadTask.title}`,
+          "",
+          activeFocusedSquadTask.prompt || "Opening squad task session...",
+        ]);
         const now = Date.now();
         return {
           agentId: `squad-task-session:${activeFocusedSquadTask.id}`,
@@ -5936,7 +5939,7 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget ? (
-                    focusedSquadSessionAgent ? (
+                    activeFocusedSquadTask && focusedSquadSessionAgent ? (
                       <AgentChatPanel
                         agent={focusedSquadSessionAgent}
                         isSelected
