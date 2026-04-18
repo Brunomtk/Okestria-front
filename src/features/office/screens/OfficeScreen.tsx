@@ -4933,22 +4933,23 @@ export function OfficeScreen({
     const historyToMessages = (messages: Record<string, unknown>[], sessionKey: string): SquadTaskSessionMessage[] => {
       return messages
         .map((message, index) => {
-          const text = extractText(message).trim();
+          const safeMessage = (message ?? {}) as Record<string, unknown>;
+          const text = extractText(safeMessage).trim();
           if (!text) return null;
-          const normalizedRole = typeof message.role === "string" ? message.role.trim().toLowerCase() : "assistant";
+          const normalizedRole = typeof safeMessage.role === "string" ? safeMessage.role.trim().toLowerCase() : "assistant";
           const role: SquadTaskSessionMessage["role"] = normalizedRole === "user"
             ? "user"
             : normalizedRole === "system"
               ? "system"
               : "assistant";
-          const rawTimestamp = message.timestamp ?? message.createdAt ?? message.createdDate;
+          const rawTimestamp = safeMessage.timestamp ?? safeMessage.createdAt ?? safeMessage.createdDate;
           const timestampMs = typeof rawTimestamp === "number"
             ? rawTimestamp
             : typeof rawTimestamp === "string"
               ? new Date(rawTimestamp).getTime()
               : Date.now() + index;
           return {
-            id: `history:${sessionKey}:${String(message.id ?? index)}`,
+            id: `history:${sessionKey}:${String(safeMessage.id ?? index)}`,
             role,
             text,
             timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now() + index,
