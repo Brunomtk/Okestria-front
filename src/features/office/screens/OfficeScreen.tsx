@@ -5178,7 +5178,7 @@ export function OfficeScreen({
           lastDiff: null,
           runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
           runStartedAt: null,
-          streamText: loading ? "Syncing squad session directly from OpenClaw..." : null,
+          streamText: null,
           thinkingTrace: null,
           latestOverride: null,
           latestOverrideKind: null,
