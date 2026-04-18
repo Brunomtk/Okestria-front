@@ -4934,7 +4934,7 @@ export function OfficeScreen({
       return messages
         .map((message, index) => {
           const safeMessage = (message ?? {}) as Record<string, unknown>;
-          const text = extractText(safeMessage).trim();
+          const text = (extractText(safeMessage) ?? "").trim();
           if (!text) return null;
           const normalizedRole = typeof safeMessage.role === "string" ? safeMessage.role.trim().toLowerCase() : "assistant";
           const role: SquadTaskSessionMessage["role"] = normalizedRole === "user"
