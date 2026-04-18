@@ -563,7 +563,7 @@ const mapAgentToOffice = (agent: AgentState): OfficeAgent => {
   return {
     id: agent.agentId,
     name: agent.name || "Unknown",
-    status: isWorking ? "running" : "idle",
+    status: isWorking ? "working" : "idle",
     color: stringToColor(agent.agentId),
     item: getDeterministicItem(agent.agentId),
     avatarProfile: agent.avatarProfile ?? null,
