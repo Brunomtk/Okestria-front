@@ -277,7 +277,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
 
                   <div className="mt-4 rounded-3xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-7 text-white/80">
                     <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Task prompt</div>
-                    <div className="whitespace-pre-wrap">{selectedTask.prompt}</div>
+                    <div className="max-h-[32vh] overflow-y-auto pr-2 whitespace-pre-wrap break-words">{selectedTask.prompt}</div>
                   </div>
                 </div>
 
