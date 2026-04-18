@@ -4889,11 +4889,20 @@ export function OfficeScreen({
         const latestRun = activeFocusedSquadTask.runs[0] ?? null;
         const sessionKey = latestRun?.externalSessionKey?.trim() || "main";
         const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
-        const outputLines = (sessionState?.outputLines?.length ? sessionState.outputLines : [
-          `# ${activeFocusedSquadTask.title}`,
-          "",
-          activeFocusedSquadTask.prompt || "Opening squad task session...",
-        ]);
+        const persistedOutputText =
+          latestRun?.outputText?.trim() ||
+          activeFocusedSquadTask.finalResponse?.trim() ||
+          activeFocusedSquadTask.summary?.trim() ||
+          "";
+        const outputLines = sessionState?.outputLines?.length
+          ? sessionState.outputLines
+          : persistedOutputText
+            ? persistedOutputText.split(/\r?\n/)
+            : [
+                `# ${activeFocusedSquadTask.title}`,
+                "",
+                activeFocusedSquadTask.prompt || "Opening squad task session...",
+              ];
         const now = Date.now();
         return {
           agentId: sessionKey,

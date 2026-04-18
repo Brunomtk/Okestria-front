@@ -1,0 +1,3 @@
+Ajuste:
+- quando a sessão do squad ainda não trouxe history completa do gateway, o chat usa latestRun.outputText/finalResponse/summary persistidos no backend
+- isso evita mostrar só o prompt inicial cortado
