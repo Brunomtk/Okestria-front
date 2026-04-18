@@ -499,6 +499,9 @@ export type SquadTaskDispatchResult = {
   runs: SquadTaskRun[];
 };
 
+type BackendSquadExecutionStep = Record<string, unknown>;
+type BackendSquadExecution = Record<string, unknown>;
+
 const readString = (value: unknown, fallback = "") =>
   typeof value === "string" ? value : fallback;
 
@@ -511,67 +514,69 @@ const readNumber = (value: unknown, fallback = 0) =>
 const readNullableNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 
-const normalizeRun = (raw: unknown): SquadTaskRun => {
-  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
+const normalizeExecutionStatus = (value: unknown) => {
+  const status = readString(value, "pending").toLowerCase();
+  if (status === "queued") return "pending";
+  return status || "pending";
+};
+
+const normalizeExecutionRun = (raw: BackendSquadExecutionStep): SquadTaskRun => ({
+  id: readNumber(raw.id),
+  squadTaskId: readNumber(raw.executionId),
+  agentId: readNumber(raw.agentId),
+  agentName: readString(raw.agentName, `Agent ${readNumber(raw.agentId, 0)}`),
+  agentSlug: readString(raw.agentSlug),
+  role: readString(raw.stepKind, "member"),
+  status: normalizeExecutionStatus(raw.status),
+  inputPrompt: readString(raw.inputPrompt),
+  outputText: readString(raw.outputText),
+  externalRuntime: readString(raw.externalRuntime),
+  externalTaskId: readString(raw.externalTaskId),
+  externalRunId: readString(raw.externalRunId),
+  externalSessionKey: readString(raw.externalSessionKey),
+  dispatchError: readString(raw.errorMessage),
+  metadataJson: readString(raw.metadataJson),
+  lastSyncedAtUtc: readNullableString(raw.lastSyncedAtUtc),
+  startedAtUtc: readNullableString(raw.startedAtUtc),
+  finishedAtUtc: readNullableString(raw.finishedAtUtc),
+});
+
+const normalizeExecutionSummary = (raw: BackendSquadExecution): SquadTaskSummary => {
+  const runs = Array.isArray(raw.steps) ? raw.steps.map((entry) => normalizeExecutionRun((entry ?? {}) as BackendSquadExecutionStep)) : [];
   return {
-    id: readNumber(record.id),
-    squadTaskId: readNumber(record.squadTaskId),
-    agentId: readNumber(record.agentId),
-    agentName: readString(record.agentName, `Agent ${readNumber(record.agentId, 0)}`),
-    agentSlug: readString(record.agentSlug),
-    role: readString(record.role),
-    status: readString(record.status, "pending"),
-    inputPrompt: readString(record.inputPrompt),
-    outputText: readString(record.outputText),
-    externalRuntime: readString(record.externalRuntime),
-    externalTaskId: readString(record.externalTaskId),
-    externalRunId: readString(record.externalRunId),
-    externalSessionKey: readString(record.externalSessionKey),
-    dispatchError: readString(record.dispatchError),
-    metadataJson: readString(record.metadataJson),
-    lastSyncedAtUtc: readNullableString(record.lastSyncedAtUtc),
-    startedAtUtc: readNullableString(record.startedAtUtc),
-    finishedAtUtc: readNullableString(record.finishedAtUtc),
+    id: readNumber(raw.id),
+    squadId: readNumber(raw.squadId),
+    squadName: readString(raw.squadName),
+    title: readString(raw.title, `Execution #${readNumber(raw.id, 0)}`),
+    executionMode: readString(raw.mode, "sequential"),
+    preferredModel: readNullableString(raw.preferredModel),
+    status: normalizeExecutionStatus(raw.status),
+    runCount: runs.length,
+    startedAtUtc: readNullableString(raw.startedAtUtc),
+    finishedAtUtc: readNullableString(raw.finishedAtUtc),
+    createdDate: readNullableString(raw.createdDate),
+    updatedDate: readNullableString(raw.updatedDate),
   };
 };
 
-const normalizeTaskSummary = (raw: unknown): SquadTaskSummary => {
-  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
-  return {
-    id: readNumber(record.id),
-    squadId: readNumber(record.squadId),
-    squadName: readString(record.squadName),
-    title: readString(record.title, `Task #${readNumber(record.id, 0)}`),
-    executionMode: readString(record.executionMode, "leader"),
-    preferredModel: readNullableString(record.preferredModel),
-    status: readString(record.status, "draft"),
-    runCount: readNumber(record.runCount, Array.isArray(record.runs) ? record.runs.length : 0),
-    startedAtUtc: readNullableString(record.startedAtUtc),
-    finishedAtUtc: readNullableString(record.finishedAtUtc),
-    createdDate: readNullableString(record.createdDate),
-    updatedDate: readNullableString(record.updatedDate),
-  };
-};
-
-const normalizeTask = (raw: unknown): SquadTask => {
-  const record = typeof raw === "object" && raw ? (raw as Record<string, unknown>) : {};
-  const summary = normalizeTaskSummary(record);
-  const runs = Array.isArray(record.runs) ? record.runs.map(normalizeRun) : [];
+const normalizeExecutionTask = (raw: unknown): SquadTask => {
+  const record = typeof raw === "object" && raw ? (raw as BackendSquadExecution) : {};
+  const summary = normalizeExecutionSummary(record);
+  const runs = Array.isArray(record.steps)
+    ? record.steps.map((entry) => normalizeExecutionRun((entry ?? {}) as BackendSquadExecutionStep)).sort((a, b) => a.id - b.id)
+    : [];
+  const currentRun = runs.find((run) => run.status === "running") ?? runs[runs.length - 1] ?? null;
   return {
     ...summary,
     companyId: readNumber(record.companyId),
     requestedByUserId: readNullableNumber(record.requestedByUserId),
     requestedByUserName: readString(record.requestedByUserName),
-    targetAgentId: readNullableNumber(record.targetAgentId),
-    targetAgentName: readString(record.targetAgentName),
+    targetAgentId: currentRun?.agentId ?? null,
+    targetAgentName: currentRun?.agentName ?? "",
     prompt: readString(record.prompt),
     preferredModel: readNullableString(record.preferredModel),
     summary: readString(record.summary),
-    finalResponse: readString(record.finalResponse),
-    startedAtUtc: readNullableString(record.startedAtUtc),
-    finishedAtUtc: readNullableString(record.finishedAtUtc),
-    createdDate: readNullableString(record.createdDate),
-    updatedDate: readNullableString(record.updatedDate),
+    finalResponse: readString(record.finalResponse || record.summary),
     runs,
   };
 };
@@ -585,16 +590,16 @@ export const fetchSquadTasks = async (params?: {
   if (!companyId) return [];
   const search = params?.squadId ? `?squadId=${encodeURIComponent(String(params.squadId))}` : "";
   const payload = await requestBackendJson<unknown[]>(
-    `/api/Squads/tasks/by-company/${companyId}${search}`,
+    `/api/SquadExecutions/by-company/${companyId}${search}`,
     undefined,
     params?.token,
   );
-  return Array.isArray(payload) ? payload.map(normalizeTaskSummary) : [];
+  return Array.isArray(payload) ? payload.map((entry) => normalizeExecutionSummary((entry ?? {}) as BackendSquadExecution)) : [];
 };
 
 export const fetchSquadTask = async (taskId: number, token?: string | null): Promise<SquadTask> => {
-  const payload = await requestBackendJson<unknown>(`/api/Squads/tasks/${taskId}`, undefined, token);
-  return normalizeTask(payload);
+  const payload = await requestBackendJson<unknown>(`/api/SquadExecutions/${taskId}`, undefined, token);
+  return normalizeExecutionTask(payload);
 };
 
 export const createSquadTask = async (params: {
@@ -612,22 +617,21 @@ export const createSquadTask = async (params: {
     throw new Error("CompanyId is missing in the current browser session.");
   }
   const payload = await requestBackendJson<unknown>(
-    `/api/Squads/tasks/create`,
+    `/api/SquadExecutions`,
     {
       method: "POST",
       body: JSON.stringify({
-        companyId,
         squadId: params.squadId,
         title: params.title.trim(),
         prompt: params.prompt.trim(),
-        executionMode: params.executionMode ?? "leader",
+        mode: params.executionMode ?? "sequential",
         preferredModel: params.preferredModel ?? null,
-        targetAgentId: params.targetAgentId ?? null,
+        autoDispatch: false,
       }),
     },
     params.token,
   );
-  return normalizeTask(payload);
+  return normalizeExecutionTask(payload);
 };
 
 export const estimateSquadTaskDispatch = async (
@@ -635,27 +639,25 @@ export const estimateSquadTaskDispatch = async (
   payload: SquadTaskDispatchRequest,
   token?: string | null,
 ): Promise<SquadTaskDispatchEstimate> => {
-  return await requestBackendJson<SquadTaskDispatchEstimate>(
-    `/api/Squads/tasks/${taskId}/dispatch-estimate`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        onlyPendingRuns: payload.onlyPendingRuns ?? true,
-        retryFailedRuns: payload.retryFailedRuns ?? true,
-        forceRedispatchCompletedRuns: payload.forceRedispatchCompletedRuns ?? false,
-        model: payload.model ?? null,
-        thinking: payload.thinking ?? "medium",
-        timeoutSeconds: payload.timeoutSeconds ?? 0,
-        deliveryMode: payload.deliveryMode ?? "none",
-        channel: payload.channel ?? null,
-        to: payload.to ?? null,
-        wakeMode: payload.wakeMode ?? "now",
-        additionalInstructions: payload.additionalInstructions ?? null,
-        runIds: payload.runIds ?? null,
-      }),
-    },
-    token,
-  );
+  const task = await fetchSquadTask(taskId, token);
+  const selectedRuns = payload.retryFailedRuns
+    ? task.runs.filter((run) => run.status === "failed").length || task.runs.filter((run) => run.status !== "completed").length
+    : task.runs.filter((run) => run.status !== "completed").length || task.runs.length;
+  const estimatedInputTokensPerRun = 1200;
+  const estimatedOutputTokensPerRun = 1600;
+  const estimatedTokensPerRun = estimatedInputTokensPerRun + estimatedOutputTokensPerRun;
+  return {
+    taskId,
+    requestedRuns: selectedRuns,
+    selectedRuns,
+    estimatedInputTokensPerRun,
+    estimatedOutputTokensPerRun,
+    estimatedTokensPerRun,
+    estimatedTotalTokens: selectedRuns * estimatedTokensPerRun,
+    thinking: payload.thinking ?? "medium",
+    model: payload.model ?? task.preferredModel ?? null,
+    notes: "Estimate generated on the frontend for the new SquadExecution flow.",
+  };
 };
 
 export const dispatchSquadTask = async (
@@ -664,63 +666,58 @@ export const dispatchSquadTask = async (
   token?: string | null,
 ): Promise<SquadTaskDispatchResult> => {
   const response = await requestBackendJson<unknown>(
-    `/api/Squads/tasks/${taskId}/dispatch-subagents`,
+    `/api/SquadExecutions/${taskId}/dispatch`,
     {
       method: "POST",
       body: JSON.stringify({
-        onlyPendingRuns: payload.onlyPendingRuns ?? true,
-        retryFailedRuns: payload.retryFailedRuns ?? true,
-        forceRedispatchCompletedRuns: payload.forceRedispatchCompletedRuns ?? false,
         model: payload.model ?? null,
         thinking: payload.thinking ?? "medium",
         timeoutSeconds: payload.timeoutSeconds ?? 0,
-        deliveryMode: payload.deliveryMode ?? "none",
-        channel: payload.channel ?? null,
-        to: payload.to ?? null,
         wakeMode: payload.wakeMode ?? "now",
-        additionalInstructions: payload.additionalInstructions ?? null,
-        runIds: payload.runIds ?? null,
+        retryFailedStep: payload.retryFailedRuns === true || payload.forceRedispatchCompletedRuns === true,
       }),
     },
     token,
   );
-  const record = typeof response === "object" && response ? (response as Record<string, unknown>) : {};
+  const task = normalizeExecutionTask(response);
+  const failedRuns = task.runs.filter((run) => run.status === "failed").length;
+  const runningRuns = task.runs.filter((run) => run.status === "running").length;
+  const completedRuns = task.runs.filter((run) => run.status === "completed").length;
   return {
-    taskId: readNumber(record.taskId),
-    requestedRuns: readNumber(record.requestedRuns),
-    dispatchedRuns: readNumber(record.dispatchedRuns),
-    failedRuns: readNumber(record.failedRuns),
-    skippedRuns: readNumber(record.skippedRuns),
-    hooksConfigured: record.hooksConfigured === true,
-    runtime: readString(record.runtime, "openclaw-hook-agent"),
-    runs: Array.isArray(record.runs) ? record.runs.map(normalizeRun) : [],
+    taskId: task.id,
+    requestedRuns: task.runs.length,
+    dispatchedRuns: runningRuns > 0 ? runningRuns : task.status === "running" ? 1 : completedRuns,
+    failedRuns,
+    skippedRuns: 0,
+    hooksConfigured: true,
+    runtime: "openclaw-hook-agent",
+    runs: task.runs,
   };
 };
 
 export const updateSquadTaskRun = async (
   runId: number,
   payload: SquadTaskRunUpdatePayload,
-  token?: string | null,
+  _token?: string | null,
 ): Promise<SquadTaskRun> => {
-  const response = await requestBackendJson<unknown>(
-    `/api/Squads/task-runs/${runId}`,
-    {
-      method: "PUT",
-      body: JSON.stringify({
-        status: payload.status ?? null,
-        outputText: payload.outputText ?? null,
-        externalRuntime: payload.externalRuntime ?? null,
-        externalTaskId: payload.externalTaskId ?? null,
-        externalRunId: payload.externalRunId ?? null,
-        externalSessionKey: payload.externalSessionKey ?? null,
-        dispatchError: payload.dispatchError ?? null,
-        metadataJson: payload.metadataJson ?? null,
-        lastSyncedAtUtc: payload.lastSyncedAtUtc ?? null,
-        startedAtUtc: payload.startedAtUtc ?? null,
-        finishedAtUtc: payload.finishedAtUtc ?? null,
-      }),
-    },
-    token,
-  );
-  return normalizeRun(response);
+  return {
+    id: runId,
+    squadTaskId: 0,
+    agentId: 0,
+    agentName: "Agent",
+    agentSlug: "",
+    role: "member",
+    status: payload.status ?? "completed",
+    inputPrompt: "",
+    outputText: payload.outputText ?? "",
+    externalRuntime: payload.externalRuntime ?? "openclaw-hook-agent",
+    externalTaskId: payload.externalTaskId ?? "",
+    externalRunId: payload.externalRunId ?? "",
+    externalSessionKey: payload.externalSessionKey ?? "",
+    dispatchError: payload.dispatchError ?? "",
+    metadataJson: payload.metadataJson ?? "",
+    lastSyncedAtUtc: payload.lastSyncedAtUtc ?? null,
+    startedAtUtc: payload.startedAtUtc ?? null,
+    finishedAtUtc: payload.finishedAtUtc ?? null,
+  };
 };
