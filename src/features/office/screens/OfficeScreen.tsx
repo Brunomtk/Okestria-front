@@ -5939,7 +5939,7 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget ? (
-                    activeFocusedSquadTask && focusedSquadSessionAgent ? (
+                    focusedSquadSessionAgent ? (
                       <AgentChatPanel
                         agent={focusedSquadSessionAgent}
                         isSelected
@@ -5958,20 +5958,9 @@ export function OfficeScreen({
                         onAvatarShuffle={() => {}}
                       />
                     ) : (
-                      <SquadChatPanel
-                        squad={focusedSquadChatTarget}
-                        activeTaskId={activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null}
-                        taskCache={selectedSquadTasks}
-                        activeSessionKey={activeFocusedSquadTask?.runs[0]?.externalSessionKey ?? null}
-                        sessionMessages={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []) : []}
-                        sessionLoading={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading ?? false) : false}
-                        sessionError={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.error ?? null) : null}
-                        onTaskFocusChange={(taskId) => {
-                          setActiveSquadChatTaskBySquadId((current) => ({ ...current, [focusedSquadChatTarget.id]: taskId }));
-                        }}
-                        onSendMessage={(sq, msg) => { void handleSquadChatSend(sq, msg); }}
-                        onOpenOps={(squadId) => { handleOpenSquadOps(squadId); }}
-                      />
+                      <div className="flex h-full items-center justify-center px-8 text-center text-sm text-white/40">
+                        Select or create a squad task to open its session like an agent conversation.
+                      </div>
                     )
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
