@@ -4888,6 +4888,13 @@ export function OfficeScreen({
     ? (() => {
         const latestRun = activeFocusedSquadTask.runs[0] ?? null;
         const sessionKey = latestRun?.externalSessionKey?.trim() || "main";
+        const inferredAgentId =
+          latestRun?.agentSlug?.trim() ||
+          parseAgentIdFromSessionKey(sessionKey) ||
+          "main";
+        const inferredAgentName =
+          latestRun?.agentName?.trim() ||
+          (inferredAgentId === "main" ? "Main" : inferredAgentId);
         const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
         const persistedOutputText =
           latestRun?.outputText?.trim() ||
@@ -4905,13 +4912,13 @@ export function OfficeScreen({
               ];
         const now = Date.now();
         return {
-          agentId: sessionKey,
-          name: sessionKey,
+          agentId: inferredAgentId,
+          name: inferredAgentName,
           sessionKey,
-          avatarSeed: latestRun?.agentName?.trim() || sessionKey,
+          avatarSeed: inferredAgentName,
           avatarProfile: null,
           avatarUrl: null,
-          model: null,
+          model: activeFocusedSquadTask.preferredModel || "anthropic/claude-sonnet-4-6",
           thinkingLevel: null,
           sessionExecHost: "gateway",
           sessionExecSecurity: "allowlist",
