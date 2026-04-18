@@ -4842,6 +4842,15 @@ export function OfficeScreen({
         return pool[0] ?? null;
       })()
     : null;
+  const focusedSquadChatTasks = focusedSquadChatTarget
+    ? selectedSquadTasks
+        .filter((task) => String(task.squadId) === focusedSquadChatTarget.id)
+        .sort((left, right) => {
+          const leftStarted = left.startedAt ? new Date(left.startedAt).getTime() : 0;
+          const rightStarted = right.startedAt ? new Date(right.startedAt).getTime() : 0;
+          return rightStarted - leftStarted || right.id - left.id;
+        })
+    : [];
 
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
@@ -6047,53 +6056,107 @@ export function OfficeScreen({
                     chatRosterEntries.map((agent) => {
                       const isSelected = agent.id === selectedChatAgentId;
                       const isRunning = agent.isRunning;
+                      const squadTasksForEntry =
+                        agent.kind === "squad" && focusedSquadChatTarget?.id === agent.id
+                          ? focusedSquadChatTasks
+                          : [];
+                      const activeSquadTaskId =
+                        agent.kind === "squad" ? activeSquadChatTaskBySquadId[agent.id] ?? squadTasksForEntry[0]?.id ?? null : null;
 
                       return (
-                        <button
-                          key={agent.id}
-                          type="button"
-                          onClick={() => handleOpenAgentChat(agent.id)}
-                          className={`flex w-full items-center gap-2 px-4 py-3 text-left transition-colors ${
-                            isSelected
-                              ? "bg-white/10 text-white"
-                              : "text-white/50 hover:bg-white/5 hover:text-white/80"
-                          }`}
-                        >
-                          {agent.kind === "squad" && agent.iconEmoji ? (
-                            <span
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px]"
-                              style={{ backgroundColor: `${agent.color || "#3b82f6"}20` }}
-                            >
-                              {agent.iconEmoji}
+                        <div key={agent.id} className="border-b border-white/5 last:border-b-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAgentChat(agent.id)}
+                            className={`flex w-full items-center gap-2 px-4 py-3 text-left transition-colors ${
+                              isSelected
+                                ? "bg-white/10 text-white"
+                                : "text-white/50 hover:bg-white/5 hover:text-white/80"
+                            }`}
+                          >
+                            {agent.kind === "squad" && agent.iconEmoji ? (
+                              <span
+                                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px]"
+                                style={{ backgroundColor: `${agent.color || "#3b82f6"}20` }}
+                              >
+                                {agent.iconEmoji}
+                              </span>
+                            ) : (
+                              <span
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                                  isRunning ? "bg-emerald-400" : "bg-white/20"
+                                }`}
+                              />
+                            )}
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
+                              {agent.name}
                             </span>
-                          ) : (
-                            <span
-                              className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                                isRunning ? "bg-emerald-400" : "bg-white/20"
-                              }`}
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate font-mono text-[11px]">
-                            {agent.name}
-                          </span>
 
-                          {agent.kind === "remote" ? (
-                            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-300/60">
-                              Remote
+                            {agent.kind === "remote" ? (
+                              <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-cyan-300/60">
+                                Remote
+                              </span>
+                            ) : agent.kind === "squad" ? (
+                              <span
+                                className="shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]"
+                                style={{ color: agent.color || "#f59e0b", backgroundColor: `${agent.color || "#f59e0b"}15` }}
+                              >
+                                {typeof agent.memberCount === "number" ? `${agent.memberCount}` : ""}
+                              </span>
+                            ) : null}
+
+                            <span className="sr-only">
+                              {agent.kind === "remote" ? "Remote agent" : agent.kind === "squad" ? "Squad" : "Local agent"}
                             </span>
-                          ) : agent.kind === "squad" ? (
-                            <span
-                              className="shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.14em]"
-                              style={{ color: agent.color || "#f59e0b", backgroundColor: `${agent.color || "#f59e0b"}15` }}
-                            >
-                              {typeof agent.memberCount === "number" ? `${agent.memberCount}` : ""}
-                            </span>
+                          </button>
+
+                          {agent.kind === "squad" && isSelected && squadTasksForEntry.length > 0 ? (
+                            <div className="space-y-1 px-3 pb-3 pt-2">
+                              <div className="px-1 font-mono text-[9px] uppercase tracking-[0.18em] text-white/30">
+                                Tasks
+                              </div>
+                              {squadTasksForEntry.map((task) => {
+                                const isTaskSelected = activeSquadTaskId === task.id;
+                                const taskStatusTone = task.status === "failed"
+                                  ? "text-rose-300"
+                                  : task.status === "done"
+                                    ? "text-emerald-300"
+                                    : task.status === "running"
+                                      ? "text-cyan-300"
+                                      : "text-white/50";
+                                return (
+                                  <button
+                                    key={`${agent.id}:task:${task.id}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setActiveSquadChatTaskBySquadId((current) => ({
+                                        ...current,
+                                        [agent.id]: task.id,
+                                      }));
+                                    }}
+                                    className={`w-full rounded-xl border px-3 py-2 text-left transition ${
+                                      isTaskSelected
+                                        ? "border-cyan-400/40 bg-cyan-400/10 text-white"
+                                        : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20 hover:bg-white/[0.05]"
+                                    }`}
+                                  >
+                                    <div className="truncate font-mono text-[10px] font-semibold uppercase tracking-[0.12em]">
+                                      {task.title || `Task ${task.id}`}
+                                    </div>
+                                    <div className="mt-1 flex items-center justify-between gap-2">
+                                      <span className={`font-mono text-[9px] uppercase tracking-[0.14em] ${taskStatusTone}`}>
+                                        {task.status}
+                                      </span>
+                                      <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-white/35">
+                                        {task.runs.length} runs
+                                      </span>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           ) : null}
-
-                          <span className="sr-only">
-                            {agent.kind === "remote" ? "Remote agent" : agent.kind === "squad" ? "Squad" : "Local agent"}
-                          </span>
-                        </button>
+                        </div>
                       );
                     })
                   )}
