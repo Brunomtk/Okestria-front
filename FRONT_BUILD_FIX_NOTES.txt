@@ -1,4 +1,0 @@
-Build fix:
-- corrige referência ausente focusedSquadSessionAgent
-- adiciona resolução da task focada do squad no escopo do render
-- mantém a tentativa de abrir a sessão hook:... usando layout de agent

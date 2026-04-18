@@ -4857,7 +4857,7 @@ export function OfficeScreen({
           avatarSeed: latestRun?.agentName?.trim() || focusedSquadChatTarget.name,
           avatarProfile: null,
           avatarUrl: null,
-          model: focusedSquadChatTarget.leaderModel || focusedSquadChatTarget.preferredModel || null,
+          model: null,
           thinkingLevel: null,
           sessionExecHost: "gateway",
           sessionExecSecurity: "allowlist",
