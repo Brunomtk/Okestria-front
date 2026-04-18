@@ -432,6 +432,25 @@ export type SquadTaskSummary = {
   updatedDate: string | null;
 };
 
+export type SquadTaskMessage = {
+  id: number;
+  sequence: number;
+  role: string;
+  authorType: string;
+  authorId: number | null;
+  authorName: string;
+  content: string;
+  createdDate: string | null;
+};
+
+export type SquadTaskEvent = {
+  id: number;
+  type: string;
+  level: string;
+  message: string;
+  createdDate: string | null;
+};
+
 export type SquadTask = SquadTaskSummary & {
   companyId: number;
   requestedByUserId: number | null;
@@ -443,6 +462,8 @@ export type SquadTask = SquadTaskSummary & {
   summary: string;
   finalResponse: string;
   runs: SquadTaskRun[];
+  messages: SquadTaskMessage[];
+  events: SquadTaskEvent[];
 };
 
 
@@ -541,6 +562,26 @@ const normalizeExecutionRun = (raw: BackendSquadExecutionStep): SquadTaskRun => 
   finishedAtUtc: readNullableString(raw.finishedAtUtc),
 });
 
+
+const normalizeExecutionMessage = (raw: Record<string, unknown>): SquadTaskMessage => ({
+  id: readNumber(raw.id),
+  sequence: readNumber(raw.sequence),
+  role: readString(raw.role, "system"),
+  authorType: readString(raw.authorType, "system"),
+  authorId: readNullableNumber(raw.authorId),
+  authorName: readString(raw.authorName),
+  content: readString(raw.content),
+  createdDate: readNullableString(raw.createdDate),
+});
+
+const normalizeExecutionEvent = (raw: Record<string, unknown>): SquadTaskEvent => ({
+  id: readNumber(raw.id),
+  type: readString(raw.type),
+  level: readString(raw.level),
+  message: readString(raw.message),
+  createdDate: readNullableString(raw.createdDate),
+});
+
 const normalizeExecutionSummary = (raw: BackendSquadExecution): SquadTaskSummary => {
   const runs = Array.isArray(raw.steps) ? raw.steps.map((entry) => normalizeExecutionRun((entry ?? {}) as BackendSquadExecutionStep)) : [];
   return {
@@ -565,6 +606,12 @@ const normalizeExecutionTask = (raw: unknown): SquadTask => {
   const runs = Array.isArray(record.steps)
     ? record.steps.map((entry) => normalizeExecutionRun((entry ?? {}) as BackendSquadExecutionStep)).sort((a, b) => a.id - b.id)
     : [];
+  const messages = Array.isArray(record.messages)
+    ? record.messages.map((entry) => normalizeExecutionMessage((entry ?? {}) as Record<string, unknown>)).sort((a, b) => a.sequence - b.sequence)
+    : [];
+  const events = Array.isArray(record.events)
+    ? record.events.map((entry) => normalizeExecutionEvent((entry ?? {}) as Record<string, unknown>)).sort((a, b) => a.id - b.id)
+    : [];
   const currentRun = runs.find((run) => run.status === "running") ?? runs[runs.length - 1] ?? null;
   return {
     ...summary,
@@ -578,6 +625,8 @@ const normalizeExecutionTask = (raw: unknown): SquadTask => {
     summary: readString(record.summary),
     finalResponse: readString(record.finalResponse || record.summary),
     runs,
+    messages,
+    events,
   };
 };
 
@@ -719,5 +768,7 @@ export const updateSquadTaskRun = async (
     lastSyncedAtUtc: payload.lastSyncedAtUtc ?? null,
     startedAtUtc: payload.startedAtUtc ?? null,
     finishedAtUtc: payload.finishedAtUtc ?? null,
-  };
+    messages: [],
+    events: [],
+  } as unknown as SquadTaskRun;
 };

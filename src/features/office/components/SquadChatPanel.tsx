@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronRight, Loader2, RefreshCcw, Send, Users2 } from "lucide-react";
+import { ChevronRight, Loader2, RefreshCcw, Send, Sparkles, Users2 } from "lucide-react";
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
 import { fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
@@ -93,6 +93,51 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
       onTaskFocusChange?.(nextTaskId);
     }
   }, [activeTaskId, onTaskFocusChange, resolvedActiveTask]);
+
+
+  const timelineMessages = useMemo(() => {
+    if (!resolvedActiveTask) return [] as Array<{ id: string; role: "user" | "assistant" | "system"; text: string; timestampMs: number }>;
+
+    const fromExecution = (resolvedActiveTask.messages ?? []).map((entry) => ({
+      id: `msg-${entry.id}`,
+      role: entry.role === "assistant" ? "assistant" as const : entry.role === "user" ? "user" as const : "system" as const,
+      text: entry.content,
+      timestampMs: entry.createdDate ? new Date(entry.createdDate).getTime() : 0,
+    }));
+
+    const fromSession = (sessionMessages ?? []).map((entry) => ({
+      id: `session-${entry.id}`,
+      role: entry.role,
+      text: entry.text,
+      timestampMs: entry.timestampMs,
+    }));
+
+    const merged = [...fromExecution, ...fromSession]
+      .filter((entry) => entry.text.trim().length > 0)
+      .sort((a, b) => a.timestampMs - b.timestampMs);
+
+    if (merged.length > 0) return merged;
+
+    const synthetic = [];
+    synthetic.push({
+      id: `prompt-${resolvedActiveTask.id}`,
+      role: "user" as const,
+      text: resolvedActiveTask.prompt || "",
+      timestampMs: resolvedActiveTask.createdDate ? new Date(resolvedActiveTask.createdDate).getTime() : 0,
+    });
+
+    const finalText = (resolvedActiveTask.finalResponse || resolvedActiveTask.summary || "").trim();
+    if (finalText) {
+      synthetic.push({
+        id: `final-${resolvedActiveTask.id}`,
+        role: "assistant" as const,
+        text: finalText,
+        timestampMs: resolvedActiveTask.updatedDate ? new Date(resolvedActiveTask.updatedDate).getTime() : Date.now(),
+      });
+    }
+
+    return synthetic.filter((entry) => entry.text.trim().length > 0);
+  }, [resolvedActiveTask, sessionMessages]);
 
   useEffect(() => {
     const node = scrollerRef.current;

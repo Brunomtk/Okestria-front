@@ -279,6 +279,13 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                     <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Task prompt</div>
                     <div className="max-h-[32vh] overflow-y-auto pr-2 whitespace-pre-wrap break-words">{selectedTask.prompt}</div>
                   </div>
+
+                  {(selectedTask.finalResponse || selectedTask.summary) ? (
+                    <div className="mt-4 rounded-3xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-4 text-sm leading-7 text-white/85">
+                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Final synced response</div>
+                      <div className="max-h-[28vh] overflow-y-auto pr-2 whitespace-pre-wrap break-words">{selectedTask.finalResponse || selectedTask.summary}</div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="border-b border-cyan-500/10 px-5 py-4">
