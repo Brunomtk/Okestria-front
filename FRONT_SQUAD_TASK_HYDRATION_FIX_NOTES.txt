@@ -1,4 +1,0 @@
-Fix:
-- quando abre o chat do squad e ainda não há task carregada em memória, o front busca tasks do squad automaticamente
-- hidrata detalhes das tasks recentes e seleciona a mais nova
-- isso evita ficar vazio mesmo quando a sessão hook já existe no OpenClaw

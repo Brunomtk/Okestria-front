@@ -1,0 +1,2 @@
+Build fix:
+- remove parâmetro inválido limit de fetchSquadTasks

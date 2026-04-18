@@ -4851,7 +4851,7 @@ export function OfficeScreen({
     let cancelled = false;
     const loadFocusedSquadTasks = async () => {
       try {
-        const summaries = await fetchSquadTasks({ squadId: Number(focusedSquadChatTarget.id), limit: 10 });
+        const summaries = await fetchSquadTasks({ squadId: Number(focusedSquadChatTarget.id) });
         if (cancelled || summaries.length === 0) return;
         const detailed = await Promise.all(
           summaries.slice(0, 5).map(async (summary) => {
