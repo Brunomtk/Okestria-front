@@ -580,7 +580,7 @@ const mapRemotePresenceAgentToOffice = (agent: {
   return {
     id: stableId,
     name: agent.name || "Unknown",
-    status: agent.state === "error" ? "error" : isWorking ? "running" : "idle",
+    status: agent.state === "error" ? "error" : isWorking ? "working" : "idle",
     color: stringToColor(stableId),
     item: getDeterministicItem(stableId),
     avatarProfile: null,
