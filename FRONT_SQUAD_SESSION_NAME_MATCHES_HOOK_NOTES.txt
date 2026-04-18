@@ -1,0 +1,4 @@
+Ajuste:
+- identidade visual da sessão fake do squad passa a usar o sessionKey real
+- nome exibido no AgentChatPanel deixa de ser Chief Revenue Officer e passa a ser a sessão hook/main
+- agentId também passa a seguir o sessionKey

@@ -4896,10 +4896,10 @@ export function OfficeScreen({
         ]);
         const now = Date.now();
         return {
-          agentId: `squad-task-session:${activeFocusedSquadTask.id}`,
-          name: latestRun?.agentName?.trim() || focusedSquadChatTarget.name,
+          agentId: sessionKey,
+          name: sessionKey,
           sessionKey,
-          avatarSeed: latestRun?.agentName?.trim() || focusedSquadChatTarget.name,
+          avatarSeed: latestRun?.agentName?.trim() || sessionKey,
           avatarProfile: null,
           avatarUrl: null,
           model: null,
