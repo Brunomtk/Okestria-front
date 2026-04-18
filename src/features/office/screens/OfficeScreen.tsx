@@ -1032,6 +1032,7 @@ export function OfficeScreen({
   const [squadOpsTasks, setSquadOpsTasks] = useState<SquadTaskSummary[]>([]);
   const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
   const [selectedSquadTasks, setSelectedSquadTasks] = useState<SquadTask[]>([]);
+  const [squadChatTasksBySquadId, setSquadChatTasksBySquadId] = useState<Record<string, SquadTask[]>>({});
   const [activeSquadChatTaskBySquadId, setActiveSquadChatTaskBySquadId] = useState<Record<string, number | null>>({});
   const [squadTaskSessionByTaskId, setSquadTaskSessionByTaskId] = useState<Record<number, { sessionKey: string; loading: boolean; error: string | null; messages: SquadTaskSessionMessage[]; outputLines: string[] }>>({});
   const [squadOpsLoading, setSquadOpsLoading] = useState(false);
@@ -4832,25 +4833,33 @@ export function OfficeScreen({
     ? (squadChatById[focusedSquadChatTarget.id] ?? EMPTY_REMOTE_CHAT_SESSION)
     : null;
 
-  const activeFocusedSquadTask = focusedSquadChatTarget
-    ? (() => {
-        const activeTaskId = activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null;
-        const pool = selectedSquadTasks.filter((task) => String(task.squadId) === focusedSquadChatTarget.id);
-        if (typeof activeTaskId === "number") {
-          return pool.find((task) => task.id === activeTaskId) ?? null;
-        }
-        return pool[0] ?? null;
-      })()
-    : null;
   const focusedSquadChatTasks = focusedSquadChatTarget
-    ? selectedSquadTasks
-        .filter((task) => String(task.squadId) === focusedSquadChatTarget.id)
-        .sort((left, right) => {
+    ? (() => {
+        const merged = new Map<number, SquadTask>();
+        for (const task of selectedSquadTasks) {
+          if (String(task.squadId) === focusedSquadChatTarget.id) {
+            merged.set(task.id, task);
+          }
+        }
+        for (const task of squadChatTasksBySquadId[focusedSquadChatTarget.id] ?? []) {
+          merged.set(task.id, task);
+        }
+        return Array.from(merged.values()).sort((left, right) => {
           const leftStarted = left.startedAtUtc ? new Date(left.startedAtUtc).getTime() : 0;
           const rightStarted = right.startedAtUtc ? new Date(right.startedAtUtc).getTime() : 0;
           return rightStarted - leftStarted || right.id - left.id;
-        })
+        });
+      })()
     : [];
+  const activeFocusedSquadTask = focusedSquadChatTarget
+    ? (() => {
+        const activeTaskId = activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null;
+        if (typeof activeTaskId === "number") {
+          return focusedSquadChatTasks.find((task) => task.id === activeTaskId) ?? null;
+        }
+        return focusedSquadChatTasks[0] ?? null;
+      })()
+    : null;
 
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
@@ -4859,9 +4868,9 @@ export function OfficeScreen({
     const loadFocusedSquadTasks = async () => {
       try {
         const summaries = await fetchSquadTasks({ squadId: Number(focusedSquadChatTarget.id) });
-        if (cancelled || summaries.length === 0) return;
+        if (cancelled) return;
         const detailed = await Promise.all(
-          summaries.slice(0, 5).map(async (summary) => {
+          summaries.slice(0, 20).map(async (summary) => {
             try {
               return await fetchSquadTask(summary.id);
             } catch {
@@ -4871,11 +4880,10 @@ export function OfficeScreen({
         );
         if (cancelled) return;
         const nextTasks = detailed.filter((entry): entry is SquadTask => Boolean(entry));
-        if (nextTasks.length === 0) return;
-        setSelectedSquadTasks((current) => {
-          const remaining = current.filter((task) => String(task.squadId) !== focusedSquadChatTarget.id);
-          return [...nextTasks, ...remaining].sort((left, right) => right.id - left.id);
-        });
+        setSquadChatTasksBySquadId((current) => ({
+          ...current,
+          [focusedSquadChatTarget.id]: nextTasks,
+        }));
         setActiveSquadChatTaskBySquadId((current) => ({
           ...current,
           [focusedSquadChatTarget.id]: current[focusedSquadChatTarget.id] ?? nextTasks[0]?.id ?? null,
@@ -4886,8 +4894,12 @@ export function OfficeScreen({
     };
 
     void loadFocusedSquadTasks();
+    const timer = window.setInterval(() => {
+      void loadFocusedSquadTasks();
+    }, 3000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [fetchSquadTask, fetchSquadTasks, focusedSquadChatTarget]);
 
