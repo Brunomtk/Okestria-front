@@ -1,3 +1,0 @@
-Build fix v2:
-- remove referência inválida a leaderModel/preferredModel em SquadSummary
-- agent fake da sessão do squad passa a usar model null para evitar erro de tipagem
