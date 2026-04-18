@@ -4854,8 +4854,6 @@ export function OfficeScreen({
 
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
-    const hasTaskLoaded = selectedSquadTasks.some((task) => String(task.squadId) === focusedSquadChatTarget.id);
-    if (hasTaskLoaded) return;
 
     let cancelled = false;
     const loadFocusedSquadTasks = async () => {
@@ -4891,7 +4889,7 @@ export function OfficeScreen({
     return () => {
       cancelled = true;
     };
-  }, [focusedSquadChatTarget, selectedSquadTasks]);
+  }, [fetchSquadTask, fetchSquadTasks, focusedSquadChatTarget]);
 
   useEffect(() => {
     if (!client || status !== "connected" || !focusedSquadChatTarget || !activeFocusedSquadTask) {
