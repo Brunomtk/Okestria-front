@@ -1032,7 +1032,7 @@ export function OfficeScreen({
   const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
   const [selectedSquadTasks, setSelectedSquadTasks] = useState<SquadTask[]>([]);
   const [activeSquadChatTaskBySquadId, setActiveSquadChatTaskBySquadId] = useState<Record<string, number | null>>({});
-  const [squadTaskSessionByTaskId, setSquadTaskSessionByTaskId] = useState<Record<number, { sessionKey: string; loading: boolean; error: string | null; messages: SquadTaskSessionMessage[] }>>({});
+  const [squadTaskSessionByTaskId, setSquadTaskSessionByTaskId] = useState<Record<number, { sessionKey: string; loading: boolean; error: string | null; messages: SquadTaskSessionMessage[]; outputLines: string[] }>>({});
   const [squadOpsLoading, setSquadOpsLoading] = useState(false);
   const [squadOpsRefreshingTask, setSquadOpsRefreshingTask] = useState(false);
   const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
@@ -5861,20 +5861,40 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget ? (
-                    <SquadChatPanel
-                      squad={focusedSquadChatTarget}
-                      activeTaskId={activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null}
-                      taskCache={selectedSquadTasks}
-                      activeSessionKey={activeFocusedSquadTask?.runs[0]?.externalSessionKey ?? null}
-                      sessionMessages={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []) : []}
-                      sessionLoading={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading ?? false) : false}
-                      sessionError={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.error ?? null) : null}
-                      onTaskFocusChange={(taskId) => {
-                        setActiveSquadChatTaskBySquadId((current) => ({ ...current, [focusedSquadChatTarget.id]: taskId }));
-                      }}
-                      onSendMessage={(sq, msg) => { void handleSquadChatSend(sq, msg); }}
-                      onOpenOps={(squadId) => { handleOpenSquadOps(squadId); }}
-                    />
+                    focusedSquadSessionAgent ? (
+                      <AgentChatPanel
+                        agent={focusedSquadSessionAgent}
+                        isSelected
+                        canSend={false}
+                        models={gatewayModels}
+                        stopBusy={false}
+                        stopDisabledReason="Squad task sessions are opened in read-only mode here."
+                        onLoadMoreHistory={() => {}}
+                        onOpenSettings={() => {}}
+                        onNewSession={() => {}}
+                        onModelChange={() => {}}
+                        onThinkingChange={() => {}}
+                        onDraftChange={() => {}}
+                        onSend={() => {}}
+                        onStopRun={() => {}}
+                        onAvatarShuffle={() => {}}
+                      />
+                    ) : (
+                      <SquadChatPanel
+                        squad={focusedSquadChatTarget}
+                        activeTaskId={activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null}
+                        taskCache={selectedSquadTasks}
+                        activeSessionKey={activeFocusedSquadTask?.runs[0]?.externalSessionKey ?? null}
+                        sessionMessages={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []) : []}
+                        sessionLoading={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading ?? false) : false}
+                        sessionError={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.error ?? null) : null}
+                        onTaskFocusChange={(taskId) => {
+                          setActiveSquadChatTaskBySquadId((current) => ({ ...current, [focusedSquadChatTarget.id]: taskId }));
+                        }}
+                        onSendMessage={(sq, msg) => { void handleSquadChatSend(sq, msg); }}
+                        onOpenOps={(squadId) => { handleOpenSquadOps(squadId); }}
+                      />
+                    )
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
                       agentName={focusedRemoteChatTarget.name}
