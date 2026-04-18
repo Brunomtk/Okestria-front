@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, Loader2, Play, RefreshCcw, Users , XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, GitBranch, Hand, Layers3, Loader2, Play, RefreshCcw, Users, XCircle, Crown } from "lucide-react";
 import type { SquadExecutionMode, SquadSummary, SquadTask, SquadTaskDispatchEstimate, SquadTaskSummary } from "@/lib/squads/api";
 import type { GatewayModelChoice } from "@/lib/gateway/models";
 
@@ -49,6 +49,16 @@ const fmtDate = (value: string | null | undefined) => {
 };
 
 const normalize = (value: string | null | undefined) => (value ?? "").trim().toLowerCase();
+
+const MODE_OPTIONS: Array<{ value: SquadExecutionMode; label: string; hint: string; icon: ReactNode }> = [
+  { value: "leader", label: "Leader first", hint: "Leader starts and coordinates the flow.", icon: <Crown className="h-4 w-4" /> },
+  { value: "all", label: "All at once", hint: "Dispatch to every member immediately.", icon: <Layers3 className="h-4 w-4" /> },
+  { value: "manual", label: "Manual", hint: "You choose when each agent should run.", icon: <Hand className="h-4 w-4" /> },
+  { value: "workflow", label: "Workflow", hint: "Run in ordered stages across the squad.", icon: <GitBranch className="h-4 w-4" /> },
+];
+
+const modeLabel = (value: SquadExecutionMode | string | null | undefined) =>
+  MODE_OPTIONS.find((entry) => entry.value === value)?.label ?? (value ? String(value) : "Leader first");
 const statusTone = (value: string | null | undefined) => {
   const n = normalize(value);
   if (["completed", "done", "success"].includes(n)) return "border-emerald-400/20 bg-emerald-500/10 text-emerald-200";
@@ -84,11 +94,14 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
     onPreviewDispatchTask,
     onConfirmDispatchTask,
     onCancelDispatchApproval,
+    onEditSquad,
   } = props;
 
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [preferredModel, setPreferredModel] = useState<string>("");
+  const [modeSaving, setModeSaving] = useState(false);
+  const [modeError, setModeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +111,20 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   }, [open, selectedSquadId]);
 
   const selectedRuns = selectedTask?.runs ?? [];
+  const activeMode = (selectedTask?.executionMode ?? squad?.executionMode ?? "leader") as SquadExecutionMode;
+
+  const handleModeChange = async (nextMode: SquadExecutionMode) => {
+    if (!squad || !onEditSquad || modeSaving || nextMode === squad.executionMode) return;
+    try {
+      setModeSaving(true);
+      setModeError(null);
+      await onEditSquad(squad.id, { executionMode: nextMode });
+    } catch (error) {
+      setModeError(error instanceof Error ? error.message : "Unable to update squad mode right now.");
+    } finally {
+      setModeSaving(false);
+    }
+  };
   const stats = useMemo(() => {
     const total = selectedRuns.length;
     const running = selectedRuns.filter((run) => ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(normalize(run.status))).length;
@@ -125,7 +152,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
               <span className="text-white/25">•</span>
               <span>{squad?.members.length ?? 0} members</span>
               <span className="text-white/25">•</span>
-              <span>{selectedTask?.executionMode ?? squad?.executionMode ?? "leader"} mode</span>
+              <span>{modeLabel(activeMode)}</span>
             </div>
           </div>
 
@@ -172,6 +199,41 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                   </option>
                 ))}
               </select>
+
+              <div className="mt-4 rounded-2xl border border-cyan-500/15 bg-cyan-500/[0.04] p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">Squad mode</div>
+                    <div className="mt-1 text-xs text-white/55">Dynamic switch for new tasks created in Squad Ops.</div>
+                  </div>
+                  {modeSaving ? <Loader2 className="h-4 w-4 animate-spin text-cyan-200" /> : null}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {MODE_OPTIONS.map((option) => {
+                    const active = activeMode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => void handleModeChange(option.value)}
+                        disabled={!squad || !onEditSquad || modeSaving}
+                        className={`rounded-2xl border px-3 py-3 text-left transition ${
+                          active
+                            ? "border-cyan-400/40 bg-cyan-500/15 text-white"
+                            : "border-white/10 bg-white/[0.03] text-white/75 hover:border-cyan-400/20 hover:bg-cyan-500/10"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        <div className="flex items-center gap-2">
+                          {option.icon}
+                          <span className="text-xs font-semibold">{option.label}</span>
+                        </div>
+                        <div className="mt-1 text-[11px] leading-4 text-white/50">{option.hint}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {modeError ? <div className="mt-2 text-[11px] text-red-300">{modeError}</div> : null}
+              </div>
             </div>
 
             <div className="border-b border-cyan-500/10 px-5 py-4">
