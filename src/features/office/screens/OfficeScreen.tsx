@@ -5127,27 +5127,25 @@ export function OfficeScreen({
                 "",
                 activeFocusedSquadTask.prompt || "Opening squad task session...",
               ];
-        const transcriptEntries = sessionState?.messages?.length
-          ? sessionState.messages.map((message, index) => ({
-              id: `squad-session:${activeFocusedSquadTask.id}:${message.id || index}`,
-              sessionKey,
-              role: message.role,
-              source: "history" as const,
-              text: message.text,
-              displayText: message.text,
-              createdAt: new Date(message.timestampMs).toISOString(),
-              sequence: index + 1,
-              runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
-              confirmed: true,
-            }))
-          : buildTranscriptEntriesFromLines({
-              lines: outputLines,
-              sessionKey,
-              source: "history",
-              runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
-              confirmed: true,
-              entryIdPrefix: `squad-task-session:${activeFocusedSquadTask.id}`,
-            });
+        const transcriptLines = sessionState?.messages?.length
+          ? sessionState.messages.flatMap((message) => [
+              message.role === "assistant"
+                ? "Assistant"
+                : message.role === "user"
+                  ? "You"
+                  : "System",
+              message.text,
+              "",
+            ])
+          : outputLines;
+        const transcriptEntries = buildTranscriptEntriesFromLines({
+          lines: transcriptLines,
+          sessionKey,
+          source: "history",
+          runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
+          confirmed: true,
+          entryIdPrefix: `squad-task-session:${activeFocusedSquadTask.id}`,
+        });
         const now = Date.now();
         const lastAssistantMessageAt =
           sessionState?.messages?.filter((entry) => entry.role === "assistant").at(-1)?.timestampMs ?? now;
