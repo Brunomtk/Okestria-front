@@ -1024,6 +1024,7 @@ export function OfficeScreen({
   const [squadOpsTasks, setSquadOpsTasks] = useState<SquadTaskSummary[]>([]);
   const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
   const [selectedSquadTasks, setSelectedSquadTasks] = useState<SquadTask[]>([]);
+  const [activeSquadChatTaskBySquadId, setActiveSquadChatTaskBySquadId] = useState<Record<string, number | null>>({});
   const [squadOpsLoading, setSquadOpsLoading] = useState(false);
   const [squadOpsRefreshingTask, setSquadOpsRefreshingTask] = useState(false);
   const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
@@ -4004,21 +4005,11 @@ export function OfficeScreen({
       const trimmed = message.trim();
       if (!trimmed) return;
 
-      const sentAt = Date.now();
       updateSquadChatSession(squad.id, (session) => ({
         ...session,
         draft: "",
         sending: true,
         error: null,
-        messages: [
-          ...session.messages,
-          {
-            id: randomUUID(),
-            role: "user",
-            text: trimmed,
-            timestampMs: sentAt,
-          },
-        ],
       }));
 
       try {
@@ -4037,6 +4028,7 @@ export function OfficeScreen({
         });
 
         setSquadOpsSelectedTask(createdTask);
+        setActiveSquadChatTaskBySquadId((current) => ({ ...current, [squad.id]: createdTask.id }));
         setSelectedSquadTasks((current) => {
           const next = current.filter((task) => task.id !== createdTask.id);
           return [createdTask, ...next].sort((left, right) => right.id - left.id);
@@ -4058,19 +4050,11 @@ export function OfficeScreen({
           return [hydratedTask, ...next].sort((left, right) => right.id - left.id);
         });
 
+        setActiveSquadChatTaskBySquadId((current) => ({ ...current, [squad.id]: hydratedTask.id }));
         updateSquadChatSession(squad.id, (session) => ({
           ...session,
           sending: false,
           error: null,
-          messages: [
-            ...session.messages,
-            {
-              id: randomUUID(),
-              role: "system",
-              text: `Task #${hydratedTask.id} dispatched to ${squad.executionMode === "all" ? "the squad members" : "the squad leader"}.`,
-              timestampMs: Date.now(),
-            },
-          ],
         }));
       } catch (error) {
         updateSquadChatSession(squad.id, (session) => ({
@@ -4429,33 +4413,12 @@ export function OfficeScreen({
           const next = current.filter((task) => task.id !== refreshedTask.id);
           return [refreshedTask, ...next].sort((left, right) => right.id - left.id);
         });
-        updateSquadChatSession(String(refreshedTask.squadId), (session) => {
-          const alreadyExists = session.messages.some(
-            (message) =>
-              message.text.trim() === normalizedText,
-          );
-          if (alreadyExists) {
-            return {
-              ...session,
-              sending: false,
-              error: null,
-            };
-          }
-          return {
-            ...session,
-            sending: false,
-            error: null,
-            messages: [
-              ...session.messages,
-              {
-                id: randomUUID(),
-                role: "system",
-                text: normalizedText,
-                timestampMs: Date.now(),
-              },
-            ],
-          };
-        });
+        setActiveSquadChatTaskBySquadId((current) => ({ ...current, [String(refreshedTask.squadId)]: refreshedTask.id }));
+        updateSquadChatSession(String(refreshedTask.squadId), (session) => ({
+          ...session,
+          sending: false,
+          error: null,
+        }));
       } catch (error) {
         console.error("Failed to mirror squad run result from runtime session.", error);
       } finally {
@@ -5892,6 +5855,11 @@ export function OfficeScreen({
                   ) : focusedSquadChatTarget ? (
                     <SquadChatPanel
                       squad={focusedSquadChatTarget}
+                      activeTaskId={activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null}
+                      taskCache={selectedSquadTasks}
+                      onTaskFocusChange={(taskId) => {
+                        setActiveSquadChatTaskBySquadId((current) => ({ ...current, [focusedSquadChatTarget.id]: taskId }));
+                      }}
                       onSendMessage={(sq, msg) => { void handleSquadChatSend(sq, msg); }}
                       onOpenOps={(squadId) => { handleOpenSquadOps(squadId); }}
                     />

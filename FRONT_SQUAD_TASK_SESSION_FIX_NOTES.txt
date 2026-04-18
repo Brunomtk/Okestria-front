@@ -1,0 +1,5 @@
+Ajustes do front:
+- chat de squads agora abre a sessão/thread da task ativa
+- ao criar task nova, o painel foca automaticamente na task criada
+- lista lateral mostra sessões de task do squad
+- área principal mostra a thread da task selecionada, não um chat sintético aguardando histórico
