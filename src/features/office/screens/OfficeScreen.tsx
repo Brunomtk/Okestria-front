@@ -4884,10 +4884,226 @@ export function OfficeScreen({
     };
   }, [focusedSquadChatTarget, selectedSquadTasks]);
 
+  useEffect(() => {
+    if (!client || status !== "connected" || !focusedSquadChatTarget || !activeFocusedSquadTask) {
+      return;
+    }
+
+    const latestRun = activeFocusedSquadTask.runs[0] ?? null;
+    const requestedSessionKey = latestRun?.externalSessionKey?.trim() ?? "";
+    if (!requestedSessionKey) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const taskId = activeFocusedSquadTask.id;
+    const leaderGatewayAgentId = focusedSquadChatTarget.leaderGatewayAgentId?.trim() ?? "";
+
+    const previewToMessages = (previewResult: SquadRunPreviewResult, sessionKey: string): SquadTaskSessionMessage[] => {
+      const previews = Array.isArray(previewResult.previews) ? previewResult.previews : [];
+      const preview = previews.find((entry) => (entry.key?.trim() ?? "") === sessionKey);
+      const items = Array.isArray(preview?.items) ? preview.items : [];
+      return items
+        .map((item, index) => {
+          const text = typeof item.text === "string" ? item.text.trim() : "";
+          if (!text) return null;
+          const normalizedRole = typeof item.role === "string" ? item.role.trim().toLowerCase() : "assistant";
+          const role: SquadTaskSessionMessage["role"] = normalizedRole === "user"
+            ? "user"
+            : normalizedRole === "system"
+              ? "system"
+              : "assistant";
+          const rawTimestamp = item.timestamp;
+          const timestampMs = typeof rawTimestamp === "number"
+            ? rawTimestamp
+            : typeof rawTimestamp === "string"
+              ? new Date(rawTimestamp).getTime()
+              : Date.now() + index;
+          return {
+            id: `preview:${sessionKey}:${index}`,
+            role,
+            text,
+            timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now() + index,
+          } satisfies SquadTaskSessionMessage;
+        })
+        .filter((entry): entry is SquadTaskSessionMessage => Boolean(entry));
+    };
+
+    const historyToMessages = (messages: Record<string, unknown>[], sessionKey: string): SquadTaskSessionMessage[] => {
+      return messages
+        .map((message, index) => {
+          const text = extractText(message).trim();
+          if (!text) return null;
+          const normalizedRole = typeof message.role === "string" ? message.role.trim().toLowerCase() : "assistant";
+          const role: SquadTaskSessionMessage["role"] = normalizedRole === "user"
+            ? "user"
+            : normalizedRole === "system"
+              ? "system"
+              : "assistant";
+          const rawTimestamp = message.timestamp ?? message.createdAt ?? message.createdDate;
+          const timestampMs = typeof rawTimestamp === "number"
+            ? rawTimestamp
+            : typeof rawTimestamp === "string"
+              ? new Date(rawTimestamp).getTime()
+              : Date.now() + index;
+          return {
+            id: `history:${sessionKey}:${String(message.id ?? index)}`,
+            role,
+            text,
+            timestampMs: Number.isFinite(timestampMs) ? timestampMs : Date.now() + index,
+          } satisfies SquadTaskSessionMessage;
+        })
+        .filter((entry): entry is SquadTaskSessionMessage => Boolean(entry));
+    };
+
+    const resolveCandidateSessionKeys = async (): Promise<string[]> => {
+      const keys = new Set<string>([requestedSessionKey]);
+      if (!leaderGatewayAgentId) {
+        return Array.from(keys);
+      }
+
+      try {
+        const sessionsResult = await client.call<SquadRunSessionListResult>("sessions.list", {
+          agentId: leaderGatewayAgentId,
+          includeGlobal: false,
+          includeUnknown: true,
+          limit: 24,
+        });
+        const sessions = Array.isArray(sessionsResult.sessions) ? sessionsResult.sessions : [];
+        const requestedLower = requestedSessionKey.toLowerCase();
+        const fallbackKeys = sessions
+          .filter((entry) => {
+            const key = entry.key?.trim() ?? "";
+            if (!key) return false;
+            const normalizedKey = key.toLowerCase();
+            const label = entry.origin?.label?.trim().toLowerCase() ?? "";
+            if (normalizedKey === requestedLower) return true;
+            if (normalizedKey.includes(requestedLower)) return true;
+            if (requestedLower.includes(normalizedKey)) return true;
+            if (requestedLower.startsWith("hook:") && label === "hook") return true;
+            return false;
+          })
+          .sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+          .map((entry) => entry.key?.trim() ?? "")
+          .filter((value) => value.length > 0);
+        for (const key of fallbackKeys) {
+          keys.add(key);
+        }
+      } catch (error) {
+        console.warn("Failed to resolve fallback squad session keys.", error);
+      }
+
+      return Array.from(keys);
+    };
+
+    const syncSession = async () => {
+      setSquadTaskSessionByTaskId((current) => ({
+        ...current,
+        [taskId]: {
+          sessionKey: current[taskId]?.sessionKey || requestedSessionKey,
+          loading: true,
+          error: null,
+          messages: current[taskId]?.messages ?? [],
+          outputLines: current[taskId]?.outputLines ?? [],
+        },
+      }));
+
+      try {
+        const candidateKeys = await resolveCandidateSessionKeys();
+        let resolvedState: { sessionKey: string; messages: SquadTaskSessionMessage[]; outputLines: string[] } | null = null;
+        let lastError: string | null = null;
+
+        for (const candidateSessionKey of candidateKeys) {
+          if (!candidateSessionKey) continue;
+          try {
+            const history = await client.call<{ messages?: Record<string, unknown>[] }>("chat.history", {
+              sessionKey: candidateSessionKey,
+              limit: 80,
+            });
+            const historyMessages = Array.isArray(history.messages) ? history.messages : [];
+            const mappedHistoryMessages = historyToMessages(historyMessages, candidateSessionKey);
+            const historyLines = buildHistoryLines(historyMessages).lines ?? [];
+            if (mappedHistoryMessages.length > 0 || historyLines.length > 0) {
+              resolvedState = {
+                sessionKey: candidateSessionKey,
+                messages: mappedHistoryMessages,
+                outputLines: historyLines,
+              };
+              break;
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : "Failed to load squad session history.";
+          }
+
+          try {
+            const preview = await client.call<SquadRunPreviewResult>("sessions.preview", {
+              keys: [candidateSessionKey],
+              limit: 16,
+              maxChars: 20000,
+            });
+            const previewMessages = previewToMessages(preview, candidateSessionKey);
+            if (previewMessages.length > 0) {
+              resolvedState = {
+                sessionKey: candidateSessionKey,
+                messages: previewMessages,
+                outputLines: previewMessages.flatMap((entry) => [entry.role === "assistant" ? "Assistant" : entry.role === "user" ? "You" : "System", entry.text, ""]),
+              };
+              break;
+            }
+          } catch (error) {
+            lastError = error instanceof Error ? error.message : "Failed to preview squad session.";
+          }
+        }
+
+        if (cancelled) return;
+
+        setSquadTaskSessionByTaskId((current) => ({
+          ...current,
+          [taskId]: {
+            sessionKey: resolvedState?.sessionKey || requestedSessionKey,
+            loading: false,
+            error: resolvedState ? null : lastError,
+            messages: resolvedState?.messages ?? current[taskId]?.messages ?? [],
+            outputLines: resolvedState?.outputLines ?? current[taskId]?.outputLines ?? [],
+          },
+        }));
+      } catch (error) {
+        if (cancelled) return;
+        setSquadTaskSessionByTaskId((current) => ({
+          ...current,
+          [taskId]: {
+            sessionKey: current[taskId]?.sessionKey || requestedSessionKey,
+            loading: false,
+            error: error instanceof Error ? error.message : "Failed to synchronize squad session.",
+            messages: current[taskId]?.messages ?? [],
+            outputLines: current[taskId]?.outputLines ?? [],
+          },
+        }));
+      }
+    };
+
+    void syncSession();
+    const timer = window.setInterval(() => {
+      void syncSession();
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeFocusedSquadTask,
+    client,
+    focusedSquadChatTarget,
+    status,
+  ]);
+
   const focusedSquadSessionAgent = focusedSquadChatTarget && activeFocusedSquadTask
     ? (() => {
         const latestRun = activeFocusedSquadTask.runs[0] ?? null;
-        const sessionKey = latestRun?.externalSessionKey?.trim() || "main";
+        const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
+        const sessionKey = sessionState?.sessionKey?.trim() || latestRun?.externalSessionKey?.trim() || "main";
         const inferredAgentId =
           latestRun?.agentSlug?.trim() ||
           parseAgentIdFromSessionKey(sessionKey) ||
@@ -4895,7 +5111,6 @@ export function OfficeScreen({
         const inferredAgentName =
           latestRun?.agentName?.trim() ||
           (inferredAgentId === "main" ? "Main" : inferredAgentId);
-        const sessionState = squadTaskSessionByTaskId[activeFocusedSquadTask.id];
         const persistedOutputText =
           latestRun?.outputText?.trim() ||
           activeFocusedSquadTask.finalResponse?.trim() ||
@@ -4906,11 +5121,37 @@ export function OfficeScreen({
           : persistedOutputText
             ? persistedOutputText.split(/\r?\n/)
             : [
+
                 `# ${activeFocusedSquadTask.title}`,
                 "",
                 activeFocusedSquadTask.prompt || "Opening squad task session...",
               ];
+        const transcriptEntries = sessionState?.messages?.length
+          ? sessionState.messages.map((message, index) => ({
+              id: `squad-session:${activeFocusedSquadTask.id}:${message.id || index}`,
+              sessionKey,
+              role: message.role,
+              source: "history" as const,
+              text: message.text,
+              displayText: message.text,
+              createdAt: new Date(message.timestampMs).toISOString(),
+              sequence: index + 1,
+              runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
+              confirmed: true,
+            }))
+          : buildTranscriptEntriesFromLines({
+              lines: outputLines,
+              sessionKey,
+              source: "history",
+              runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
+              confirmed: true,
+              entryIdPrefix: `squad-task-session:${activeFocusedSquadTask.id}`,
+            });
         const now = Date.now();
+        const lastAssistantMessageAt =
+          sessionState?.messages?.filter((entry) => entry.role === "assistant").at(-1)?.timestampMs ?? now;
+        const loading = sessionState?.loading ?? false;
+        const error = sessionState?.error?.trim() ?? "";
         return {
           agentId: inferredAgentId,
           name: inferredAgentName,
@@ -4925,7 +5166,11 @@ export function OfficeScreen({
           sessionExecAsk: "on-miss",
           toolCallingEnabled: true,
           showThinkingTraces: true,
-          status: activeFocusedSquadTask.status === "failed" ? "error" : "idle",
+          status: activeFocusedSquadTask.status === "failed" || error
+            ? "error"
+            : loading || activeFocusedSquadTask.status === "running"
+              ? "working"
+              : "idle",
           sessionCreated: true,
           awaitingUserInput: false,
           hasUnseenActivity: false,
@@ -4934,33 +5179,26 @@ export function OfficeScreen({
           lastDiff: null,
           runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
           runStartedAt: null,
-          streamText: null,
+          streamText: loading ? "Syncing squad session directly from OpenClaw..." : null,
           thinkingTrace: null,
           latestOverride: null,
           latestOverrideKind: null,
-          lastAssistantMessageAt: now,
-          lastActivityAt: now,
+          lastAssistantMessageAt,
+          lastActivityAt: lastAssistantMessageAt,
           latestPreview: null,
-          lastUserMessage: null,
+          lastUserMessage: error || null,
           draft: "",
           queuedMessages: [],
           sessionSettingsSynced: true,
           historyLoadedAt: now,
           historyFetchLimit: 80,
-          historyFetchedCount: outputLines.length,
+          historyFetchedCount: transcriptEntries.length,
           historyMaybeTruncated: false,
-          transcriptEntries: buildTranscriptEntriesFromLines({
-            lines: outputLines,
-            sessionKey,
-            source: "history",
-            runId: latestRun?.externalRunId ?? String(latestRun?.id ?? activeFocusedSquadTask.id),
-            confirmed: true,
-            entryIdPrefix: `squad-task-session:${activeFocusedSquadTask.id}` ,
-          }),
-          transcriptRevision: outputLines.length,
-          transcriptSequenceCounter: outputLines.length,
+          transcriptEntries,
+          transcriptRevision: transcriptEntries.length,
+          transcriptSequenceCounter: transcriptEntries.length,
           sessionEpoch: 0,
-          lastHistoryRequestRevision: outputLines.length,
+          lastHistoryRequestRevision: transcriptEntries.length,
           lastAppliedHistoryRequestId: null,
         } satisfies AgentState;
       })()
