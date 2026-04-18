@@ -645,6 +645,13 @@ type OfficeFeedEvent = {
   kind?: "status" | "reply";
 };
 
+type SquadTaskSessionMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  text: string;
+  timestampMs: number;
+};
+
 type RemoteChatSessionState = {
   draft: string;
   sending: boolean;
@@ -1025,6 +1032,7 @@ export function OfficeScreen({
   const [squadOpsSelectedTask, setSquadOpsSelectedTask] = useState<SquadTask | null>(null);
   const [selectedSquadTasks, setSelectedSquadTasks] = useState<SquadTask[]>([]);
   const [activeSquadChatTaskBySquadId, setActiveSquadChatTaskBySquadId] = useState<Record<string, number | null>>({});
+  const [squadTaskSessionByTaskId, setSquadTaskSessionByTaskId] = useState<Record<number, { sessionKey: string; loading: boolean; error: string | null; messages: SquadTaskSessionMessage[] }>>({});
   const [squadOpsLoading, setSquadOpsLoading] = useState(false);
   const [squadOpsRefreshingTask, setSquadOpsRefreshingTask] = useState(false);
   const [squadOpsCreateBusy, setSquadOpsCreateBusy] = useState(false);
@@ -5857,6 +5865,10 @@ export function OfficeScreen({
                       squad={focusedSquadChatTarget}
                       activeTaskId={activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null}
                       taskCache={selectedSquadTasks}
+                      activeSessionKey={activeFocusedSquadTask?.runs[0]?.externalSessionKey ?? null}
+                      sessionMessages={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []) : []}
+                      sessionLoading={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading ?? false) : false}
+                      sessionError={activeFocusedSquadTask ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.error ?? null) : null}
                       onTaskFocusChange={(taskId) => {
                         setActiveSquadChatTaskBySquadId((current) => ({ ...current, [focusedSquadChatTarget.id]: taskId }));
                       }}

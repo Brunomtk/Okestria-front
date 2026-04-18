@@ -6,9 +6,20 @@ import type { SquadSummary, SquadTask } from "@/lib/squads/api";
 import { fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
 
+type SquadTaskSessionFeedMessage = {
+  id: string;
+  role: "user" | "assistant" | "system";
+  text: string;
+  timestampMs: number;
+};
+
 type SquadChatPanelProps = {
   squad: SquadSummary;
   activeTaskId?: number | null;
+  activeSessionKey?: string | null;
+  sessionMessages?: SquadTaskSessionFeedMessage[];
+  sessionLoading?: boolean;
+  sessionError?: string | null;
   taskCache?: SquadTask[];
   onTaskFocusChange?: (taskId: number | null) => void;
   onSendMessage?: (squad: SquadSummary, message: string) => void;
@@ -26,7 +37,7 @@ const normalize = (value: string | null | undefined) => (value ?? "").trim().toL
 const isRunning = (value: string | null | undefined) => ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(normalize(value));
 const isFailed = (value: string | null | undefined) => ["failed", "error", "cancelled"].includes(normalize(value));
 
-function SquadChatPanelInner({ squad, activeTaskId, taskCache, onTaskFocusChange, onSendMessage, onOpenOps }: SquadChatPanelProps) {
+function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMessages, sessionLoading, sessionError, taskCache, onTaskFocusChange, onSendMessage, onOpenOps }: SquadChatPanelProps) {
   const [draft, setDraft] = useState("");
   const [tasks, setTasks] = useState<SquadTask[]>([]);
   const [loading, setLoading] = useState(false);
@@ -202,56 +213,51 @@ function SquadChatPanelInner({ squad, activeTaskId, taskCache, onTaskFocusChange
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-xs uppercase tracking-[0.2em] text-white/35">Opened session</div>
+                    <div className="mt-1 truncate font-mono text-sm text-cyan-200/85">{activeSessionKey?.trim() || "Waiting for session key..."}</div>
+                  </div>
+                  <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isFailed(resolvedActiveTask.status) ? "border-red-400/25 bg-red-500/10 text-red-200" : "border-white/10 bg-white/5 text-white/55"}`}>
+                    {resolvedActiveTask.status || "pending"}
+                  </div>
+                </div>
+              </div>
+
               <div className="ml-auto max-w-[78%] rounded-[24px] border border-[#4b3b86]/35 bg-[#1a1326] px-5 py-4 text-sm text-white/80 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
                 <div className="text-base font-semibold text-white">{resolvedActiveTask.title}</div>
                 {resolvedActiveTask.prompt ? <div className="mt-2 whitespace-pre-wrap leading-7 text-white/72">{resolvedActiveTask.prompt}</div> : null}
                 <div className="mt-3 text-xs text-white/30">{fmtDate(resolvedActiveTask.createdDate)}</div>
               </div>
 
-              {resolvedActiveTask.runs.length === 0 ? (
+              {sessionError ? (
+                <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">{sessionError}</div>
+              ) : null}
+
+              {(sessionMessages ?? []).length > 0 ? (
+                (sessionMessages ?? []).map((message) => (
+                  <div
+                    key={message.id}
+                    className={message.role === "user" ? "ml-auto max-w-[78%]" : "max-w-[84%]"}
+                  >
+                    <div className={`rounded-[24px] border px-5 py-4 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.18)] ${message.role === "user" ? "border-[#4b3b86]/35 bg-[#1a1326] text-white/80" : message.role === "assistant" ? "border-white/10 bg-white/[0.03] text-white/82" : "border-cyan-400/15 bg-cyan-500/5 text-cyan-100/90"}`}>
+                      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{message.role}</div>
+                      <div className="whitespace-pre-wrap leading-7">{message.text}</div>
+                      <div className="mt-3 text-xs text-white/30">{fmtDate(new Date(message.timestampMs).toISOString())}</div>
+                    </div>
+                  </div>
+                ))
+              ) : null}
+
+              {sessionLoading || (resolvedActiveTask.runs.length === 0 && !sessionError) || ((sessionMessages ?? []).length === 0 && isRunning(resolvedActiveTask.status)) ? (
                 <div className="rounded-[24px] border border-cyan-400/15 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-200/90">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Preparing the squad task session...
+                    Opening the task session thread...
                   </span>
                 </div>
-              ) : (
-                resolvedActiveTask.runs.map((run) => {
-                  const result = (run.outputText || "").trim();
-                  const sessionKey = run.externalSessionKey?.trim() ?? "";
-                  return (
-                    <div key={run.id} className="space-y-3">
-                      <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold text-white">{run.agentName || "Squad agent"}</div>
-                            <div className="text-xs text-white/35">{run.role || resolvedActiveTask.executionMode || "Task execution"}</div>
-                            {sessionKey ? <div className="mt-2 truncate font-mono text-[11px] text-cyan-200/75">{sessionKey}</div> : null}
-                          </div>
-                          <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isFailed(run.status) ? "border-red-400/25 bg-red-500/10 text-red-200" : "border-white/10 bg-white/5 text-white/55"}`}>
-                            {run.status || resolvedActiveTask.status || "pending"}
-                          </div>
-                        </div>
-
-                        {result ? (
-                          <div className="mt-4 whitespace-pre-wrap rounded-2xl border border-white/8 bg-black/20 px-4 py-3 text-sm leading-7 text-white/80">{result}</div>
-                        ) : isFailed(run.status) ? (
-                          <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">
-                            {run.dispatchError?.trim() || "This run failed before a response was synced."}
-                          </div>
-                        ) : (
-                          <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-200/90">
-                            <span className="inline-flex items-center gap-2">
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                              This task session is running now...
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
+              ) : null}
             </div>
           )}
         </div>

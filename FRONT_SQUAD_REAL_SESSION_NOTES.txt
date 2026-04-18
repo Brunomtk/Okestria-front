@@ -1,0 +1,5 @@
+Ajustes do front (sessão real da task):
+- ao criar task, o chat do squad abre a sessionKey real da task
+- painel passa a carregar chat.history da session da task
+- visual deixa de depender só do status running e mostra a thread real da sessão
+- comportamento mais próximo do OpenClaw/agents
