@@ -563,7 +563,7 @@ const mapAgentToOffice = (agent: AgentState): OfficeAgent => {
   return {
     id: agent.agentId,
     name: agent.name || "Unknown",
-    status: isWorking ? "working" : "idle",
+    status: isWorking ? "running" : "idle",
     color: stringToColor(agent.agentId),
     item: getDeterministicItem(agent.agentId),
     avatarProfile: agent.avatarProfile ?? null,
@@ -580,7 +580,7 @@ const mapRemotePresenceAgentToOffice = (agent: {
   return {
     id: stableId,
     name: agent.name || "Unknown",
-    status: agent.state === "error" ? "error" : isWorking ? "working" : "idle",
+    status: agent.state === "error" ? "error" : isWorking ? "running" : "idle",
     color: stringToColor(stableId),
     item: getDeterministicItem(stableId),
     avatarProfile: null,
@@ -5170,7 +5170,7 @@ export function OfficeScreen({
           status: activeFocusedSquadTask.status === "failed" || error
             ? "error"
             : loading || activeFocusedSquadTask.status === "running"
-              ? "working"
+              ? "running"
               : "idle",
           sessionCreated: true,
           awaitingUserInput: false,
