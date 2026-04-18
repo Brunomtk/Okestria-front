@@ -4832,6 +4832,7 @@ export function OfficeScreen({
   const focusedSquadChatState = focusedSquadChatTarget
     ? (squadChatById[focusedSquadChatTarget.id] ?? EMPTY_REMOTE_CHAT_SESSION)
     : null;
+  const focusedSquadChatEntryId = focusedSquadChatTarget ? `squad:${focusedSquadChatTarget.id}` : null;
 
   const focusedSquadChatTasks = focusedSquadChatTarget
     ? (() => {
@@ -4853,7 +4854,7 @@ export function OfficeScreen({
     : [];
   const activeFocusedSquadTask = focusedSquadChatTarget
     ? (() => {
-        const activeTaskId = activeSquadChatTaskBySquadId[focusedSquadChatTarget.id] ?? null;
+        const activeTaskId = activeSquadChatTaskBySquadId[focusedSquadChatEntryId ?? ""] ?? null;
         if (typeof activeTaskId === "number") {
           return focusedSquadChatTasks.find((task) => task.id === activeTaskId) ?? null;
         }
@@ -4886,7 +4887,7 @@ export function OfficeScreen({
         }));
         setActiveSquadChatTaskBySquadId((current) => ({
           ...current,
-          [focusedSquadChatTarget.id]: current[focusedSquadChatTarget.id] ?? nextTasks[0]?.id ?? null,
+          [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]: current[focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`] ?? nextTasks[0]?.id ?? null,
         }));
       } catch {
         // best-effort hydration for squad chat task sessions
@@ -4901,7 +4902,7 @@ export function OfficeScreen({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [fetchSquadTask, fetchSquadTasks, focusedSquadChatTarget]);
+  }, [fetchSquadTask, fetchSquadTasks, focusedSquadChatEntryId, focusedSquadChatTarget]);
 
   useEffect(() => {
     if (!client || status !== "connected" || !focusedSquadChatTarget || !activeFocusedSquadTask) {
@@ -6067,7 +6068,7 @@ export function OfficeScreen({
                       const isSelected = agent.id === selectedChatAgentId;
                       const isRunning = agent.isRunning;
                       const squadTasksForEntry =
-                        agent.kind === "squad" && focusedSquadChatTarget?.id === agent.id
+                        agent.kind === "squad" && focusedSquadChatEntryId === agent.id
                           ? focusedSquadChatTasks
                           : [];
                       const activeSquadTaskId =
