@@ -4846,8 +4846,8 @@ export function OfficeScreen({
     ? selectedSquadTasks
         .filter((task) => String(task.squadId) === focusedSquadChatTarget.id)
         .sort((left, right) => {
-          const leftStarted = left.startedAt ? new Date(left.startedAt).getTime() : 0;
-          const rightStarted = right.startedAt ? new Date(right.startedAt).getTime() : 0;
+          const leftStarted = left.startedAtUtc ? new Date(left.startedAtUtc).getTime() : 0;
+          const rightStarted = right.startedAtUtc ? new Date(right.startedAtUtc).getTime() : 0;
           return rightStarted - leftStarted || right.id - left.id;
         })
     : [];
