@@ -97,6 +97,7 @@ import {
 } from "@/features/agents/operations/runtimeSyncControlWorkflow";
 import {
   TRANSCRIPT_V2_ENABLED,
+  buildTranscriptEntriesFromLines,
   logTranscriptDebugMetric,
 } from "@/features/agents/state/transcript";
 import {

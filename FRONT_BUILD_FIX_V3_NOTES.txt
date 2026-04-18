@@ -1,3 +1,0 @@
-Build fix v3:
-- adiciona import de buildTranscriptEntriesFromLines
-- corrige chamada para assinatura correta com objeto { lines, sessionKey, source, runId, ... }
