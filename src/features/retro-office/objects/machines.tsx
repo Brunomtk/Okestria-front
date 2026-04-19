@@ -4010,3 +4010,264 @@ export function PlateRackModel({
     </group>
   );
 }
+
+export function CableCrossoverModel({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlightColor = isSelected
+    ? "#fbbf24"
+    : isHovered && editMode
+      ? "#60a5fa"
+      : "#000000";
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.22 : 0;
+
+  // Cable Crossover / Functional Trainer:
+  // - Two tall towers (left and right) connected at the top with a horizontal crossbar
+  // - Weight stacks at the base of each tower (stacked black plates with a yellow selector pin)
+  // - Cable pulleys at the top of each tower, with cables running down to D-handles
+  // - Steel base plates, rubber feet
+  // - Two users can work out simultaneously, one at each tower
+
+  const towerHeight = 1.5;
+
+  return (
+    <group
+      position={[wx, 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* ===== Floor rubber mat ===== */}
+        <mesh position={[0, 0.005, 0]} receiveShadow>
+          <boxGeometry args={[widthWorld * 0.98, 0.01, depthWorld * 0.98]} />
+          <meshStandardMaterial color={RUBBER_BLACK} roughness={0.97} metalness={0.03} />
+        </mesh>
+        {/* Accent inner tile */}
+        <mesh position={[0, 0.012, 0]}>
+          <boxGeometry args={[widthWorld * 0.78, 0.004, depthWorld * 0.78]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.92} metalness={0.06} />
+        </mesh>
+
+        {/* ===== Base connector beam spanning both towers along X ===== */}
+        <mesh position={[0, 0.07, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.9, 0.12, 0.18]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.55} metalness={0.5} />
+        </mesh>
+        {/* Rubber feet under each tower base */}
+        {([-0.4, 0.4] as const).map((fx, i) =>
+          ([-0.4, 0.4] as const).map((fz, j) => (
+            <mesh key={`cf_${i}_${j}`} position={[widthWorld * fx, 0.02, depthWorld * fz]}>
+              <boxGeometry args={[0.09, 0.04, 0.09]} />
+              <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.03} />
+            </mesh>
+          )),
+        )}
+
+        {/* ===== Two tall uprights (towers) — left and right ===== */}
+        {([-0.4, 0.4] as const).map((xSide, i) => (
+          <group key={`tower_${i}`}>
+            {/* Main upright column */}
+            <mesh
+              position={[widthWorld * xSide, towerHeight / 2 + 0.1, 0]}
+              castShadow
+            >
+              <boxGeometry args={[0.16, towerHeight, 0.16]} />
+              <meshStandardMaterial
+                color="#0f172a"
+                roughness={0.55}
+                metalness={0.55}
+                emissive={highlightColor}
+                emissiveIntensity={highlightIntensity}
+              />
+            </mesh>
+            {/* Vertical accent stripe (cyan) running up the front of tower */}
+            <mesh
+              position={[widthWorld * xSide, towerHeight / 2 + 0.1, 0.085]}
+            >
+              <boxGeometry args={[0.03, towerHeight * 0.9, 0.002]} />
+              <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.7} toneMapped={false} />
+            </mesh>
+
+            {/* Weight stack housing (black box in front of the tower, at the base) */}
+            <mesh
+              position={[widthWorld * xSide, 0.45, 0.18]}
+              castShadow
+            >
+              <boxGeometry args={[0.16, 0.7, 0.16]} />
+              <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.6} />
+            </mesh>
+            {/* Stacked weight plates visible through the housing (6 flat black plates) */}
+            {Array.from({ length: 6 }).map((_, k) => (
+              <mesh
+                key={`ws_${i}_${k}`}
+                position={[widthWorld * xSide, 0.18 + k * 0.085, 0.18]}
+              >
+                <boxGeometry args={[0.13, 0.06, 0.13]} />
+                <meshStandardMaterial color="#111827" roughness={0.48} metalness={0.55} />
+              </mesh>
+            ))}
+            {/* Yellow weight-selector pin (sticking out of the 3rd plate) */}
+            <mesh
+              position={[widthWorld * xSide + 0.1, 0.31, 0.18]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.012, 0.012, 0.06, 12]} />
+              <meshStandardMaterial color={ACCENT_AMBER} emissive={ACCENT_AMBER} emissiveIntensity={0.4} roughness={0.35} />
+            </mesh>
+            {/* Silver guide rods flanking the weight stack */}
+            {([-0.07, 0.07] as const).map((grOff, k) => (
+              <mesh
+                key={`gr_${i}_${k}`}
+                position={[widthWorld * xSide + grOff, 0.45, 0.18]}
+              >
+                <cylinderGeometry args={[0.008, 0.008, 0.66, 10]} />
+                <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.88} />
+              </mesh>
+            ))}
+
+            {/* Top pulley wheel at the top of each tower */}
+            <mesh
+              position={[widthWorld * xSide, towerHeight + 0.02, 0.11]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.08, 0.08, 0.04, 24]} />
+              <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.9} />
+            </mesh>
+            {/* Pulley housing bracket */}
+            <mesh
+              position={[widthWorld * xSide, towerHeight + 0.02, 0.11]}
+            >
+              <boxGeometry args={[0.12, 0.12, 0.1]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.55} metalness={0.5} />
+            </mesh>
+
+            {/* Black cable dropping from pulley down to D-handle height */}
+            <mesh
+              position={[widthWorld * xSide, 0.95, 0.2]}
+            >
+              <cylinderGeometry args={[0.006, 0.006, 1.1, 10]} />
+              <meshStandardMaterial color="#0b1220" roughness={0.7} metalness={0.1} />
+            </mesh>
+            {/* Adjustable height peg (moveable pulley carriage marker) */}
+            <mesh
+              position={[widthWorld * xSide + 0.085, 0.8, 0]}
+            >
+              <boxGeometry args={[0.04, 0.06, 0.05]} />
+              <meshStandardMaterial color={ACCENT_AMBER} roughness={0.4} metalness={0.35} />
+            </mesh>
+
+            {/* D-handle (rubber grip hanging at the end of the cable) */}
+            <group position={[widthWorld * xSide, 0.42, 0.2]}>
+              {/* Metal swivel ring at top of handle */}
+              <mesh>
+                <torusGeometry args={[0.025, 0.008, 8, 18]} />
+                <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
+              </mesh>
+              {/* D-shaped grip bar (below ring) */}
+              <mesh position={[0, -0.055, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                <torusGeometry args={[0.04, 0.014, 10, 20, Math.PI]} />
+                <meshStandardMaterial color={RUBBER_BLACK} roughness={0.9} metalness={0.05} />
+              </mesh>
+            </group>
+
+            {/* Tower-height tick marks (visual slot markers along the front) */}
+            {[0.4, 0.6, 0.8, 1.0, 1.2].map((yOff, k) => (
+              <mesh
+                key={`tick_${i}_${k}`}
+                position={[widthWorld * xSide - 0.085, yOff, 0]}
+              >
+                <boxGeometry args={[0.005, 0.012, 0.06]} />
+                <meshStandardMaterial color={STEEL} roughness={0.45} metalness={0.7} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+
+        {/* ===== Top horizontal crossbar connecting the two towers ===== */}
+        <mesh
+          position={[0, towerHeight + 0.12, 0]}
+          castShadow
+        >
+          <boxGeometry args={[widthWorld * 0.86, 0.14, 0.14]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.55} metalness={0.55} />
+        </mesh>
+        {/* Pull-up bar beneath the top crossbar (chrome) */}
+        <mesh
+          position={[0, towerHeight + 0.02, -0.08]}
+          rotation={[0, 0, Math.PI / 2]}
+          castShadow
+        >
+          <cylinderGeometry args={[0.028, 0.028, widthWorld * 0.82, 20]} />
+          <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.92} />
+        </mesh>
+        {/* Knurled grip patches on pull-up bar */}
+        {([-0.3, -0.1, 0.1, 0.3] as const).map((gx, i) => (
+          <mesh
+            key={`cbg_${i}`}
+            position={[widthWorld * gx, towerHeight + 0.02, -0.08]}
+            rotation={[0, 0, Math.PI / 2]}
+          >
+            <cylinderGeometry args={[0.031, 0.031, 0.04, 18]} />
+            <meshStandardMaterial color={STEEL} roughness={0.6} metalness={0.7} />
+          </mesh>
+        ))}
+
+        {/* Brand decal running across the top crossbar */}
+        <mesh position={[0, towerHeight + 0.12, 0.08]}>
+          <boxGeometry args={[widthWorld * 0.5, 0.08, 0.003]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.85} toneMapped={false} />
+        </mesh>
+
+        {/* Info placard (tilted) between towers at mid-height */}
+        <mesh position={[0, 1.05, 0]} rotation={[-0.15, 0, 0]}>
+          <boxGeometry args={[0.22, 0.14, 0.01]} />
+          <meshStandardMaterial color="#0b1220" roughness={0.4} metalness={0.55} />
+        </mesh>
+        <mesh position={[0, 1.05, 0.007]} rotation={[-0.15, 0, 0]}>
+          <planeGeometry args={[0.18, 0.1]} />
+          <meshStandardMaterial color={ACCENT_AMBER} emissive={ACCENT_AMBER} emissiveIntensity={0.3} roughness={0.4} />
+        </mesh>
+
+        {/* Chrome side-rails descending from top crossbar down toward mid-height (cable guides) */}
+        {([-0.4, 0.4] as const).map((xSide, i) => (
+          <mesh
+            key={`cg_${i}`}
+            position={[widthWorld * xSide + (xSide > 0 ? -0.01 : 0.01), towerHeight * 0.65, 0.11]}
+            rotation={[0, 0, xSide > 0 ? 0.04 : -0.04]}
+          >
+            <cylinderGeometry args={[0.006, 0.006, 0.85, 10]} />
+            <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+}

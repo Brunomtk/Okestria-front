@@ -688,6 +688,7 @@ export const getGymWorkoutLocations = (
         "exercise_bike",
         "squat_rack",
         "deadlift_platform",
+        "cable_crossover",
         "punching_bag",
         "rowing_machine",
         "kettlebell_rack",
@@ -755,6 +756,16 @@ export const getGymWorkoutLocations = (
       if (item.type === "deadlift_platform") {
         const x = item.x + 75;
         const y = item.y + 55;
+        return {
+          x,
+          y,
+          facing: facingTowardEquipment(x, y),
+          workoutStyle: "lift",
+        };
+      }
+      if (item.type === "cable_crossover") {
+        const x = item.x + 50;
+        const y = item.y + 45;
         return {
           x,
           y,

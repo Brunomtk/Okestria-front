@@ -285,41 +285,49 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "clock",   x: GYM_ROOM_X + 345, y: EAST_WING_ROOM_TOP_Y + 4 },
   { type: "speaker", x: GYM_ROOM_X + 686, y: EAST_WING_ROOM_TOP_Y + 14 },
 
-  // === ROW 2 — FREE WEIGHTS + PLATE STORAGE (middle, y≈130) ===
+  // === ROW 2 — FREE WEIGHTS + PLATE STORAGE (middle, shifted left & down per user request) ===
   // Dumbbells and kettlebells on the left half
   { type: "dumbbell_rack",  x: GYM_ROOM_X + 30,  y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
   { type: "dumbbell_rack",  x: GYM_ROOM_X + 130, y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
   { type: "kettlebell_rack",x: GYM_ROOM_X + 230, y: EAST_WING_ROOM_TOP_Y + 132, facing: 0 },
-  // 2 plate racks replacing the punching bag — for deadlift / squat / bench plates
-  { type: "plate_rack",     x: GYM_ROOM_X + 330, y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
-  { type: "plate_rack",     x: GYM_ROOM_X + 400, y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
+  // 2 plate racks — shifted LEFT and DOWN (off the door zone, closer to deadlift vertical strip)
+  { type: "plate_rack",     x: GYM_ROOM_X + 310, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
+  { type: "plate_rack",     x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
 
   // === DEADLIFT PLATFORM (user-specified absolute 1640, 120, facing 270°) ===
   // 150×80 footprint — with facing 270 it visually spans 80 wide × 150 tall on the right side
   { type: "deadlift_platform", x: 1640, y: 120, facing: 270 },
 
-  // === ROW 3 — STRETCHING / YOGA (y=215) ===
-  { type: "yoga_mat", x: GYM_ROOM_X + 30,  y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#0f766e" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 115, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#7c3aed" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 200, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#0891b2" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 285, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#dc2626" },
+  // === NEW: CABLE CROSSOVER (functional trainer — left of the deadlift platform) ===
+  // Two-tower cable station with weight stacks — pairs with deadlift for a powerlifting corner
+  { type: "cable_crossover", x: GYM_ROOM_X + 460, y: EAST_WING_ROOM_TOP_Y + 130, facing: 90 },
+
+  // === ROW 3 — STRETCHING / YOGA (shifted LEFT & DOWN per user request) ===
+  { type: "yoga_mat", x: GYM_ROOM_X + 15,  y: EAST_WING_ROOM_TOP_Y + 235, facing: 0, color: "#0f766e" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 100, y: EAST_WING_ROOM_TOP_Y + 235, facing: 0, color: "#7c3aed" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 185, y: EAST_WING_ROOM_TOP_Y + 235, facing: 0, color: "#0891b2" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 270, y: EAST_WING_ROOM_TOP_Y + 235, facing: 0, color: "#dc2626" },
 
   // === ROW 5 — AMENITIES (bottom wall, flush, facing 180 = toward yoga area) ===
   // Bottom wall: y = 352..360. Items flush: item_top = 352 - item_height
-  // Lockers (40×40 → y=300, slightly off the wall per user request). facing 180
-  { type: "locker", x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 302, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 344, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 386, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  // Left bench at 1090 (GYM_ROOM_X+15) ends at 1170 (GYM_ROOM_X+95)
+  // Right bench at GYM_ROOM_X+450 starts at 1525
+  // Fill with 8 lockers at 42-spacing, covering GYM_ROOM_X+110..404 (absolute 1185..1544)
+  { type: "locker", x: GYM_ROOM_X + 110, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 152, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 194, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 236, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 278, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 320, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 362, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 404, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
 
   // Bench seat at user-specified absolute 1090, 310, facing 180
   { type: "bench_seat", x: 1090, y: 310, facing: 180 },
   // Second bench seat on the right side for symmetry, same rotation
   { type: "bench_seat", x: GYM_ROOM_X + 450, y: 310, facing: 180 },
 
-  // Water cooler, first aid, trash — arranged along bottom wall with breathing room
-  { type: "water_cooler", x: GYM_ROOM_X + 120, y: EAST_WING_ROOM_TOP_Y + 298 },
-  { type: "first_aid",    x: GYM_ROOM_X + 180, y: EAST_WING_ROOM_TOP_Y + 330 },
+  // Trash bin along bottom wall (water_cooler + first_aid removed per user request)
   { type: "trash",        x: GYM_ROOM_X + 566, y: EAST_WING_ROOM_TOP_Y + 330 },
 
   // === PLANTS (pushed against left wall, rotated toward yoga mats) ===
