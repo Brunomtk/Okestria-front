@@ -6334,7 +6334,7 @@ export function OfficeScreen({
                         tasks={focusedSquadWorkspaceTasks}
                         selectedTask={activeFocusedSquadTask}
                         selectedTaskId={activeFocusedSquadTask?.id ?? null}
-                        loading={squadOpsLoading && squadOpsSelectedSquadId === focusedSquadChatTarget.id}
+                        loading={squadOpsLoading && squadOpsSquadId === focusedSquadChatTarget.id}
                         refreshingTask={Boolean(activeFocusedSquadTask && activeFocusedSquadTask.status === "running")}
                         onSelectTask={(taskId) => {
                           setActiveSquadChatTaskBySquadId((current) => ({
@@ -6348,7 +6348,7 @@ export function OfficeScreen({
                           <button
                             type="button"
                             onClick={() => {
-                              setSquadOpsSelectedSquadId(focusedSquadChatTarget.id);
+                              setSquadOpsSquadId(focusedSquadChatTarget.id);
                               setSquadOpsOpen(true);
                             }}
                             className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-500/18"
