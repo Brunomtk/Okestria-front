@@ -6334,7 +6334,7 @@ export function OfficeScreen({
                         tasks={focusedSquadWorkspaceTasks}
                         selectedTask={activeFocusedSquadTask}
                         selectedTaskId={activeFocusedSquadTask?.id ?? null}
-                        loading={squadChatTasksLoading}
+                        loading={squadOpsLoading && squadOpsSelectedSquadId === focusedSquadChatTarget.id}
                         refreshingTask={Boolean(activeFocusedSquadTask && activeFocusedSquadTask.status === "running")}
                         onSelectTask={(taskId) => {
                           setActiveSquadChatTaskBySquadId((current) => ({
