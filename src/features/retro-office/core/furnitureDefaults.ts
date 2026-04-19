@@ -97,19 +97,23 @@ const PREVIOUS_SERVER_ROOM_ITEMS_TOP_RIGHT: FurnitureSeed[] = [
 const DEFAULT_DINING_ITEMS: FurnitureSeed[] = [];
 
 const DEFAULT_SERVER_ROOM_ITEMS: FurnitureSeed[] = [
-  { type: "wall", x: 0, y: 560, w: 230, h: WALL_THICKNESS },
-  { type: "wall", x: 220, y: 560, w: WALL_THICKNESS, h: 60 },
+  { type: "wall", x: 0, y: 560, w: 323, h: WALL_THICKNESS },
+  { type: "wall", x: 315, y: 560, w: WALL_THICKNESS, h: 60 },
   {
     type: "door",
-    x: 210,
+    x: 299,
     y: 630,
     w: DOOR_LENGTH,
     h: DOOR_THICKNESS,
     facing: 90,
   },
-  { type: "wall", x: 220, y: 660, w: WALL_THICKNESS, h: 60 },
-  { type: "server_rack", x: 42, y: 590, facing: 0 },
-  { type: "server_rack", x: 102, y: 590, facing: 0 },
+  { type: "wall", x: 315, y: 660, w: WALL_THICKNESS, h: 60 },
+  { type: "server_rack", x: 42, y: 580, facing: 0 },
+  { type: "server_rack", x: 102, y: 580, facing: 0 },
+  { type: "server_rack", x: 162, y: 580, facing: 0 },
+  { type: "server_rack", x: 222, y: 580, facing: 0 },
+  { type: "server_terminal", x: 64, y: 680, facing: 0 },
+  { type: "server_terminal", x: 210, y: 680, facing: 0 },
 ];
 
 const LEGACY_GYM_ROOM_ITEMS: FurnitureSeed[] = [
@@ -390,23 +394,22 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "wall", x: 315, y: 0, w: 8, h: 260 },
   { type: "door", x: 299, y: 276, w: 40, h: 8, facing: 90 },
   { type: "wall", x: 315, y: 300, w: 8, h: 260 },
-  // Long rectangular conference table — spans most of the room, centered in the expanded space
-  { type: "conference_table", x: 47, y: 40, w: 220, h: 480 },
-  // 14 executive chairs — 6 west side, 6 east side, 1 north end, 1 south end
-  { type: "chair", x: 23,  y: 48,  facing: 90 },
-  { type: "chair", x: 23,  y: 128, facing: 90 },
-  { type: "chair", x: 23,  y: 208, facing: 90 },
-  { type: "chair", x: 23,  y: 288, facing: 90 },
-  { type: "chair", x: 23,  y: 368, facing: 90 },
-  { type: "chair", x: 23,  y: 448, facing: 90 },
-  { type: "chair", x: 267, y: 48,  facing: 270 },
-  { type: "chair", x: 267, y: 128, facing: 270 },
-  { type: "chair", x: 267, y: 208, facing: 270 },
-  { type: "chair", x: 267, y: 288, facing: 270 },
-  { type: "chair", x: 267, y: 368, facing: 270 },
-  { type: "chair", x: 267, y: 448, facing: 270 },
-  { type: "chair", x: 145, y: 16,  facing: 180 },
-  { type: "chair", x: 145, y: 520, facing: 0 },
+  // Rectangular conference table — sized so chairs fit comfortably on all sides
+  // Table footprint: cx=77..237 (w=160) · cy=60..460 (h=400); ~77px clearance on west, ~78px on east
+  { type: "conference_table", x: 77, y: 60, w: 160, h: 400 },
+  // 12 executive chairs — 5 west side, 5 east side, 1 north end, 1 south end, all flush to table
+  { type: "chair", x: 53,  y: 92,  facing: 90 },
+  { type: "chair", x: 53,  y: 172, facing: 90 },
+  { type: "chair", x: 53,  y: 252, facing: 90 },
+  { type: "chair", x: 53,  y: 332, facing: 90 },
+  { type: "chair", x: 53,  y: 412, facing: 90 },
+  { type: "chair", x: 237, y: 92,  facing: 270 },
+  { type: "chair", x: 237, y: 172, facing: 270 },
+  { type: "chair", x: 237, y: 252, facing: 270 },
+  { type: "chair", x: 237, y: 332, facing: 270 },
+  { type: "chair", x: 237, y: 412, facing: 270 },
+  { type: "chair", x: 145, y: 32,  facing: 180 },
+  { type: "chair", x: 145, y: 464, facing: 0 },
 
   // === OPEN-OFFICE DESKS — 3 rows × 4 desks, all facing the meeting room (chair on south, worker looks north) ===
   // Row 1 (desks at y=150, chairs at y=193) — ATM clears at cx=372 so desks start at cx=400
@@ -487,13 +490,17 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "mouse", x: 909, y: 523 },
   { type: "trash", x: 886, y: 517 },
 
-  // === SERVER ROOM (bottom-left, x=0..228 · y=560..720) ===
-  { type: "wall", x: 0, y: 560, w: 230, h: 8 },
-  { type: "wall", x: 220, y: 560, w: 8, h: 60 },
-  { type: "door", x: 210, y: 630, w: 40, h: 8, facing: 90 },
-  { type: "wall", x: 220, y: 660, w: 8, h: 60 },
-  { type: "server_rack", x: 42, y: 590, facing: 0 },
-  { type: "server_rack", x: 102, y: 590, facing: 0 },
+  // === SERVER ROOM (bottom-left, x=0..315 · y=560..720 — matches meeting room width) ===
+  { type: "wall", x: 0, y: 560, w: 323, h: 8 },
+  { type: "wall", x: 315, y: 560, w: 8, h: 60 },
+  { type: "door", x: 299, y: 630, w: 40, h: 8, facing: 90 },
+  { type: "wall", x: 315, y: 660, w: 8, h: 60 },
+  { type: "server_rack", x: 42, y: 580, facing: 0 },
+  { type: "server_rack", x: 102, y: 580, facing: 0 },
+  { type: "server_rack", x: 162, y: 580, facing: 0 },
+  { type: "server_rack", x: 222, y: 580, facing: 0 },
+  { type: "server_terminal", x: 64, y: 680, facing: 0 },
+  { type: "server_terminal", x: 210, y: 680, facing: 0 },
 
   // === EAST-WING ENTRANCE WALLS (preserved) ===
   { type: "wall", x: 1075, y: 0, w: 8, h: 150 },

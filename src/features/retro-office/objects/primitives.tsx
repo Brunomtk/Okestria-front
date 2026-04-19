@@ -177,151 +177,230 @@ export function ConferenceTableModel({
       }}
     >
       <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
-        {/* 4 chunky wooden legs at corners (dark oak) */}
-        {([-1, 1] as const).map((sx) =>
-          ([-1, 1] as const).map((sz) => (
-            <mesh
-              key={`leg_${sx}_${sz}`}
-              position={[widthWorld * 0.42 * sx, 0.22, depthWorld * 0.38 * sz]}
-              castShadow
-            >
-              <boxGeometry args={[0.06, 0.44, 0.06]} />
-              <meshStandardMaterial color="#3a2410" roughness={0.65} metalness={0.08} />
-            </mesh>
-          )),
-        )}
-        {/* Chrome foot caps */}
-        {([-1, 1] as const).map((sx) =>
-          ([-1, 1] as const).map((sz) => (
-            <mesh
-              key={`foot_${sx}_${sz}`}
-              position={[widthWorld * 0.42 * sx, 0.012, depthWorld * 0.38 * sz]}
-            >
-              <boxGeometry args={[0.07, 0.024, 0.07]} />
-              <meshStandardMaterial color="#d1d5db" roughness={0.3} metalness={0.88} />
-            </mesh>
-          )),
-        )}
-        {/* Long cross-beam under table (side supports) */}
-        <mesh position={[0, 0.34, -depthWorld * 0.36]} castShadow>
-          <boxGeometry args={[widthWorld * 0.84, 0.05, 0.04]} />
-          <meshStandardMaterial color="#2b180a" roughness={0.7} metalness={0.1} />
-        </mesh>
-        <mesh position={[0, 0.34, depthWorld * 0.36]} castShadow>
-          <boxGeometry args={[widthWorld * 0.84, 0.05, 0.04]} />
-          <meshStandardMaterial color="#2b180a" roughness={0.7} metalness={0.1} />
+        {/* Floor shadow disc — softens the silhouette */}
+        <mesh position={[0, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[widthWorld * 1.08, depthWorld * 1.04]} />
+          <meshStandardMaterial color="#0b0b0e" transparent opacity={0.28} roughness={1} />
         </mesh>
 
-        {/* TABLE TOP — walnut slab, thick and solid */}
-        <mesh position={[0, 0.46, 0]} receiveShadow castShadow>
-          <boxGeometry args={[widthWorld * 0.98, 0.055, depthWorld * 0.94]} />
+        {/* Twin chrome pedestal columns (executive trestle base) */}
+        {([-1, 1] as const).map((sx) => (
+          <group key={`ped_${sx}`} position={[widthWorld * 0.32 * sx, 0, 0]}>
+            {/* Wide chrome floor plate */}
+            <mesh position={[0, 0.012, 0]} castShadow>
+              <cylinderGeometry args={[0.11, 0.13, 0.022, 24]} />
+              <meshStandardMaterial color="#cfd4d9" roughness={0.25} metalness={0.95} />
+            </mesh>
+            {/* Polished cross-bar foot */}
+            <mesh position={[0, 0.025, 0]} castShadow>
+              <boxGeometry args={[0.05, 0.04, depthWorld * 0.78]} />
+              <meshStandardMaterial color="#e5e7eb" roughness={0.18} metalness={0.95} />
+            </mesh>
+            {/* Tapered chrome column */}
+            <mesh position={[0, 0.23, 0]} castShadow>
+              <cylinderGeometry args={[0.038, 0.048, 0.42, 20]} />
+              <meshStandardMaterial color="#dfe3e7" roughness={0.2} metalness={0.95} />
+            </mesh>
+            {/* Upper flared cap under the top */}
+            <mesh position={[0, 0.445, 0]} castShadow>
+              <cylinderGeometry args={[0.06, 0.04, 0.03, 20]} />
+              <meshStandardMaterial color="#c7cbd0" roughness={0.25} metalness={0.95} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Slim inter-pedestal apron (subtle stretcher) */}
+        <mesh position={[0, 0.43, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.64, 0.028, 0.022]} />
+          <meshStandardMaterial color="#3a2410" roughness={0.6} metalness={0.15} />
+        </mesh>
+
+        {/* TABLE TOP — deep walnut slab with chamfered profile */}
+        <mesh position={[0, 0.48, 0]} receiveShadow castShadow>
+          <boxGeometry args={[widthWorld * 1.0, 0.055, depthWorld * 0.96]} />
           <meshStandardMaterial
-            color="#7a4a28"
-            roughness={0.55}
-            metalness={0.12}
+            color="#6d3f1f"
+            roughness={0.38}
+            metalness={0.18}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {/* Darker beveled edge (runs around the slab) */}
-        <mesh position={[0, 0.45, 0]}>
-          <boxGeometry args={[widthWorld * 1.0, 0.022, depthWorld * 0.96]} />
-          <meshStandardMaterial color="#4a2b16" roughness={0.75} metalness={0.08} />
+        {/* Glossy wood-grain gloss layer (very thin film) */}
+        <mesh position={[0, 0.5085, 0]}>
+          <boxGeometry args={[widthWorld * 0.995, 0.001, depthWorld * 0.955]} />
+          <meshStandardMaterial
+            color="#8a5a34"
+            roughness={0.18}
+            metalness={0.45}
+            transparent
+            opacity={0.55}
+          />
         </mesh>
-        {/* Subtle glossy wood-grain highlight stripe along length */}
-        <mesh position={[0, 0.489, 0]}>
-          <boxGeometry args={[widthWorld * 0.86, 0.002, depthWorld * 0.02]} />
-          <meshStandardMaterial color="#b78a5c" roughness={0.3} metalness={0.3} />
+        {/* Chamfered darker band at the edge */}
+        <mesh position={[0, 0.462, 0]}>
+          <boxGeometry args={[widthWorld * 1.012, 0.02, depthWorld * 0.972]} />
+          <meshStandardMaterial color="#3e2010" roughness={0.7} metalness={0.12} />
         </mesh>
-
-        {/* Center runner — felt strip */}
-        <mesh position={[0, 0.49, 0]}>
-          <boxGeometry args={[widthWorld * 0.9, 0.002, depthWorld * 0.16]} />
-          <meshStandardMaterial color="#1e3a8a" roughness={0.9} metalness={0.02} />
-        </mesh>
-
-        {/* Speaker-phone puck in the middle */}
-        <group position={[0, 0.495, 0]}>
-          <mesh>
-            <cylinderGeometry args={[0.06, 0.07, 0.018, 28]} />
-            <meshStandardMaterial color="#111827" roughness={0.4} metalness={0.5} />
+        {/* Subtle grain stripes */}
+        {[-0.25, 0, 0.25].map((dz) => (
+          <mesh key={`grain_${dz}`} position={[0, 0.511, depthWorld * dz]}>
+            <boxGeometry args={[widthWorld * 0.95, 0.0008, depthWorld * 0.006]} />
+            <meshStandardMaterial color="#4a2a14" roughness={0.8} metalness={0.05} transparent opacity={0.55} />
           </mesh>
-          <mesh position={[0, 0.011, 0]}>
-            <cylinderGeometry args={[0.028, 0.028, 0.006, 22]} />
+        ))}
+
+        {/* Center cable raceway — brushed aluminum recess with power grommets */}
+        <mesh position={[0, 0.512, 0]}>
+          <boxGeometry args={[widthWorld * 0.58, 0.004, depthWorld * 0.12]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.4} metalness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.515, 0]}>
+          <boxGeometry args={[widthWorld * 0.55, 0.002, depthWorld * 0.08]} />
+          <meshStandardMaterial color="#9aa0a6" roughness={0.3} metalness={0.85} />
+        </mesh>
+        {[-0.22, 0, 0.22].map((dx, i) => (
+          <group key={`grommet_${i}`} position={[widthWorld * dx, 0.517, 0]}>
+            <mesh>
+              <cylinderGeometry args={[0.018, 0.02, 0.003, 18]} />
+              <meshStandardMaterial color="#2b2f36" roughness={0.35} metalness={0.75} />
+            </mesh>
+            <mesh position={[0, 0.002, 0]}>
+              <cylinderGeometry args={[0.01, 0.01, 0.002, 14]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.5} metalness={0.6} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Speaker-phone puck — polished obsidian with ring LED */}
+        <group position={[0, 0.52, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.07, 0.082, 0.02, 32]} />
+            <meshStandardMaterial color="#0b0f1a" roughness={0.3} metalness={0.7} />
+          </mesh>
+          <mesh position={[0, 0.012, 0]}>
+            <torusGeometry args={[0.05, 0.006, 14, 32]} />
             <meshStandardMaterial
               color="#22d3ee"
               emissive="#22d3ee"
-              emissiveIntensity={0.9}
+              emissiveIntensity={1.1}
+              roughness={0.2}
+              metalness={0.4}
             />
           </mesh>
-          {[0, 60, 120, 180, 240, 300].map((deg, i) => {
+          <mesh position={[0, 0.012, 0]}>
+            <cylinderGeometry args={[0.032, 0.032, 0.006, 22]} />
+            <meshStandardMaterial color="#18222e" roughness={0.3} metalness={0.55} />
+          </mesh>
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => {
             const rad = (deg * Math.PI) / 180;
             return (
               <mesh
                 key={`sp-btn-${i}`}
-                position={[Math.cos(rad) * 0.045, 0.011, Math.sin(rad) * 0.045]}
+                position={[Math.cos(rad) * 0.042, 0.013, Math.sin(rad) * 0.042]}
               >
-                <cylinderGeometry args={[0.008, 0.008, 0.004, 12]} />
-                <meshStandardMaterial color="#e5e7eb" roughness={0.3} metalness={0.55} />
+                <cylinderGeometry args={[0.0055, 0.0055, 0.003, 10]} />
+                <meshStandardMaterial color="#e5e7eb" roughness={0.25} metalness={0.85} />
               </mesh>
             );
           })}
         </group>
 
-        {/* Laptop pairs along the long sides — decorative placeholders */}
-        {[-0.32, 0.32].map((dz, iz) =>
-          [-0.3, -0.1, 0.1, 0.3].map((dx, ix) => (
+        {/* Laptop pairs along the long sides — premium silver + warm display */}
+        {[-0.34, 0.34].map((dz, iz) =>
+          [-0.32, -0.1, 0.12, 0.32].map((dx, ix) => (
             <group
               key={`laptop-${iz}-${ix}`}
-              position={[widthWorld * dx, 0.491, depthWorld * dz]}
+              position={[widthWorld * dx, 0.512, depthWorld * dz]}
               rotation={[0, dz < 0 ? 0 : Math.PI, 0]}
             >
               {/* Base */}
-              <mesh>
-                <boxGeometry args={[0.1, 0.008, 0.068]} />
-                <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.5} />
+              <mesh castShadow>
+                <boxGeometry args={[0.11, 0.008, 0.075]} />
+                <meshStandardMaterial color="#c7ccd1" roughness={0.28} metalness={0.85} />
               </mesh>
-              {/* Lid */}
-              <mesh position={[0, 0.028, -0.032]} rotation={[-0.2, 0, 0]}>
-                <boxGeometry args={[0.1, 0.058, 0.006]} />
-                <meshStandardMaterial color="#111827" roughness={0.45} metalness={0.5} />
+              {/* Keyboard inlay */}
+              <mesh position={[0, 0.005, 0.01]}>
+                <boxGeometry args={[0.092, 0.001, 0.04]} />
+                <meshStandardMaterial color="#1f2937" roughness={0.7} metalness={0.1} />
+              </mesh>
+              {/* Trackpad */}
+              <mesh position={[0, 0.005, 0.032]}>
+                <boxGeometry args={[0.04, 0.001, 0.016]} />
+                <meshStandardMaterial color="#9aa0a6" roughness={0.4} metalness={0.4} />
+              </mesh>
+              {/* Lid (silver shell) */}
+              <mesh position={[0, 0.032, -0.036]} rotation={[-0.25, 0, 0]} castShadow>
+                <boxGeometry args={[0.11, 0.062, 0.006]} />
+                <meshStandardMaterial color="#b9bdc2" roughness={0.25} metalness={0.9} />
               </mesh>
               {/* Screen glow */}
-              <mesh position={[0, 0.028, -0.028]} rotation={[-0.2, 0, 0]}>
-                <boxGeometry args={[0.088, 0.05, 0.0015]} />
+              <mesh position={[0, 0.032, -0.032]} rotation={[-0.25, 0, 0]}>
+                <boxGeometry args={[0.096, 0.052, 0.0012]} />
                 <meshStandardMaterial
-                  color="#7c3aed"
-                  emissive="#7c3aed"
-                  emissiveIntensity={0.65}
+                  color="#60a5fa"
+                  emissive="#60a5fa"
+                  emissiveIntensity={0.75}
                 />
               </mesh>
+              {/* Apple-style brand dot */}
+              <mesh position={[0, 0.04, -0.0385]} rotation={[-0.25, 0, 0]}>
+                <boxGeometry args={[0.012, 0.012, 0.0006]} />
+                <meshStandardMaterial color="#e5e7eb" roughness={0.3} metalness={0.7} emissive="#e5e7eb" emissiveIntensity={0.12} />
+              </mesh>
             </group>
           )),
         )}
 
-        {/* Coasters + mugs at every other seat */}
-        {[-0.3, 0.1].map((dx, ix) =>
-          [-0.4, 0.4].map((dz, iz) => (
+        {/* Glass + coaster per seat (every position) */}
+        {[-0.34, 0.34].map((dz, iz) =>
+          [-0.22, 0.0, 0.22].map((dx, ix) => (
             <group
-              key={`mug-${ix}-${iz}`}
-              position={[widthWorld * dx, 0.495, depthWorld * dz]}
+              key={`glass-${iz}-${ix}`}
+              position={[widthWorld * dx, 0.518, depthWorld * dz * 0.8]}
             >
               <mesh>
-                <cylinderGeometry args={[0.014, 0.014, 0.003, 16]} />
-                <meshStandardMaterial color="#4b5563" roughness={0.5} metalness={0.3} />
+                <cylinderGeometry args={[0.016, 0.016, 0.003, 18]} />
+                <meshStandardMaterial color="#2b2f36" roughness={0.5} metalness={0.3} />
               </mesh>
-              <mesh position={[0, 0.017, 0]}>
-                <cylinderGeometry args={[0.012, 0.012, 0.028, 16]} />
-                <meshStandardMaterial color="#f8fafc" roughness={0.3} metalness={0.1} />
+              <mesh position={[0, 0.018, 0]}>
+                <cylinderGeometry args={[0.011, 0.013, 0.032, 18]} />
+                <meshStandardMaterial color="#e5f2ff" roughness={0.1} metalness={0.15} transparent opacity={0.55} />
+              </mesh>
+              <mesh position={[0, 0.008, 0]}>
+                <cylinderGeometry args={[0.01, 0.01, 0.016, 14]} />
+                <meshStandardMaterial color="#60a5fa" transparent opacity={0.35} roughness={0.1} />
               </mesh>
             </group>
           )),
         )}
 
-        {/* Front brand plate */}
-        <mesh position={[0, 0.48, depthWorld * 0.458]}>
-          <boxGeometry args={[widthWorld * 0.26, 0.02, 0.004]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.4} metalness={0.55} />
+        {/* Two notepads + pens at the ends */}
+        {[-0.42, 0.42].map((dz, iz) => (
+          <group key={`pad_${iz}`} position={[0, 0.512, depthWorld * dz]}>
+            <mesh>
+              <boxGeometry args={[0.09, 0.003, 0.06]} />
+              <meshStandardMaterial color="#f8fafc" roughness={0.8} metalness={0.02} />
+            </mesh>
+            <mesh position={[0.045, 0.004, 0]}>
+              <boxGeometry args={[0.002, 0.004, 0.058]} />
+              <meshStandardMaterial color="#1e40af" roughness={0.5} />
+            </mesh>
+            <mesh position={[0.02, 0.006, -0.015]} rotation={[0, 0, -0.3]}>
+              <cylinderGeometry args={[0.0035, 0.0035, 0.06, 10]} />
+              <meshStandardMaterial color="#1f2937" roughness={0.4} metalness={0.3} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Subtle brand plate (front) */}
+        <mesh position={[0, 0.49, depthWorld * 0.47]}>
+          <boxGeometry args={[widthWorld * 0.22, 0.018, 0.004]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.3} metalness={0.75} />
+        </mesh>
+        <mesh position={[0, 0.498, depthWorld * 0.473]}>
+          <boxGeometry args={[widthWorld * 0.14, 0.006, 0.001]} />
+          <meshStandardMaterial color="#cbd5e1" roughness={0.25} metalness={0.85} emissive="#cbd5e1" emissiveIntensity={0.08} />
         </mesh>
       </group>
     </group>

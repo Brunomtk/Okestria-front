@@ -58,9 +58,9 @@ export const FURNITURE_GLB: Record<string, string> = {
 };
 
 export const FURNITURE_SCALE: Record<string, [number, number, number]> = {
-  desk_cubicle: [1.5, 1.5, 1.5],
+  desk_cubicle: [1.65, 1.55, 1.55],
   executive_desk: [1.8, 1.8, 1.8],
-  chair: [1.2, 1.2, 1.2],
+  chair: [1.35, 1.4, 1.35],
   round_table: [3.2, 3.2, 3.2],
   couch: [1.8, 1.8, 1.8],
   couch_v: [1.4, 1.4, 1.4],
@@ -107,15 +107,15 @@ export const FURNITURE_Y_OFFSET: Record<string, number> = {
 };
 
 export const FURNITURE_TINT: Record<string, string | null> = {
-  desk_cubicle: "#8b5e32",
-  executive_desk: "#6b3c1a",
-  chair: "#4a5568",
+  desk_cubicle: "#5a3820",
+  executive_desk: "#4a2a14",
+  chair: "#1f2937",
   round_table: "#9a6332",
   couch: "#3d5575",
   couch_v: "#5a4870",
   bookshelf: "#5c3520",
   beanbag: null,
-  computer: "#363c58",
+  computer: "#0f172a",
   pingpong: "#2d6048",
   table_rect: "#7a5028",
   coffee_machine: "#2d2d38",
