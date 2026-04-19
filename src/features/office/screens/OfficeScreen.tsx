@@ -1,6 +1,6 @@
 "use client";
 
-import SquadChatPanel from "../components/SquadChatPanel";
+import { SquadChatPanel } from "../components/SquadChatPanel";
 
 
 import {
