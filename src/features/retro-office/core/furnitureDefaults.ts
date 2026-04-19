@@ -261,37 +261,63 @@ const PREVIOUS_QA_LAB_ITEMS: FurnitureSeed[] = [
 ];
 
 const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
-  // === GYM WALLS - Only front wall with door ===
-  // Front wall (left side) - above door
+  // === GYM WALLS ===
   { type: "wall", x: GYM_ROOM_X, y: EAST_WING_ROOM_TOP_Y, w: WALL_THICKNESS, h: GYM_TOP_WALL_HEIGHT },
-  // Door on front wall (facing: 90 for vertical wall)
   createVerticalWallDoor(GYM_ROOM_X, EAST_WING_DOOR_Y),
-  // Front wall - below door
   { type: "wall", x: GYM_ROOM_X, y: GYM_DOOR_BOTTOM_Y, w: WALL_THICKNESS, h: GYM_BOTTOM_WALL_HEIGHT },
-  // Divider wall between Gym and QA (bottom of gym = top of QA)
   { type: "wall", x: GYM_ROOM_X, y: GYM_ROOM_BOTTOM_Y - WALL_THICKNESS, w: GYM_ROOM_WIDTH, h: WALL_THICKNESS },
-  
-  // === GYM EQUIPMENT - Spread across the room ===
-  // Row 1 - Cardio (near top)
-  { type: "treadmill", x: GYM_ROOM_X + 60, y: EAST_WING_ROOM_TOP_Y + 50, facing: 90 },
-  { type: "treadmill", x: GYM_ROOM_X + 160, y: EAST_WING_ROOM_TOP_Y + 50, facing: 90 },
-  { type: "exercise_bike", x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 50, facing: 90 },
-  { type: "rowing_machine", x: GYM_ROOM_X + 360, y: EAST_WING_ROOM_TOP_Y + 50, facing: 90 },
-  { type: "rowing_machine", x: GYM_ROOM_X + 460, y: EAST_WING_ROOM_TOP_Y + 50, facing: 90 },
-  
-  // Row 2 - Weights (middle)
-  { type: "weight_bench", x: GYM_ROOM_X + 60, y: EAST_WING_ROOM_TOP_Y + 150, facing: 90 },
-  { type: "weight_bench", x: GYM_ROOM_X + 160, y: EAST_WING_ROOM_TOP_Y + 150, facing: 90 },
-  { type: "dumbbell_rack", x: GYM_ROOM_X + 280, y: EAST_WING_ROOM_TOP_Y + 150, facing: 180 },
-  { type: "kettlebell_rack", x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 150, facing: 180 },
-  { type: "punching_bag", x: GYM_ROOM_X + 500, y: EAST_WING_ROOM_TOP_Y + 100, facing: 0 },
-  { type: "punching_bag", x: GYM_ROOM_X + 600, y: EAST_WING_ROOM_TOP_Y + 100, facing: 0 },
-  
-  // Row 3 - Flexibility (bottom)
-  { type: "yoga_mat", x: GYM_ROOM_X + 60, y: EAST_WING_ROOM_TOP_Y + 250, facing: 0, color: "#0f766e" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 160, y: EAST_WING_ROOM_TOP_Y + 250, facing: 0, color: "#7c3aed" },
-  { type: "yoga_mat", x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 250, facing: 0, color: "#0891b2" },
-  
+
+  // === ROW 1 — CARDIO LINE (top, y≈25–65) ===
+  { type: "treadmill",      x: GYM_ROOM_X + 40,  y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
+  { type: "treadmill",      x: GYM_ROOM_X + 125, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
+  { type: "treadmill",      x: GYM_ROOM_X + 210, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
+  { type: "exercise_bike",  x: GYM_ROOM_X + 305, y: EAST_WING_ROOM_TOP_Y + 20, facing: 90 },
+  { type: "exercise_bike",  x: GYM_ROOM_X + 375, y: EAST_WING_ROOM_TOP_Y + 20, facing: 90 },
+  { type: "rowing_machine", x: GYM_ROOM_X + 460, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
+  { type: "rowing_machine", x: GYM_ROOM_X + 555, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
+
+  // Corner plant + wall speaker near door
+  { type: "speaker", x: GYM_ROOM_X + 20,  y: EAST_WING_ROOM_TOP_Y + 6 },
+  { type: "clock",   x: GYM_ROOM_X + 340, y: EAST_WING_ROOM_TOP_Y + 4 },
+  { type: "speaker", x: GYM_ROOM_X + 680, y: EAST_WING_ROOM_TOP_Y + 6 },
+
+  // === ROW 2 — FREE WEIGHTS (middle, y≈110–160) ===
+  { type: "weight_bench",   x: GYM_ROOM_X + 40,  y: EAST_WING_ROOM_TOP_Y + 120, facing: 90 },
+  { type: "weight_bench",   x: GYM_ROOM_X + 140, y: EAST_WING_ROOM_TOP_Y + 120, facing: 90 },
+  { type: "dumbbell_rack",  x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 130, facing: 180 },
+  { type: "dumbbell_rack",  x: GYM_ROOM_X + 345, y: EAST_WING_ROOM_TOP_Y + 130, facing: 180 },
+  { type: "kettlebell_rack",x: GYM_ROOM_X + 440, y: EAST_WING_ROOM_TOP_Y + 135, facing: 180 },
+  { type: "punching_bag",   x: GYM_ROOM_X + 530, y: EAST_WING_ROOM_TOP_Y + 110, facing: 0 },
+  { type: "punching_bag",   x: GYM_ROOM_X + 610, y: EAST_WING_ROOM_TOP_Y + 110, facing: 0 },
+  { type: "punching_bag",   x: GYM_ROOM_X + 680, y: EAST_WING_ROOM_TOP_Y + 110, facing: 0 },
+
+  // === ROW 3 — STRETCHING / YOGA (y≈210–260) ===
+  { type: "yoga_mat", x: GYM_ROOM_X + 40,  y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#0f766e" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 125, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#7c3aed" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 210, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#0891b2" },
+  { type: "yoga_mat", x: GYM_ROOM_X + 295, y: EAST_WING_ROOM_TOP_Y + 215, facing: 0, color: "#dc2626" },
+
+  // Secondary kettlebells + punching bag facing yoga zone
+  { type: "kettlebell_rack", x: GYM_ROOM_X + 400, y: EAST_WING_ROOM_TOP_Y + 225, facing: 180 },
+  { type: "dumbbell_rack",   x: GYM_ROOM_X + 490, y: EAST_WING_ROOM_TOP_Y + 225, facing: 180 },
+  { type: "weight_bench",    x: GYM_ROOM_X + 590, y: EAST_WING_ROOM_TOP_Y + 215, facing: 90 },
+
+  // === ROW 4 — AMENITIES (bottom, y≈290–340) ===
+  { type: "water_cooler", x: GYM_ROOM_X + 20,  y: EAST_WING_ROOM_TOP_Y + 300 },
+  { type: "bench_seat",   x: GYM_ROOM_X + 60,  y: EAST_WING_ROOM_TOP_Y + 315 },
+  { type: "first_aid",    x: GYM_ROOM_X + 160, y: EAST_WING_ROOM_TOP_Y + 310 },
+  { type: "locker",       x: GYM_ROOM_X + 200, y: EAST_WING_ROOM_TOP_Y + 310 },
+  { type: "locker",       x: GYM_ROOM_X + 250, y: EAST_WING_ROOM_TOP_Y + 310 },
+  { type: "locker",       x: GYM_ROOM_X + 300, y: EAST_WING_ROOM_TOP_Y + 310 },
+  { type: "locker",       x: GYM_ROOM_X + 350, y: EAST_WING_ROOM_TOP_Y + 310 },
+  { type: "bench_seat",   x: GYM_ROOM_X + 440, y: EAST_WING_ROOM_TOP_Y + 315 },
+  { type: "trash",        x: GYM_ROOM_X + 540, y: EAST_WING_ROOM_TOP_Y + 316 },
+
+  // === PLANTS & AMBIENT DECOR ===
+  { type: "plant", x: GYM_ROOM_X + 20,  y: EAST_WING_ROOM_TOP_Y + 75 },
+  { type: "plant", x: GYM_ROOM_X + 20,  y: EAST_WING_ROOM_TOP_Y + 200 },
+  { type: "plant", x: GYM_ROOM_X + 680, y: EAST_WING_ROOM_TOP_Y + 210 },
+  { type: "plant", x: GYM_ROOM_X + 680, y: EAST_WING_ROOM_TOP_Y + 305 },
 ];
 
 const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [

@@ -1298,130 +1298,252 @@ export function TreadmillModel({
       }}
     >
       <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* Rubber floor mat */}
+        <mesh position={[0, 0.004, 0]} receiveShadow>
+          <boxGeometry args={[widthWorld, 0.008, depthWorld]} />
+          <meshStandardMaterial color={RUBBER_BLACK} roughness={0.98} metalness={0.02} />
+        </mesh>
+
         {/* Rubber feet */}
         {([-0.44, 0.44] as const).map((fx) =>
           ([-0.42, 0.42] as const).map((fz) => (
-            <mesh key={`${fx}_${fz}`} position={[widthWorld * fx, 0.03, depthWorld * fz]}>
+            <mesh key={`${fx}_${fz}`} position={[widthWorld * fx, 0.04, depthWorld * fz]} castShadow>
               <cylinderGeometry args={[0.06, 0.07, 0.06, 18]} />
               <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.02} />
             </mesh>
           ))
         )}
 
-        {/* Base platform (dark chassis) */}
+        {/* Base chassis (dark, with slight bevel) */}
         <mesh position={[0, 0.1, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld * 0.98, 0.18, depthWorld * 0.98]} />
+          <boxGeometry args={[widthWorld * 0.98, 0.16, depthWorld * 0.98]} />
           <meshStandardMaterial
             color={GUNMETAL}
             roughness={0.62}
-            metalness={0.35}
+            metalness={0.4}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
+        {/* Accent stripe on chassis side */}
+        <mesh position={[0, 0.15, -depthWorld * 0.495]}>
+          <boxGeometry args={[widthWorld * 0.7, 0.02, 0.001]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.6} />
+        </mesh>
+        <mesh position={[0, 0.15, depthWorld * 0.495]}>
+          <boxGeometry args={[widthWorld * 0.7, 0.02, 0.001]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.6} />
+        </mesh>
 
         {/* Aluminum side rails (raised edges) */}
         <mesh position={[0, 0.24, -depthWorld * 0.42]} castShadow>
-          <boxGeometry args={[widthWorld * 0.94, 0.08, depthWorld * 0.08]} />
-          <meshStandardMaterial color={STEEL} roughness={0.32} metalness={0.75} />
+          <boxGeometry args={[widthWorld * 0.94, 0.06, depthWorld * 0.08]} />
+          <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.8} />
         </mesh>
         <mesh position={[0, 0.24, depthWorld * 0.42]} castShadow>
-          <boxGeometry args={[widthWorld * 0.94, 0.08, depthWorld * 0.08]} />
-          <meshStandardMaterial color={STEEL} roughness={0.32} metalness={0.75} />
+          <boxGeometry args={[widthWorld * 0.94, 0.06, depthWorld * 0.08]} />
+          <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.8} />
         </mesh>
 
         {/* Running belt (dark matte strip) */}
         <mesh position={[0, 0.22, 0]} receiveShadow>
-          <boxGeometry args={[widthWorld * 0.78, 0.03, depthWorld * 0.72]} />
+          <boxGeometry args={[widthWorld * 0.78, 0.025, depthWorld * 0.72]} />
           <meshStandardMaterial color="#050709" roughness={0.95} metalness={0.03} />
         </mesh>
-        {/* Belt tread stripes */}
-        {Array.from({ length: 9 }).map((_, i) => (
+        {/* Belt tread stripes (tighter spacing, more visible) */}
+        {Array.from({ length: 14 }).map((_, i) => (
           <mesh
             key={`tread_${i}`}
-            position={[0, 0.238, -depthWorld * 0.3 + (i * depthWorld * 0.6) / 8]}
+            position={[0, 0.236, -depthWorld * 0.32 + (i * depthWorld * 0.64) / 13]}
           >
-            <boxGeometry args={[widthWorld * 0.76, 0.002, 0.015]} />
-            <meshStandardMaterial color="#1f2937" roughness={0.85} metalness={0.05} />
+            <boxGeometry args={[widthWorld * 0.74, 0.001, 0.012]} />
+            <meshStandardMaterial color="#1a202c" roughness={0.85} metalness={0.05} />
+          </mesh>
+        ))}
+        {/* Center brand stripe on belt */}
+        <mesh position={[0, 0.237, depthWorld * 0.25]}>
+          <boxGeometry args={[widthWorld * 0.1, 0.001, 0.04]} />
+          <meshStandardMaterial color={CHROME} roughness={0.6} metalness={0.5} />
+        </mesh>
+
+        {/* Front motor cover (angled hood) */}
+        <mesh position={[0, 0.3, depthWorld * 0.42]} rotation={[-0.2, 0, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.84, 0.22, depthWorld * 0.15]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.35} metalness={0.6} />
+        </mesh>
+        {/* Motor cover chrome band */}
+        <mesh position={[0, 0.39, depthWorld * 0.46]} rotation={[-0.2, 0, 0]}>
+          <boxGeometry args={[widthWorld * 0.78, 0.03, 0.02]} />
+          <meshStandardMaterial color={CHROME} roughness={0.2} metalness={0.92} />
+        </mesh>
+        {/* Brand decal on motor cover */}
+        <mesh position={[0, 0.32, depthWorld * 0.5]} rotation={[-0.2, 0, 0]}>
+          <planeGeometry args={[widthWorld * 0.26, 0.04]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.7} toneMapped={false} />
+        </mesh>
+
+        {/* Upright supports (tilted forward for ergonomics) */}
+        {([-0.3, 0.3] as const).map((xSide, i) => (
+          <mesh
+            key={`upright_${i}`}
+            position={[widthWorld * xSide, 0.86, depthWorld * 0.38]}
+            rotation={[0.08, 0, 0]}
+            castShadow
+          >
+            <boxGeometry args={[0.08, 1.24, 0.08]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.48} metalness={0.5} />
           </mesh>
         ))}
 
-        {/* Motor cover (front hood) */}
-        <mesh position={[0, 0.28, depthWorld * 0.42]} castShadow>
-          <boxGeometry args={[widthWorld * 0.84, 0.18, depthWorld * 0.12]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.4} metalness={0.55} />
-        </mesh>
-        <mesh position={[0, 0.37, depthWorld * 0.44]} castShadow>
-          <boxGeometry args={[widthWorld * 0.64, 0.04, depthWorld * 0.06]} />
-          <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.85} />
+        {/* Cross brace between uprights (structural) */}
+        <mesh position={[0, 0.5, depthWorld * 0.4]} castShadow>
+          <boxGeometry args={[widthWorld * 0.62, 0.04, 0.06]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.48} metalness={0.5} />
         </mesh>
 
-        {/* Upright supports */}
-        <mesh position={[-widthWorld * 0.3, 0.8, depthWorld * 0.4]} castShadow>
-          <boxGeometry args={[0.07, 1.1, 0.07]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.45} />
+        {/* Main console panel (tilted, dark bezel) */}
+        <mesh position={[0, 1.42, depthWorld * 0.34]} rotation={[-0.28, 0, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.82, 0.4, 0.06]} />
+          <meshStandardMaterial color="#0b1220" roughness={0.38} metalness={0.55} />
         </mesh>
-        <mesh position={[widthWorld * 0.3, 0.8, depthWorld * 0.4]} castShadow>
-          <boxGeometry args={[0.07, 1.1, 0.07]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.45} />
+        {/* Console chrome rim */}
+        <mesh position={[0, 1.42, depthWorld * 0.32]} rotation={[-0.28, 0, 0]}>
+          <boxGeometry args={[widthWorld * 0.84, 0.42, 0.005]} />
+          <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.9} />
+        </mesh>
+        {/* Main LCD display */}
+        <mesh position={[0, 1.5, depthWorld * 0.305]} rotation={[-0.28, 0, 0]}>
+          <planeGeometry args={[widthWorld * 0.52, 0.2]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={1.8} toneMapped={false} />
+        </mesh>
+        {/* Display inner metric labels (dark bars simulating digits) */}
+        {([-0.18, -0.06, 0.06, 0.18] as const).map((lx, i) => (
+          <mesh key={`metric_${i}`} position={[widthWorld * lx, 1.5, depthWorld * 0.295]} rotation={[-0.28, 0, 0]}>
+            <planeGeometry args={[widthWorld * 0.08, 0.06]} />
+            <meshStandardMaterial color="#0f172a" opacity={0.55} transparent />
+          </mesh>
+        ))}
+        {/* Heart-rate indicator (red pulse dot) */}
+        <mesh position={[widthWorld * 0.28, 1.5, depthWorld * 0.298]} rotation={[-0.28, 0, 0]}>
+          <circleGeometry args={[0.022, 20]} />
+          <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.2} toneMapped={false} />
         </mesh>
 
-        {/* Console panel (tilted toward runner) */}
-        <mesh position={[0, 1.4, depthWorld * 0.38]} rotation={[-0.22, 0, 0]} castShadow>
-          <boxGeometry args={[widthWorld * 0.74, 0.34, 0.08]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.4} metalness={0.5} />
-        </mesh>
-        {/* LCD display */}
-        <mesh position={[0, 1.44, depthWorld * 0.34]} rotation={[-0.22, 0, 0]}>
-          <planeGeometry args={[widthWorld * 0.48, 0.16]} />
-          <meshStandardMaterial
-            color={LED_CYAN}
-            emissive={LED_CYAN}
-            emissiveIntensity={1.6}
-            toneMapped={false}
-          />
-        </mesh>
-        {/* Console button row */}
-        {([-0.22, -0.08, 0.08, 0.22] as const).map((bx, i) => (
+        {/* Speed buttons (top row — amber) */}
+        {([-0.22, -0.11, 0.11, 0.22] as const).map((bx, i) => (
           <mesh
-            key={`btn_${i}`}
-            position={[widthWorld * bx, 1.3, depthWorld * 0.42]}
-            rotation={[-0.22, 0, 0]}
+            key={`speed_btn_${i}`}
+            position={[widthWorld * bx, 1.36, depthWorld * 0.362]}
+            rotation={[-0.28, 0, 0]}
           >
-            <cylinderGeometry args={[0.024, 0.024, 0.02, 16]} />
+            <cylinderGeometry args={[0.022, 0.022, 0.018, 16]} />
             <meshStandardMaterial
-              color={i % 2 === 0 ? ACCENT_AMBER : CHROME}
-              emissive={i % 2 === 0 ? ACCENT_AMBER : "#000000"}
-              emissiveIntensity={i % 2 === 0 ? 0.35 : 0}
+              color={ACCENT_AMBER}
+              emissive={ACCENT_AMBER}
+              emissiveIntensity={0.4}
               metalness={0.7}
               roughness={0.25}
             />
           </mesh>
         ))}
+        {/* Incline buttons (bottom row — chrome) */}
+        {([-0.22, -0.11, 0.11, 0.22] as const).map((bx, i) => (
+          <mesh
+            key={`incl_btn_${i}`}
+            position={[widthWorld * bx, 1.28, depthWorld * 0.382]}
+            rotation={[-0.28, 0, 0]}
+          >
+            <cylinderGeometry args={[0.02, 0.02, 0.016, 16]} />
+            <meshStandardMaterial color={CHROME} metalness={0.9} roughness={0.22} />
+          </mesh>
+        ))}
+        {/* Big START/STOP buttons flanking the console */}
+        <mesh position={[-widthWorld * 0.34, 1.32, depthWorld * 0.372]} rotation={[-0.28, 0, 0]}>
+          <cylinderGeometry args={[0.042, 0.042, 0.022, 20]} />
+          <meshStandardMaterial color="#16a34a" emissive="#16a34a" emissiveIntensity={0.7} metalness={0.5} roughness={0.3} />
+        </mesh>
+        <mesh position={[widthWorld * 0.34, 1.32, depthWorld * 0.372]} rotation={[-0.28, 0, 0]}>
+          <cylinderGeometry args={[0.042, 0.042, 0.022, 20]} />
+          <meshStandardMaterial color="#dc2626" emissive="#dc2626" emissiveIntensity={0.7} metalness={0.5} roughness={0.3} />
+        </mesh>
 
-        {/* Side handrails with foam grip */}
-        <mesh position={[-widthWorld * 0.3, 0.9, 0]} castShadow>
-          <boxGeometry args={[0.06, 0.06, depthWorld * 0.7]} />
-          <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.72} />
-        </mesh>
-        <mesh position={[widthWorld * 0.3, 0.9, 0]} castShadow>
-          <boxGeometry args={[0.06, 0.06, depthWorld * 0.7]} />
-          <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.72} />
-        </mesh>
-        <mesh position={[-widthWorld * 0.3, 0.9, depthWorld * 0.05]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.05, 0.05, depthWorld * 0.42, 14]} />
-          <meshStandardMaterial color={RUBBER_BLACK} roughness={0.9} metalness={0.05} />
-        </mesh>
-        <mesh position={[widthWorld * 0.3, 0.9, depthWorld * 0.05]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.05, 0.05, depthWorld * 0.42, 14]} />
-          <meshStandardMaterial color={RUBBER_BLACK} roughness={0.9} metalness={0.05} />
+        {/* Tablet/phone holder lip above display */}
+        <mesh position={[0, 1.62, depthWorld * 0.3]} rotation={[-0.28, 0, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.4, 0.02, 0.06]} />
+          <meshStandardMaterial color="#0b1220" roughness={0.4} metalness={0.5} />
         </mesh>
 
-        {/* Emergency stop cord (red) */}
-        <mesh position={[widthWorld * 0.18, 1.18, depthWorld * 0.4]}>
-          <sphereGeometry args={[0.04, 14, 14]} />
-          <meshStandardMaterial color="#dc2626" emissive="#dc2626" emissiveIntensity={0.4} roughness={0.35} />
+        {/* Cup holders (two chrome rings on the front rail) */}
+        {([-0.24, 0.24] as const).map((bx, i) => (
+          <group key={`cup_${i}`} position={[widthWorld * bx, 1.14, depthWorld * 0.38]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.05, 0.008, 8, 20]} />
+              <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.9} />
+            </mesh>
+          </group>
+        ))}
+        {/* Water bottle in one holder */}
+        <mesh position={[widthWorld * 0.24, 1.2, depthWorld * 0.38]} castShadow>
+          <cylinderGeometry args={[0.038, 0.042, 0.14, 18]} />
+          <meshStandardMaterial color="#38bdf8" transparent opacity={0.65} roughness={0.2} metalness={0.1} />
         </mesh>
+        <mesh position={[widthWorld * 0.24, 1.28, depthWorld * 0.38]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.022, 14]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.5} metalness={0.3} />
+        </mesh>
+
+        {/* Safety key + tether */}
+        <mesh position={[widthWorld * 0.16, 1.34, depthWorld * 0.4]} rotation={[-0.28, 0, 0]}>
+          <boxGeometry args={[0.04, 0.06, 0.018]} />
+          <meshStandardMaterial color={ACCENT_AMBER} emissive={ACCENT_AMBER} emissiveIntensity={0.3} roughness={0.4} />
+        </mesh>
+        {/* Red emergency stop cord hanging */}
+        <mesh position={[widthWorld * 0.16, 1.18, depthWorld * 0.42]}>
+          <cylinderGeometry args={[0.004, 0.004, 0.22, 8]} />
+          <meshStandardMaterial color="#dc2626" roughness={0.7} metalness={0.1} />
+        </mesh>
+
+        {/* Side handrails with foam grip (tubular, curved look) */}
+        {([-0.3, 0.3] as const).map((xSide, i) => (
+          <group key={`rail_${i}`}>
+            {/* Vertical support piece */}
+            <mesh position={[widthWorld * xSide, 1.05, depthWorld * 0.38]} castShadow>
+              <boxGeometry args={[0.05, 0.12, 0.05]} />
+              <meshStandardMaterial color={STEEL} roughness={0.3} metalness={0.75} />
+            </mesh>
+            {/* Horizontal foam handrail */}
+            <mesh
+              position={[widthWorld * xSide, 0.98, depthWorld * 0.08]}
+              rotation={[Math.PI / 2, 0, 0]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.048, 0.048, depthWorld * 0.56, 16]} />
+              <meshStandardMaterial color={RUBBER_BLACK} roughness={0.88} metalness={0.08} />
+            </mesh>
+            {/* Grip band (amber) */}
+            <mesh position={[widthWorld * xSide, 0.98, depthWorld * 0.2]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.05, 0.05, 0.04, 16]} />
+              <meshStandardMaterial color={ACCENT_AMBER} roughness={0.6} metalness={0.1} />
+            </mesh>
+            {/* Pulse-sensor chrome band */}
+            <mesh position={[widthWorld * xSide, 0.98, depthWorld * -0.15]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.052, 0.052, 0.05, 16]} />
+              <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.9} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Rear cooling fan grille (back of chassis) */}
+        <mesh position={[0, 0.16, -depthWorld * 0.48]}>
+          <boxGeometry args={[widthWorld * 0.4, 0.1, 0.005]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.8} metalness={0.1} />
+        </mesh>
+        {([-0.15, -0.05, 0.05, 0.15] as const).map((vx, i) => (
+          <mesh key={`vent_${i}`} position={[widthWorld * vx, 0.16, -depthWorld * 0.478]}>
+            <boxGeometry args={[0.005, 0.08, 0.002]} />
+            <meshStandardMaterial color={STEEL} roughness={0.4} metalness={0.6} />
+          </mesh>
+        ))}
       </group>
     </group>
   );
@@ -1473,154 +1595,237 @@ export function WeightBenchModel({
         {/* Rubber flooring under bench */}
         <mesh position={[0, 0.005, 0]} receiveShadow>
           <boxGeometry args={[widthWorld * 0.98, 0.01, depthWorld * 0.98]} />
-          <meshStandardMaterial color="#0a0d12" roughness={0.98} metalness={0.02} />
+          <meshStandardMaterial color={RUBBER_BLACK} roughness={0.98} metalness={0.02} />
         </mesh>
 
-        {/* Horizontal seat pad (padded vinyl) */}
-        <mesh position={[-widthWorld * 0.12, 0.42, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld * 0.42, 0.1, depthWorld * 0.34]} />
+        {/* === FRAME (H-style steel skeleton) === */}
+        {/* Foot-end floor stabilizer (horizontal bar perpendicular to bench length) */}
+        <mesh position={[-widthWorld * 0.42, 0.05, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.08, depthWorld * 0.72]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Head-end floor stabilizer (under uprights) */}
+        <mesh position={[widthWorld * 0.34, 0.05, 0]} castShadow>
+          <boxGeometry args={[0.1, 0.08, depthWorld * 0.88]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Rubber foot caps on stabilizer ends */}
+        {([
+          [-0.42, -0.34],
+          [-0.42, 0.34],
+          [0.34, -0.42],
+          [0.34, 0.42],
+        ] as const).map(([fx, fz], i) => (
+          <mesh key={`foot_${i}`} position={[widthWorld * fx, 0.015, depthWorld * fz]}>
+            <boxGeometry args={[0.1, 0.03, 0.1]} />
+            <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.03} />
+          </mesh>
+        ))}
+        {/* Central spine connecting both feet (hidden under seat) */}
+        <mesh position={[-widthWorld * 0.05, 0.1, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.8, 0.06, 0.1]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+
+        {/* Vertical post supporting the seat pad */}
+        <mesh position={[-widthWorld * 0.22, 0.27, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.34, 0.1]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Diagonal brace for back pad */}
+        <mesh position={[widthWorld * 0.04, 0.32, 0]} rotation={[0, 0, 0.5]} castShadow>
+          <boxGeometry args={[0.08, 0.52, 0.08]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+
+        {/* === PADS === */}
+        {/* Seat pad (horizontal) */}
+        <mesh position={[-widthWorld * 0.22, 0.46, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.42, 0.09, depthWorld * 0.36]} />
           <meshStandardMaterial
             color={LEATHER_BLACK}
-            roughness={0.42}
-            metalness={0.1}
+            roughness={0.4}
+            metalness={0.08}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {/* Center stitch accent */}
-        <mesh position={[-widthWorld * 0.12, 0.48, 0]}>
-          <boxGeometry args={[widthWorld * 0.4, 0.002, 0.01]} />
+        {/* Seat pad top highlight */}
+        <mesh position={[-widthWorld * 0.22, 0.505, 0]}>
+          <boxGeometry args={[widthWorld * 0.4, 0.001, depthWorld * 0.34]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.6} metalness={0.1} />
+        </mesh>
+        {/* Seat stitch accent (red racing stripe along length) */}
+        <mesh position={[-widthWorld * 0.22, 0.506, 0]}>
+          <boxGeometry args={[widthWorld * 0.38, 0.001, 0.01]} />
           <meshStandardMaterial color="#dc2626" roughness={0.6} metalness={0.1} />
         </mesh>
 
-        {/* Inclined back pad */}
-        <mesh position={[widthWorld * 0.2, 0.58, 0]} rotation={[0, 0, -0.34]} castShadow>
-          <boxGeometry args={[widthWorld * 0.3, 0.1, depthWorld * 0.34]} />
-          <meshStandardMaterial color={LEATHER_BLACK} roughness={0.42} metalness={0.1} />
+        {/* Back pad (inclined — rises toward uprights) */}
+        <mesh position={[widthWorld * 0.08, 0.56, 0]} rotation={[0, 0, 0.32]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.36, 0.09, depthWorld * 0.36]} />
+          <meshStandardMaterial color={LEATHER_BLACK} roughness={0.4} metalness={0.08} />
+        </mesh>
+        {/* Back pad stitch stripe */}
+        <mesh position={[widthWorld * 0.08, 0.605, 0]} rotation={[0, 0, 0.32]}>
+          <boxGeometry args={[widthWorld * 0.34, 0.001, 0.01]} />
+          <meshStandardMaterial color="#dc2626" roughness={0.6} metalness={0.1} />
         </mesh>
 
-        {/* Front support legs (X frame) */}
-        <mesh position={[-widthWorld * 0.24, 0.2, 0]} castShadow>
-          <boxGeometry args={[0.06, 0.4, depthWorld * 0.44]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.42} metalness={0.55} />
-        </mesh>
-        {/* Floor brace front */}
-        <mesh position={[-widthWorld * 0.24, 0.04, 0]}>
-          <boxGeometry args={[widthWorld * 0.24, 0.05, depthWorld * 0.6]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.45} />
-        </mesh>
-        {/* Rear brace */}
-        <mesh position={[widthWorld * 0.1, 0.04, 0]}>
-          <boxGeometry args={[widthWorld * 0.22, 0.05, depthWorld * 0.6]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.45} />
-        </mesh>
-
-        {/* Barbell uprights (J-hook towers) */}
-        <mesh position={[widthWorld * 0.36, 0.78, -depthWorld * 0.32]} castShadow>
-          <boxGeometry args={[0.07, 1.1, 0.07]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.48} metalness={0.55} />
-        </mesh>
-        <mesh position={[widthWorld * 0.36, 0.78, depthWorld * 0.32]} castShadow>
-          <boxGeometry args={[0.07, 1.1, 0.07]} />
-          <meshStandardMaterial color={GUNMETAL} roughness={0.48} metalness={0.55} />
-        </mesh>
-
-        {/* J-cups (hooks for the bar) */}
-        <mesh position={[widthWorld * 0.36, 1.12, -depthWorld * 0.32]}>
-          <boxGeometry args={[0.14, 0.04, 0.14]} />
-          <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.88} />
-        </mesh>
-        <mesh position={[widthWorld * 0.36, 1.12, depthWorld * 0.32]}>
-          <boxGeometry args={[0.14, 0.04, 0.14]} />
-          <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.88} />
-        </mesh>
-
-        {/* Olympic barbell (the bar itself, chrome) */}
-        <mesh position={[widthWorld * 0.36, 1.18, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.028, 0.028, depthWorld * 1.1, 24]} />
-          <meshStandardMaterial color={CHROME} roughness={0.2} metalness={0.92} />
-        </mesh>
-        {/* Inner sleeve bushings */}
-        <mesh position={[widthWorld * 0.36, 1.18, -depthWorld * 0.46]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.04, 0.04, 0.05, 18]} />
-          <meshStandardMaterial color="#4b5563" roughness={0.4} metalness={0.6} />
-        </mesh>
-        <mesh position={[widthWorld * 0.36, 1.18, depthWorld * 0.46]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.04, 0.04, 0.05, 18]} />
-          <meshStandardMaterial color="#4b5563" roughness={0.4} metalness={0.6} />
-        </mesh>
-
-        {/* Weight plates – IPF colored (25kg red + 20kg blue on each side) */}
-        {([
-          { z: -0.42, r: 0.17, color: PLATE_COLORS.p20 }, // 20kg blue inner
-          { z: -0.5, r: 0.2, color: PLATE_COLORS.p25 }, // 25kg red outer
-          { z: 0.42, r: 0.17, color: PLATE_COLORS.p20 },
-          { z: 0.5, r: 0.2, color: PLATE_COLORS.p25 },
-        ] as const).map((p, i) => (
+        {/* === BARBELL RACK === */}
+        {/* Two tall uprights at the head end */}
+        {([-0.36, 0.36] as const).map((zSide, i) => (
           <mesh
-            key={`plate_${i}`}
-            position={[widthWorld * 0.36, 1.18, depthWorld * p.z]}
-            rotation={[Math.PI / 2, 0, 0]}
+            key={`upright_${i}`}
+            position={[widthWorld * 0.34, 0.7, depthWorld * zSide]}
             castShadow
           >
-            <cylinderGeometry args={[p.r, p.r, 0.05, 32]} />
-            <meshStandardMaterial color={p.color} roughness={0.55} metalness={0.15} />
+            <boxGeometry args={[0.08, 1.28, 0.08]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.45} metalness={0.6} />
           </mesh>
         ))}
-        {/* Plate hubs (center hole cap) */}
-        {([-0.5, 0.5] as const).map((pz, i) => (
+        {/* Top crossbar connecting uprights */}
+        <mesh position={[widthWorld * 0.34, 1.32, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.06, depthWorld * 0.8]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.45} metalness={0.6} />
+        </mesh>
+
+        {/* J-cups (U-shaped hooks on each upright) */}
+        {([-0.36, 0.36] as const).map((zSide, i) => (
+          <group key={`jcup_${i}`} position={[widthWorld * 0.34, 1.02, depthWorld * zSide]}>
+            {/* Cup base plate */}
+            <mesh>
+              <boxGeometry args={[0.14, 0.04, 0.08]} />
+              <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.9} />
+            </mesh>
+            {/* Upright wall of the cup (front side) */}
+            <mesh position={[-0.05, 0.04, 0]}>
+              <boxGeometry args={[0.02, 0.07, 0.08]} />
+              <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.9} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Olympic barbell (chrome, sitting in the J-cups) */}
+        <mesh position={[widthWorld * 0.29, 1.07, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.026, 0.026, depthWorld * 1.18, 24]} />
+          <meshStandardMaterial color={CHROME} roughness={0.2} metalness={0.92} />
+        </mesh>
+        {/* Inner sleeve (thicker end section) */}
+        {([-0.46, 0.46] as const).map((pz, i) => (
           <mesh
-            key={`hub_${i}`}
-            position={[widthWorld * 0.36, 1.18, depthWorld * pz]}
+            key={`sleeve_${i}`}
+            position={[widthWorld * 0.29, 1.07, depthWorld * pz]}
             rotation={[Math.PI / 2, 0, 0]}
           >
-            <cylinderGeometry args={[0.05, 0.05, 0.06, 18]} />
-            <meshStandardMaterial color="#0f172a" roughness={0.35} metalness={0.6} />
+            <cylinderGeometry args={[0.042, 0.042, 0.12, 20]} />
+            <meshStandardMaterial color="#4b5563" roughness={0.4} metalness={0.65} />
           </mesh>
         ))}
 
-        {/* Barbell knurl rings (grip texture hints) */}
-        {([-0.2, -0.1, 0.1, 0.2] as const).map((kz, i) => (
+        {/* Weight plates — IPF colors (25kg red outer + 20kg blue inner, both sides) */}
+        {([
+          { z: -0.44, r: 0.19, thick: 0.055, color: PLATE_COLORS.p20 },
+          { z: -0.52, r: 0.22, thick: 0.065, color: PLATE_COLORS.p25 },
+          { z: 0.44, r: 0.19, thick: 0.055, color: PLATE_COLORS.p20 },
+          { z: 0.52, r: 0.22, thick: 0.065, color: PLATE_COLORS.p25 },
+        ] as const).map((p, i) => (
+          <group key={`plate_${i}`}>
+            {/* Main disc */}
+            <mesh
+              position={[widthWorld * 0.29, 1.07, depthWorld * p.z]}
+              rotation={[Math.PI / 2, 0, 0]}
+              castShadow
+            >
+              <cylinderGeometry args={[p.r, p.r, p.thick, 36]} />
+              <meshStandardMaterial color={p.color} roughness={0.55} metalness={0.18} />
+            </mesh>
+            {/* Inner ring groove for realism */}
+            <mesh
+              position={[widthWorld * 0.29, 1.07, depthWorld * p.z]}
+              rotation={[Math.PI / 2, 0, 0]}
+            >
+              <torusGeometry args={[p.r * 0.6, 0.006, 8, 32]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.55} metalness={0.3} />
+            </mesh>
+            {/* Hub cap */}
+            <mesh
+              position={[widthWorld * 0.29, 1.07, depthWorld * p.z]}
+              rotation={[Math.PI / 2, 0, 0]}
+            >
+              <cylinderGeometry args={[0.05, 0.05, p.thick + 0.005, 18]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.35} metalness={0.6} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Knurl rings on barbell center (grip) */}
+        {([-0.22, -0.11, 0.11, 0.22] as const).map((kz, i) => (
           <mesh
             key={`knurl_${i}`}
-            position={[widthWorld * 0.36, 1.18, depthWorld * kz]}
+            position={[widthWorld * 0.29, 1.07, depthWorld * kz]}
             rotation={[Math.PI / 2, 0, 0]}
           >
-            <cylinderGeometry args={[0.032, 0.032, 0.06, 18]} />
-            <meshStandardMaterial color="#6b7280" roughness={0.85} metalness={0.5} />
+            <cylinderGeometry args={[0.03, 0.03, 0.06, 18]} />
+            <meshStandardMaterial color="#6b7280" roughness={0.9} metalness={0.55} />
           </mesh>
         ))}
 
-        {/* Safety collars (clips) */}
-        {([-0.36, 0.36] as const).map((cz, i) => (
+        {/* Safety collars (spring clips) */}
+        {([-0.38, 0.38] as const).map((cz, i) => (
           <mesh
             key={`clip_${i}`}
-            position={[widthWorld * 0.36, 1.18, depthWorld * cz]}
+            position={[widthWorld * 0.29, 1.07, depthWorld * cz]}
             rotation={[Math.PI / 2, 0, 0]}
           >
             <cylinderGeometry args={[0.05, 0.05, 0.04, 18]} />
-            <meshStandardMaterial color={PLATE_COLORS.p2} roughness={0.38} metalness={0.65} />
+            <meshStandardMaterial color="#111827" roughness={0.38} metalness={0.65} />
           </mesh>
         ))}
 
-        {/* Numerical safety peg rows on uprights */}
-        {([0.55, 0.75, 0.95] as const).map((yOff, i) =>
-          ([-0.32, 0.32] as const).map((zOff, j) => (
-            <mesh key={`peg_${i}_${j}`} position={[widthWorld * 0.36, yOff, depthWorld * zOff]}>
-              <boxGeometry args={[0.12, 0.02, 0.02]} />
-              <meshStandardMaterial color="#94a3b8" roughness={0.35} metalness={0.7} />
+        {/* Safety peg holes on uprights (ladder of notches) */}
+        {[0.55, 0.72, 0.88, 1.04, 1.2].map((yOff, i) =>
+          ([-0.36, 0.36] as const).map((zOff, j) => (
+            <mesh
+              key={`peg_${i}_${j}`}
+              position={[widthWorld * 0.34 + 0.05, yOff, depthWorld * zOff]}
+            >
+              <cylinderGeometry args={[0.012, 0.012, 0.06, 10]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.5} metalness={0.3} />
             </mesh>
-          ))
+          )),
         )}
 
-        {/* Extra plate on floor (warmup feel) */}
-        <mesh position={[-widthWorld * 0.42, 0.1, -depthWorld * 0.3]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-          <cylinderGeometry args={[0.19, 0.19, 0.05, 28]} />
+        {/* Brand badge on upright crossbar */}
+        <mesh position={[widthWorld * 0.34, 1.28, 0]}>
+          <boxGeometry args={[0.01, 0.04, 0.18]} />
+          <meshStandardMaterial color={ACCENT_AMBER} emissive={ACCENT_AMBER} emissiveIntensity={0.25} roughness={0.4} />
+        </mesh>
+
+        {/* === WARMUP PLATES ON FLOOR (at foot-end, stacked) === */}
+        {/* 15kg yellow stacked flat */}
+        <mesh position={[-widthWorld * 0.42, 0.12, -depthWorld * 0.28]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.18, 0.18, 0.05, 32]} />
           <meshStandardMaterial color={PLATE_COLORS.p15} roughness={0.55} metalness={0.15} />
         </mesh>
-        <mesh position={[-widthWorld * 0.42, 0.1, -depthWorld * 0.3]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.05, 0.05, 0.06, 18]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.35} metalness={0.6} />
+        {/* 10kg green on top */}
+        <mesh position={[-widthWorld * 0.42, 0.17, -depthWorld * 0.28]} rotation={[Math.PI / 2, 0, 0]} castShadow>
+          <cylinderGeometry args={[0.15, 0.15, 0.04, 32]} />
+          <meshStandardMaterial color={PLATE_COLORS.p10} roughness={0.55} metalness={0.15} />
+        </mesh>
+        {/* Leaning 5kg white plate */}
+        <mesh position={[-widthWorld * 0.4, 0.16, depthWorld * 0.3]} rotation={[0, 0, Math.PI / 2 - 0.3]} castShadow>
+          <cylinderGeometry args={[0.12, 0.12, 0.035, 32]} />
+          <meshStandardMaterial color={PLATE_COLORS.p5} roughness={0.55} metalness={0.15} />
+        </mesh>
+        {/* Water bottle under bench */}
+        <mesh position={[-widthWorld * 0.1, 0.13, -depthWorld * 0.4]} castShadow>
+          <cylinderGeometry args={[0.035, 0.045, 0.18, 16]} />
+          <meshStandardMaterial color="#38bdf8" transparent opacity={0.65} roughness={0.2} metalness={0.1} />
+        </mesh>
+        <mesh position={[-widthWorld * 0.1, 0.23, -depthWorld * 0.4]}>
+          <cylinderGeometry args={[0.028, 0.028, 0.03, 14]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.5} metalness={0.3} />
         </mesh>
       </group>
     </group>
