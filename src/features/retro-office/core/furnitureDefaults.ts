@@ -372,9 +372,6 @@ const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
 
 
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
-  // === PING PONG (top-left — replaced the old welcome round table) ===
-  { type: "pingpong", x: 40, y: 50, w: 108, h: 60 },
-
   // === TOP-CENTER: ATM ===
   { type: "atm", x: 330, y: 10, facing: 0 },
 
@@ -399,25 +396,29 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "chair", x: 803, y: 168, facing: 90 },
   { type: "chair", x: 947, y: 168, facing: 270 },
 
-  // === MEETING ROOM (left column, above server room — x=0..228 · y=340..560) ===
-  // Top wall (solid) seals the north edge; east wall closes the room with a door opening to the open office.
-  { type: "wall", x: 0, y: 340, w: 228, h: 8 },
-  { type: "wall", x: 220, y: 340, w: 8, h: 120 },
-  { type: "door", x: 204, y: 476, w: 40, h: 8, facing: 90 },
-  { type: "wall", x: 220, y: 500, w: 8, h: 60 },
-  // Rectangular conference table — oriented along the room's long (vertical) axis
-  { type: "conference_table", x: 44, y: 374, w: 140, h: 160 },
-  // 10 executive chairs — 3 north, 3 south, 2 east, 2 west
-  { type: "chair", x: 50,  y: 350, facing: 180 },
-  { type: "chair", x: 110, y: 350, facing: 180 },
-  { type: "chair", x: 170, y: 350, facing: 180 },
-  { type: "chair", x: 50,  y: 534, facing: 0 },
-  { type: "chair", x: 110, y: 534, facing: 0 },
-  { type: "chair", x: 170, y: 534, facing: 0 },
-  { type: "chair", x: 194, y: 380, facing: 270 },
-  { type: "chair", x: 194, y: 510, facing: 270 },
-  { type: "chair", x: 10,  y: 380, facing: 90 },
-  { type: "chair", x: 10,  y: 510, facing: 90 },
+  // === MEETING ROOM (full width band above server room — cx=0..228 · cy=0..560) ===
+  // South wall (cx=220) seals the room from the open office, with a centered door.
+  // North edge (cx=0) and west/east ends are implicit building edges / server wall shared.
+  { type: "wall", x: 220, y: 0, w: 8, h: 260 },
+  { type: "door", x: 204, y: 276, w: 40, h: 8, facing: 90 },
+  { type: "wall", x: 220, y: 300, w: 8, h: 260 },
+  // Long rectangular conference table — spans most of the room's long (y) axis
+  { type: "conference_table", x: 44, y: 80, w: 140, h: 400 },
+  // 14 executive chairs — 6 north side, 6 south side, 1 west end, 1 east end
+  { type: "chair", x: 18,  y: 110, facing: 90 },
+  { type: "chair", x: 18,  y: 180, facing: 90 },
+  { type: "chair", x: 18,  y: 250, facing: 90 },
+  { type: "chair", x: 18,  y: 320, facing: 90 },
+  { type: "chair", x: 18,  y: 390, facing: 90 },
+  { type: "chair", x: 18,  y: 460, facing: 90 },
+  { type: "chair", x: 210, y: 110, facing: 270 },
+  { type: "chair", x: 210, y: 180, facing: 270 },
+  { type: "chair", x: 210, y: 250, facing: 270 },
+  { type: "chair", x: 210, y: 320, facing: 270 },
+  { type: "chair", x: 210, y: 390, facing: 270 },
+  { type: "chair", x: 210, y: 460, facing: 270 },
+  { type: "chair", x: 114, y: 42,  facing: 180 },
+  { type: "chair", x: 114, y: 518, facing: 0 },
 
   // === OPEN-OFFICE DESKS — Row 1 (4 desks at y=290) ===
   { type: "desk_cubicle", x: 260, y: 290, id: "desk_0" },
@@ -694,8 +695,9 @@ export const ensureOfficeNoLamps = (items: FurnitureItem[]): FurnitureItem[] =>
 export const ensureOfficePingPongTable = (
   items: FurnitureItem[],
 ): FurnitureItem[] => {
-  if (items.some((item) => item.type === "pingpong")) return items;
-  return [...items, { ...DEFAULT_PINGPONG_TABLE, _uid: nextUid() }];
+  // Ping pong table was removed from the default office layout.
+  // Strip any legacy instances so existing sessions clean up on next load.
+  return items.filter((item) => item.type !== "pingpong");
 };
 
 export const ensureOfficeArtRoomRemoved = (
