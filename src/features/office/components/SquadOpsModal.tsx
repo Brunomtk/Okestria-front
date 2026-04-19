@@ -136,149 +136,147 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/78 p-3 backdrop-blur-sm md:p-4"
-      onClick={onClose}
-    >
-      <section
-        className="relative flex h-[min(92vh,980px)] w-full max-w-[1380px] min-h-0 flex-col overflow-hidden rounded-[32px] border border-cyan-500/15 bg-[radial-gradient(circle_at_top,_rgba(8,145,178,0.12),_transparent_38%),linear-gradient(180deg,_rgba(2,12,18,0.98),_rgba(1,7,10,0.98))] shadow-[0_40px_140px_rgba(0,0,0,0.62)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-cyan-400/10 bg-black/10 px-4 py-4 sm:px-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="font-mono text-[11px] uppercase tracking-[0.24em] text-cyan-200/85">Squad Ops</div>
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/60">
-                <span className="max-w-full truncate text-lg font-semibold text-white sm:text-[1.7rem]">{squad?.name ?? "Select a squad"}</span>
-                <span className="text-white/25">•</span>
-                <span>{squad?.members.length ?? 0} members</span>
-                <span className="text-white/25">•</span>
-                <span>{modeLabel(activeMode)}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={onRefresh}
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/75 transition hover:border-cyan-400/20 hover:bg-cyan-500/10 hover:text-white"
-              >
-                <RefreshCcw className={`h-4 w-4 ${loading || refreshingTask ? "animate-spin" : ""}`} />
-                Refresh
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/[0.08] hover:text-white"
-              >
-                Close
-              </button>
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/78 px-3 py-3 backdrop-blur-sm sm:px-5 sm:py-5">
+      <section className="flex h-[min(94vh,980px)] w-full max-w-[1560px] flex-col overflow-hidden rounded-[30px] border border-cyan-400/15 bg-[#03141b]/95 shadow-[0_30px_120px_rgba(0,0,0,0.58)]">
+        <header className="flex shrink-0 flex-wrap items-start justify-between gap-4 border-b border-cyan-400/10 px-5 py-5 sm:px-7">
+          <div className="min-w-0">
+            <div className="font-mono text-[11px] uppercase tracking-[0.28em] text-cyan-200/75">Squad Ops</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-2xl font-semibold text-white">
+              <span>{squad?.name ?? "Squad"}</span>
+              <span className="text-white/25">•</span>
+              <span className="text-lg font-medium text-white/70">{squad?.memberCount ?? 0} members</span>
+              <span className="text-white/25">•</span>
+              <span className="text-lg font-medium text-white/55">{activeMode}</span>
             </div>
           </div>
-        </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col overflow-hidden border-b border-cyan-400/10 bg-white/[0.02] lg:border-b-0 lg:border-r lg:border-cyan-400/10">
-            <div className={`border-b px-5 py-4 text-sm ${hooksConfigured ? "border-emerald-400/10 bg-emerald-500/10 text-emerald-100/90" : "border-amber-400/10 bg-amber-500/10 text-amber-100/90"}`}>
-              <div className="flex items-start gap-3">
-                {hooksConfigured ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />}
-                <div>{hooksMessage ?? "Runtime status unavailable."}</div>
-              </div>
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="inline-flex h-12 items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-5 font-mono text-[11px] uppercase tracking-[0.16em] text-white/80 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-12 items-center rounded-full border border-white/10 bg-white/[0.04] px-5 font-mono text-[11px] uppercase tracking-[0.16em] text-white/80 transition hover:bg-white/[0.08]"
+            >
+              Close
+            </button>
+          </div>
+        </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="space-y-5 p-5">
-                <div>
-                  <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">Selected squad</label>
-                  <select
-                    value={selectedSquadId ?? ""}
-                    onChange={(event) => onSelectSquad(event.target.value)}
-                    className="w-full rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30 focus:bg-white/[0.08]"
-                  >
-                    {squads.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="rounded-[26px] border border-cyan-500/15 bg-cyan-500/[0.05] p-4">
-                  <div className="flex items-center justify-between gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[340px_minmax(0,1fr)]">
+          <aside className="min-h-0 border-b border-cyan-400/10 lg:border-b-0 lg:border-r">
+            <div className="flex h-full min-h-0 flex-col overflow-hidden border-cyan-400/10 bg-black/10">
+              <div className="shrink-0 border-b border-cyan-400/10 p-5">
+                <div className="rounded-[24px] border border-emerald-400/15 bg-emerald-500/10 px-4 py-4 text-emerald-100/90">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
                     <div>
-                      <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">Squad mode</div>
-                      <div className="mt-1 text-xs leading-5 text-white/55">Dynamic switch for new tasks created in Squad Ops.</div>
+                      <div className="font-medium">OpenClaw hooks are configured.</div>
+                      <div className="mt-1 text-sm text-emerald-100/75">Dispatch and monitor squad runs from a simpler workspace.</div>
                     </div>
-                    {modeSaving ? <Loader2 className="h-4 w-4 animate-spin text-cyan-200" /> : null}
                   </div>
-                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {MODE_OPTIONS.map((option) => {
-                      const active = activeMode === option.value;
+                </div>
+              </div>
+
+              <div className="shrink-0 border-b border-cyan-400/10 p-5">
+                <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Selected squad</label>
+                <select
+                  value={selectedSquadId}
+                  onChange={(event) => onSelectSquad(event.target.value)}
+                  className="h-14 w-full rounded-[20px] border border-white/10 bg-white/[0.04] px-4 text-base text-white outline-none transition focus:border-cyan-400/30"
+                >
+                  {squads.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+
+                <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                  <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Squad mode</div>
+                  <div className="mt-2 text-sm text-white/60">Choose how new tasks created here should run.</div>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    {MODE_OPTIONS.map((mode) => {
+                      const active = activeMode === mode.value;
                       return (
                         <button
-                          key={option.value}
+                          key={mode.value}
                           type="button"
-                          onClick={() => void handleModeChange(option.value)}
-                          disabled={!squad || !onEditSquad || modeSaving}
-                          className={`rounded-[22px] border px-3 py-3 text-left transition ${
-                            active
-                              ? "border-cyan-400/40 bg-cyan-500/15 text-white"
-                              : "border-white/10 bg-white/[0.03] text-white/75 hover:border-cyan-400/20 hover:bg-cyan-500/10"
-                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                          disabled={modeSaving}
+                          onClick={() => handleModeChange(mode.value)}
+                          className={`rounded-[18px] border px-3 py-3 text-left transition ${active ? "border-cyan-400/30 bg-cyan-500/12 text-cyan-100" : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.05]"}`}
                         >
-                          <div className="flex items-center gap-2">
-                            {option.icon}
-                            <span className="text-xs font-semibold">{option.label}</span>
-                          </div>
-                          <div className="mt-1 text-[11px] leading-4 text-white/50">{option.hint}</div>
+                          <div className="text-sm font-semibold">{mode.title}</div>
+                          <div className="mt-1 text-xs leading-5 opacity-75">{mode.description}</div>
                         </button>
                       );
                     })}
                   </div>
-                  {modeError ? <div className="mt-2 text-[11px] text-red-300">{modeError}</div> : null}
                 </div>
+              </div>
 
-                <div className="rounded-[26px] border border-white/10 bg-white/[0.03] p-4">
-                  <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">New task</div>
-                  <div className="space-y-3">
-                    <input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Task title"
-                      className="w-full rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400/30 focus:bg-white/[0.08]"
-                    />
-                    <textarea
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      placeholder="Task instructions"
-                      className="min-h-[148px] w-full resize-none rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400/30 focus:bg-white/[0.08]"
-                    />
-                    <select
-                      value={preferredModel}
-                      onChange={(e) => setPreferredModel(e.target.value)}
-                      className="w-full rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition focus:border-cyan-400/30 focus:bg-white/[0.08]"
-                    >
-                      <option value="">Default model</option>
-                      {availableModels.map((model) => (
-                        <option key={model.id} value={model.id}>{model.name}</option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      disabled={createBusy || !title.trim() || !prompt.trim()}
-                      onClick={() => onCreateTask({ title: title.trim(), prompt: prompt.trim(), preferredModel: preferredModel || null })}
-                      className="w-full rounded-[22px] border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-cyan-100 transition hover:border-cyan-400/40 hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {createBusy ? "Creating task..." : "Create task"}
-                    </button>
+              <div className="shrink-0 border-b border-cyan-400/10 p-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">New task</div>
+                    <div className="mt-1 text-sm text-white/55">Quick create without another nested panel.</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <input
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Task title"
+                    className="h-13 w-full rounded-[18px] border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400/30"
+                  />
+                  <select
+                    value={preferredModel}
+                    onChange={(event) => setPreferredModel(event.target.value)}
+                    className="h-13 w-full rounded-[18px] border border-white/10 bg-white/[0.04] px-4 text-sm text-white outline-none transition focus:border-cyan-400/30"
+                  >
+                    <option value="">Default model</option>
+                    {availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>{model.name}</option>
+                    ))}
+                  </select>
+                  <textarea
+                    value={prompt}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    placeholder="Task instructions"
+                    rows={5}
+                    className="w-full rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-cyan-400/30"
+                  />
+                  <button
+                    type="button"
+                    disabled={createBusy || !title.trim() || !prompt.trim()}
+                    onClick={() => onCreateTask({ title: title.trim(), prompt: prompt.trim(), preferredModel: preferredModel || null })}
+                    className="h-12 w-full rounded-[18px] border border-cyan-500/25 bg-cyan-500/12 font-mono text-[11px] uppercase tracking-[0.16em] text-cyan-100 transition hover:border-cyan-400/40 hover:bg-cyan-500/18 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {createBusy ? "Creating task..." : "Create task"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 p-5 pt-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Tasks</div>
+                    <div className="mt-1 text-sm text-white/55">One clean list with the active task highlighted.</div>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-white/60">
+                    {tasks.length}
                   </div>
                 </div>
 
-                <div className="rounded-[26px] border border-white/10 bg-white/[0.03] p-3">
-                  <div className="mb-2 px-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">Tasks ({tasks.length})</div>
-                  <div className="max-h-[38vh] space-y-2 overflow-y-auto pr-1">
+                <div className="h-full overflow-y-auto pr-1">
+                  <div className="space-y-3 pb-4">
                     {tasks.length === 0 ? (
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white/45">
+                      <div className="rounded-[20px] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm text-white/45">
                         No tasks created yet for this squad.
                       </div>
                     ) : null}
@@ -288,15 +286,15 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                         key={task.id}
                         type="button"
                         onClick={() => onSelectTask(task.id)}
-                        className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${selectedTask?.id === task.id ? "border-cyan-400/30 bg-cyan-500/10" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"}`}
+                        className={`w-full rounded-[22px] border px-4 py-4 text-left transition ${selectedTask?.id === task.id ? "border-cyan-400/35 bg-cyan-500/12 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]" : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"}`}
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-semibold text-white">{task.title}</div>
+                            <div className="line-clamp-2 text-sm font-semibold text-white">{task.title}</div>
                             <div className="mt-1 text-xs text-white/35">{fmtDate(task.createdDate)}</div>
-                            <div className="mt-2 text-[11px] text-white/45">{task.runCount} runs</div>
+                            <div className="mt-2 text-[11px] text-white/50">{task.runs.length} runs</div>
                           </div>
-                          <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(task.status)}`}>
+                          <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(task.status)}`}>
                             {task.status || "draft"}
                           </span>
                         </div>
@@ -308,23 +306,23 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
             </div>
           </aside>
 
-          <div className="flex min-h-0 flex-col overflow-hidden">
+          <div className="min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top,rgba(24,93,111,0.18),transparent_42%),linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0))]">
             {!selectedTask ? (
               <div className="flex h-full items-center justify-center px-6 text-center text-white/35">
                 Select a squad task to inspect dispatch, runs and synced output.
               </div>
             ) : (
-              <>
-                <div className="border-b border-cyan-400/10 px-4 py-4 sm:px-5">
-                  <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+              <div className="h-full overflow-y-auto">
+                <div className="space-y-5 p-5 sm:p-6">
+                  <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-2xl font-semibold leading-tight text-white sm:text-3xl">{selectedTask.title}</div>
+                        <h2 className="text-3xl font-semibold leading-tight text-white sm:text-4xl">{selectedTask.title}</h2>
                         <span className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(selectedTask.status)}`}>
                           {selectedTask.status || "draft"}
                         </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-white/45">
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-white/45">
                         <span>{selectedTask.executionMode}</span>
                         <span className="text-white/25">•</span>
                         <span>{fmtDate(selectedTask.createdDate)}</span>
@@ -333,129 +331,125 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 2xl:w-[430px]">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:w-[420px]">
                       <StatCard label="Total" value={stats.total} icon={<Users className="h-4 w-4" />} />
                       <StatCard label="Running" value={stats.running} accent="cyan" icon={<Loader2 className="h-4 w-4" />} />
                       <StatCard label="Done" value={stats.done} accent="emerald" icon={<CheckCircle2 className="h-4 w-4" />} />
                       <StatCard label="Failed" value={stats.failed} accent="red" icon={<XCircle className="h-4 w-4" />} />
                     </div>
                   </div>
-                </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <div className="space-y-5 p-4 sm:p-5">
-                    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-7 text-white/80">
-                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Task prompt</div>
-                      <div className="max-h-[28vh] overflow-y-auto pr-2 whitespace-pre-wrap break-words">{selectedTask.prompt}</div>
+                  <div className="rounded-[26px] border border-white/10 bg-black/15 p-5">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Task prompt</div>
+                    <div className="whitespace-pre-wrap break-words text-sm leading-7 text-white/82">{selectedTask.prompt}</div>
+                  </div>
+
+                  {(selectedTask.finalResponse || selectedTask.summary) ? (
+                    <div className="rounded-[26px] border border-cyan-400/15 bg-cyan-500/5 p-5">
+                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Final synced response</div>
+                      <div className="whitespace-pre-wrap break-words text-sm leading-7 text-white/85">{selectedTask.finalResponse || selectedTask.summary}</div>
                     </div>
+                  ) : null}
 
-                    {(selectedTask.finalResponse || selectedTask.summary) ? (
-                      <div className="rounded-[28px] border border-cyan-400/15 bg-cyan-500/5 px-4 py-4 text-sm leading-7 text-white/85">
-                        <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-200/80">Final synced response</div>
-                        <div className="max-h-[24vh] overflow-y-auto pr-2 whitespace-pre-wrap break-words">{selectedTask.finalResponse || selectedTask.summary}</div>
-                      </div>
-                    ) : null}
-
-                    <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-4">
-                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <ActionButton
-                            busy={dispatchBusy && dispatchApprovalMode === "pending"}
-                            onClick={() => dispatchApprovalMode === "pending" ? onConfirmDispatchTask(selectedTask.id, "pending") : onPreviewDispatchTask(selectedTask.id, "pending")}
+                  <div className="rounded-[26px] border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ActionButton
+                          busy={dispatchBusy && dispatchApprovalMode === "pending"}
+                          onClick={() => dispatchApprovalMode === "pending" ? onConfirmDispatchTask(selectedTask.id, "pending") : onPreviewDispatchTask(selectedTask.id, "pending")}
+                        >
+                          <Play className="h-4 w-4" />
+                          {dispatchApprovalMode === "pending" ? "Confirm dispatch" : "Dispatch pending"}
+                        </ActionButton>
+                        <ActionButton
+                          busy={dispatchBusy && dispatchApprovalMode === "retryFailed"}
+                          onClick={() => dispatchApprovalMode === "retryFailed" ? onConfirmDispatchTask(selectedTask.id, "retryFailed") : onPreviewDispatchTask(selectedTask.id, "retryFailed")}
+                        >
+                          <RefreshCcw className="h-4 w-4" />
+                          {dispatchApprovalMode === "retryFailed" ? "Confirm retry" : "Retry failed"}
+                        </ActionButton>
+                        <ActionButton
+                          busy={dispatchBusy && dispatchApprovalMode === "redispatchAll"}
+                          onClick={() => dispatchApprovalMode === "redispatchAll" ? onConfirmDispatchTask(selectedTask.id, "redispatchAll") : onPreviewDispatchTask(selectedTask.id, "redispatchAll")}
+                        >
+                          <Loader2 className="h-4 w-4" />
+                          {dispatchApprovalMode === "redispatchAll" ? "Confirm redispatch" : "Redispatch all"}
+                        </ActionButton>
+                        {dispatchApprovalMode ? (
+                          <button
+                            type="button"
+                            onClick={onCancelDispatchApproval}
+                            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/[0.08] hover:text-white"
                           >
-                            <Play className="h-4 w-4" />
-                            {dispatchApprovalMode === "pending" ? "Confirm dispatch" : "Dispatch pending"}
-                          </ActionButton>
-                          <ActionButton
-                            busy={dispatchBusy && dispatchApprovalMode === "retryFailed"}
-                            onClick={() => dispatchApprovalMode === "retryFailed" ? onConfirmDispatchTask(selectedTask.id, "retryFailed") : onPreviewDispatchTask(selectedTask.id, "retryFailed")}
-                          >
-                            <RefreshCcw className="h-4 w-4" />
-                            {dispatchApprovalMode === "retryFailed" ? "Confirm retry" : "Retry failed"}
-                          </ActionButton>
-                          <ActionButton
-                            busy={dispatchBusy && dispatchApprovalMode === "redispatchAll"}
-                            onClick={() => dispatchApprovalMode === "redispatchAll" ? onConfirmDispatchTask(selectedTask.id, "redispatchAll") : onPreviewDispatchTask(selectedTask.id, "redispatchAll")}
-                          >
-                            <Loader2 className="h-4 w-4" />
-                            {dispatchApprovalMode === "redispatchAll" ? "Confirm redispatch" : "Redispatch all"}
-                          </ActionButton>
-                          {dispatchApprovalMode ? (
-                            <button
-                              type="button"
-                              onClick={onCancelDispatchApproval}
-                              className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 font-mono text-[10px] uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/[0.08] hover:text-white"
-                            >
-                              Cancel
-                            </button>
-                          ) : null}
-                        </div>
-
-                        {(dispatchEstimate || dispatchEstimateBusy) ? (
-                          <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
-                            {dispatchEstimateBusy
-                              ? "Estimating dispatch..."
-                              : `Estimate: ${dispatchEstimate?.selectedRuns ?? 0} runs • ${dispatchEstimate?.estimatedTotalTokens ?? 0} tokens`}
-                          </div>
+                            Cancel
+                          </button>
                         ) : null}
                       </div>
-                    </div>
 
-                    {error ? (
-                      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                        {error}
-                      </div>
-                    ) : null}
-
-                    <div className="space-y-4">
-                      {selectedRuns.map((run) => {
-                        const output = (run.outputText || "").trim();
-                        const hasError = !!run.dispatchError?.trim();
-                        return (
-                          <div key={run.id} className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 shadow-[0_16px_44px_rgba(0,0,0,0.18)]">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <div className="text-lg font-semibold text-white">{run.agentName}</div>
-                                  <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(run.status)}`}>
-                                    {run.status || "pending"}
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-sm text-white/40">{run.role || run.agentSlug || "Agent run"}</div>
-                              </div>
-                            </div>
-
-                            <div className="mt-4 grid gap-3 text-sm text-white/45 sm:grid-cols-2 xl:grid-cols-3">
-                              <MetaCard label="Started" value={fmtDate(run.startedAtUtc)} />
-                              <MetaCard label="Finished" value={fmtDate(run.finishedAtUtc)} />
-                              <MetaCard label="Session" value={run.externalSessionKey || "—"} mono />
-                            </div>
-
-                            {hasError ? (
-                              <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                                {run.dispatchError}
-                              </div>
-                            ) : null}
-
-                            {output ? (
-                              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
-                                <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Synced output</div>
-                                <div className="max-h-[36vh] overflow-y-auto whitespace-pre-wrap pr-2 text-sm leading-7 text-white/80">{output}</div>
-                              </div>
-                            ) : null}
-
-                            {!output && !hasError ? (
-                              <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-200/90">
-                                Agent is working...
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })}
+                      {(dispatchEstimate || dispatchEstimateBusy) ? (
+                        <div className="rounded-2xl border border-white/10 bg-black/15 px-4 py-3 text-sm text-white/65">
+                          {dispatchEstimateBusy
+                            ? "Estimating dispatch..."
+                            : `Estimate: ${dispatchEstimate?.selectedRuns ?? 0} runs • ${dispatchEstimate?.estimatedTotalTokens ?? 0} tokens`}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
+
+                  {error ? (
+                    <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {error}
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-4 pb-6">
+                    {selectedRuns.map((run) => {
+                      const output = (run.outputText || "").trim();
+                      const hasError = !!run.dispatchError?.trim();
+                      return (
+                        <div key={run.id} className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5 shadow-[0_16px_44px_rgba(0,0,0,0.18)]">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-lg font-semibold text-white">{run.agentName}</div>
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(run.status)}`}>
+                                  {run.status || "pending"}
+                                </span>
+                              </div>
+                              <div className="mt-1 text-sm text-white/40">{run.role || run.agentSlug || "Agent run"}</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 grid gap-3 text-sm text-white/45 sm:grid-cols-2 xl:grid-cols-3">
+                            <MetaCard label="Started" value={fmtDate(run.startedAtUtc)} />
+                            <MetaCard label="Finished" value={fmtDate(run.finishedAtUtc)} />
+                            <MetaCard label="Session" value={run.externalSessionKey || "—"} mono />
+                          </div>
+
+                          {hasError ? (
+                            <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                              {run.dispatchError}
+                            </div>
+                          ) : null}
+
+                          {output ? (
+                            <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 px-4 py-4">
+                              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">Synced output</div>
+                              <div className="whitespace-pre-wrap break-words text-sm leading-7 text-white/80">{output}</div>
+                            </div>
+                          ) : null}
+
+                          {!output && !hasError ? (
+                            <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-200/90">
+                              Agent is working...
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </>
+              </div>
             )}
           </div>
         </div>
