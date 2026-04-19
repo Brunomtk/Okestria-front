@@ -41,12 +41,14 @@ export const AgentAvatarPreview3D = ({
       ) : null}
       <Canvas
         key={profileKey}
-        /* Slightly further back with a mild 3/4 tilt so the rounded
-           shoulders, ears and chin silhouette read clearly in the
-           large editor preview. */
-        camera={{ position: [0.6, 0.65, 3.2], fov: 26 }}
+        /* Pulled back + aimed lower so the FULL body (head → feet)
+           fits comfortably in the large editor preview. The figure
+           lives centered around y=0.4 world, head at y≈0.65, feet at
+           y≈0, so we frame on y=0.35 with plenty of headroom. */
+        camera={{ position: [0.55, 0.55, 4.6], fov: 22 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
+        onCreated={({ camera }) => camera.lookAt(0, 0.35, 0)}
       >
         <color attach="background" args={["#070b16"]} />
         <ambientLight intensity={0.95} />
@@ -61,6 +63,7 @@ export const AgentAvatarPreview3D = ({
         <OrbitControls
           enablePan={false}
           enableZoom={false}
+          target={[0, 0.35, 0]}
           maxPolarAngle={1.8}
           minPolarAngle={1.1}
         />

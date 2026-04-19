@@ -4,6 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Orkestria",
   description: "Orkestria workspace - Orchestrate work with intelligent squads.",
+  icons: {
+    icon: "/images/logo.png",
+    shortcut: "/images/logo.png",
+    apple: "/images/logo.png",
+  },
 };
 
 // Cache buster: 2026-04-05T17:24:00 - No next/font imports here

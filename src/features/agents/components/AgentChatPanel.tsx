@@ -1796,6 +1796,7 @@ export const AgentChatPanel = ({
                 profile={agent.avatarProfile ?? null}
                 seed={avatarSeed}
                 size={68}
+                focus="face"
               />
               {false && (
                 <AgentAvatar

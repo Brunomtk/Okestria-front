@@ -80,9 +80,11 @@ const buildFaceTexture = (skin: string) => {
 export const OfficeFigure = ({
   profile,
   onReady,
+  faceFocus = false,
 }: {
   profile: AgentAvatarProfile;
   onReady?: () => void;
+  faceFocus?: boolean;
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
@@ -100,6 +102,21 @@ export const OfficeFigure = ({
     }
     if (!groupRef.current) return;
     const t = state.clock.elapsedTime;
+    if (faceFocus) {
+      // Portrait mode — very subtle head-turn, no body sway, so the face
+      // stays framed like a real profile picture.
+      groupRef.current.rotation.y = Math.sin(t * 0.35) * 0.15;
+      groupRef.current.position.y = -0.78 + Math.sin(t * 0.9) * 0.003;
+      if (leftArmRef.current) {
+        leftArmRef.current.rotation.x = 0;
+        leftArmRef.current.rotation.z = -0.08;
+      }
+      if (rightArmRef.current) {
+        rightArmRef.current.rotation.x = 0;
+        rightArmRef.current.rotation.z = 0.08;
+      }
+      return;
+    }
     // Showcase sway — wider arc so the rounded shoulders, ears and chin
     // catch the side light and read clearly at small sizes.
     groupRef.current.rotation.y = Math.sin(t * 0.55) * 0.65 + 0.2;
@@ -822,6 +839,15 @@ type AgentOfficeFigure3DProps = {
   size: number;
   className?: string;
   seed?: string;
+  /**
+   * "body" (default): 3/4 body preview framed from hips up. Used in the
+   *   sidebar where a small icon-sized avatar needs to read as a person.
+   * "face": tight head-shot — camera is pulled in on the face so the
+   *   avatar reads like a profile-picture portrait. Used in the chat
+   *   panel header where the user already knows it's an agent and just
+   *   wants to see who's talking.
+   */
+  focus?: "body" | "face";
 };
 
 export const AgentOfficeFigure3D = ({
@@ -829,6 +855,7 @@ export const AgentOfficeFigure3D = ({
   size,
   className = "",
   seed,
+  focus = "body",
 }: AgentOfficeFigure3DProps) => {
   const resolvedProfile = useMemo(
     () => profile ?? createDefaultAgentAvatarProfile(seed ?? "preview"),
@@ -841,6 +868,15 @@ export const AgentOfficeFigure3D = ({
   const [readyProfileKey, setReadyProfileKey] = useState<string | null>(null);
   const isReady = readyProfileKey === profileKey;
 
+  // Camera presets — the figure lives at y≈-0.78 with a 2.86-tall scale,
+  // so the head sits roughly around world y ≈ 0.5. For "face" mode we
+  // pull the camera closer and aim at the head; for "body" we frame the
+  // full 3/4 shot that shows shoulders + chin silhouette.
+  const cameraConfig =
+    focus === "face"
+      ? { position: [0, 0.55, 1.05] as [number, number, number], fov: 28 }
+      : { position: [0.35, 0.35, 2.15] as [number, number, number], fov: 30 };
+
   return (
     <div
       className={`relative overflow-hidden rounded-full border border-border bg-[#0a0f1d] ${className}`}
@@ -852,10 +888,8 @@ export const AgentOfficeFigure3D = ({
         </div>
       ) : null}
       <Canvas
-        key={profileKey}
-        /* Pull the camera back + tilt down a touch so we get a 3/4 view
-           that reveals rounded shoulders, ears, and chin silhouette. */
-        camera={{ position: [0.35, 0.35, 2.15], fov: 30 }}
+        key={`${profileKey}-${focus}`}
+        camera={cameraConfig}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
       >
@@ -872,6 +906,7 @@ export const AgentOfficeFigure3D = ({
         <OfficeFigure
           profile={resolvedProfile}
           onReady={() => setReadyProfileKey(profileKey)}
+          faceFocus={focus === "face"}
         />
       </Canvas>
     </div>

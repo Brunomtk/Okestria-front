@@ -429,7 +429,13 @@ const inferArrivalState = (plan: RoutePlan) => plan.state;
 
 export function useRebuiltAgentTick(
   agents: SceneActor[],
-  deskLocations: { x: number; y: number }[],
+  deskLocations: {
+    x: number;
+    y: number;
+    seatX?: number;
+    seatY?: number;
+    seatFacing?: number;
+  }[],
   assignedDeskIndexByAgentId: Record<string, number> = {},
   gymWorkoutLocations: GymWorkoutLocation[],
   qaLabStations: QaLabStationLocation[],
@@ -641,7 +647,15 @@ export function useRebuiltAgentTick(
         const deskIndex = reserveDeskIndex(agent, others);
         const desk = typeof deskIndex === "number" ? deskLocations[deskIndex] : null;
         const fallback = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
-        const targetPoint = desk ? { x: desk.x, y: desk.y, facing: Math.PI / 2 } : fallback;
+        // v48: aim for the chair seat tied to this desk (not the desk center
+        // itself), and face toward the desk so the agent sits on the chair
+        // with the keyboard in front of them.
+        const seatX = desk?.seatX ?? desk?.x;
+        const seatY = desk?.seatY ?? desk?.y;
+        const seatFacing = desk?.seatFacing ?? Math.PI / 2;
+        const targetPoint = desk
+          ? { x: seatX!, y: seatY!, facing: seatFacing }
+          : fallback;
         const target = buildPathToTarget(agent.id, agent.x, agent.y, targetPoint.x, targetPoint.y);
         return {
           actionKey: "desk",
@@ -649,7 +663,7 @@ export function useRebuiltAgentTick(
           lingerMs: DESK_STICKY_MS,
           targetX: target.targetX,
           targetY: target.targetY,
-          facing: targetPoint.facing ?? Math.PI / 2,
+          facing: targetPoint.facing ?? seatFacing,
           path: target.path,
           state: "sitting",
           interactionTarget: "desk",

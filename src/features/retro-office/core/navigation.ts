@@ -634,12 +634,59 @@ export function astar(
   return [];
 }
 
-export const getDeskLocations = (items: FurnitureItem[]) =>
-  items
-    .filter((item) => item.type === "desk_cubicle")
-    // v38: center of desk footprint (100×55) so the nameplate sits directly
-    // over the computer instead of hanging to one side.
-    .map((item) => ({ x: item.x + 50, y: item.y + 28 }));
+export const getDeskLocations = (items: FurnitureItem[]) => {
+  const desks = items.filter((item) => item.type === "desk_cubicle");
+  const chairs = items.filter((item) => item.type === "chair");
+  const usedChairUids = new Set<string>();
+
+  return desks.map((desk) => {
+    const deskCenterX = desk.x + 50;
+    const deskCenterY = desk.y + 28;
+
+    // Find the nearest unassigned chair within a sane radius. With the stock
+    // layout the chair sits ~40px south of the desk, so a 90px search radius
+    // comfortably reaches it without grabbing a neighbour's chair.
+    let bestChair: (typeof chairs)[number] | null = null;
+    let bestDistance = Infinity;
+    for (const chair of chairs) {
+      const uid = chair._uid ?? `${chair.type}:${chair.x}:${chair.y}`;
+      if (usedChairUids.has(uid)) continue;
+      const cx = chair.x + 12; // chair footprint is 24×24
+      const cy = chair.y + 12;
+      const d = Math.hypot(cx - deskCenterX, cy - deskCenterY);
+      if (d < bestDistance && d <= 90) {
+        bestDistance = d;
+        bestChair = chair;
+      }
+    }
+
+    if (bestChair) {
+      const uid = bestChair._uid ?? `${bestChair.type}:${bestChair.x}:${bestChair.y}`;
+      usedChairUids.add(uid);
+      const seatX = bestChair.x + 12;
+      const seatY = bestChair.y + 12;
+      // Agent should look toward the desk from the chair seat.
+      const seatFacing = Math.atan2(deskCenterX - seatX, deskCenterY - seatY);
+      return {
+        x: deskCenterX,
+        y: deskCenterY,
+        seatX,
+        seatY,
+        seatFacing,
+      };
+    }
+
+    // Fallback — no matching chair, agent sits at desk center facing east
+    // (preserves pre-v48 behavior if a layout has no chair near the desk).
+    return {
+      x: deskCenterX,
+      y: deskCenterY,
+      seatX: deskCenterX,
+      seatY: deskCenterY,
+      seatFacing: Math.PI / 2,
+    };
+  });
+};
 
 export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
   // Meeting seats are inferred from chair placement in the conference area so standup
