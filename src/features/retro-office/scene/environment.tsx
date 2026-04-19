@@ -575,101 +575,138 @@ export const FloorAndWalls = memo(function FloorAndWalls({
       })}
 
       {(() => {
-        // v36: canvas perimeter walls are cream white for a bright, modern office feel
+        // v38: canvas perimeter walls are cream white. Walls lifted by 0.005 so
+        // their bottom face is NOT coplanar with the floor plane at y=0, and the
+        // N/S walls are shortened by 0.24 (0.12 on each side) so they don't overlap
+        // the W/E wall boxes at the corners. This eliminates the corner z-fighting
+        // that appeared as flickering black patches at the floor corners.
         const wallColor = "#f5ebd5";
         const wallEmissive = "#d8c9a3";
+        const wallHeight = 1;
+        const wallY = 0.5 + 0.005; // lift bottom above floor plane by 0.005
+        const wallDepth = 0.12;
+        const nsWallWidth = localOfficeWidth - wallDepth * 2; // shrink to meet (not overlap) W/E walls
+        const weWallLength = localOfficeHeight; // keep full length — corner overlap is absorbed into W/E only
 
         return (
           <>
-            <mesh position={[localOfficeCenterX, 0.5, localNorthWallZ]} receiveShadow>
-              <boxGeometry args={[localOfficeWidth, 1, 0.12]} />
+            {/* North wall */}
+            <mesh position={[localOfficeCenterX, wallY, localNorthWallZ]} receiveShadow>
+              <boxGeometry args={[nsWallWidth, wallHeight, wallDepth]} />
               <meshStandardMaterial
                 color={wallColor}
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
+                polygonOffset
+                polygonOffsetFactor={-1}
+                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
               <mesh
-                position={[localOfficeCenterX, 0.5, localNorthWallZ + remoteOfficeOffsetZ]}
+                position={[localOfficeCenterX, wallY, localNorthWallZ + remoteOfficeOffsetZ]}
                 receiveShadow
               >
-                <boxGeometry args={[localOfficeWidth, 1, 0.12]} />
+                <boxGeometry args={[nsWallWidth, wallHeight, wallDepth]} />
                 <meshStandardMaterial
                   color={wallColor}
                   emissive={wallEmissive}
                   emissiveIntensity={0.4}
                   roughness={0.9}
+                  polygonOffset
+                  polygonOffsetFactor={-1}
+                  polygonOffsetUnits={-1}
                 />
               </mesh>
             ) : null}
-            <mesh position={[localOfficeCenterX, 0.5, localSouthWallZ]} receiveShadow>
-              <boxGeometry args={[localOfficeWidth, 1, 0.12]} />
+            {/* South wall */}
+            <mesh position={[localOfficeCenterX, wallY, localSouthWallZ]} receiveShadow>
+              <boxGeometry args={[nsWallWidth, wallHeight, wallDepth]} />
               <meshStandardMaterial
                 color={wallColor}
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
+                polygonOffset
+                polygonOffsetFactor={-1}
+                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
               <mesh
-                position={[localOfficeCenterX, 0.5, localSouthWallZ + remoteOfficeOffsetZ]}
+                position={[localOfficeCenterX, wallY, localSouthWallZ + remoteOfficeOffsetZ]}
                 receiveShadow
               >
-                <boxGeometry args={[localOfficeWidth, 1, 0.12]} />
+                <boxGeometry args={[nsWallWidth, wallHeight, wallDepth]} />
                 <meshStandardMaterial
                   color={wallColor}
                   emissive={wallEmissive}
                   emissiveIntensity={0.4}
                   roughness={0.9}
+                  polygonOffset
+                  polygonOffsetFactor={-1}
+                  polygonOffsetUnits={-1}
                 />
               </mesh>
             ) : null}
-            <mesh position={[localWestWallX, 0.5, localOfficeCenterZ]} receiveShadow>
-              <boxGeometry args={[0.12, 1, localOfficeHeight]} />
+            {/* West wall (full height so corners are fully sealed by W/E boxes) */}
+            <mesh position={[localWestWallX, wallY, localOfficeCenterZ]} receiveShadow>
+              <boxGeometry args={[wallDepth, wallHeight, weWallLength]} />
               <meshStandardMaterial
                 color={wallColor}
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
+                polygonOffset
+                polygonOffsetFactor={-1}
+                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
               <mesh
-                position={[localWestWallX, 0.5, localOfficeCenterZ + remoteOfficeOffsetZ]}
+                position={[localWestWallX, wallY, localOfficeCenterZ + remoteOfficeOffsetZ]}
                 receiveShadow
               >
-                <boxGeometry args={[0.12, 1, localOfficeHeight]} />
+                <boxGeometry args={[wallDepth, wallHeight, weWallLength]} />
                 <meshStandardMaterial
                   color={wallColor}
                   emissive={wallEmissive}
                   emissiveIntensity={0.4}
                   roughness={0.9}
+                  polygonOffset
+                  polygonOffsetFactor={-1}
+                  polygonOffsetUnits={-1}
                 />
               </mesh>
             ) : null}
-            <mesh position={[localEastWallX, 0.5, localOfficeCenterZ]} receiveShadow>
-              <boxGeometry args={[0.12, 1, localOfficeHeight]} />
+            {/* East wall */}
+            <mesh position={[localEastWallX, wallY, localOfficeCenterZ]} receiveShadow>
+              <boxGeometry args={[wallDepth, wallHeight, weWallLength]} />
               <meshStandardMaterial
                 color={wallColor}
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
+                polygonOffset
+                polygonOffsetFactor={-1}
+                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
               <mesh
-                position={[localEastWallX, 0.5, localOfficeCenterZ + remoteOfficeOffsetZ]}
+                position={[localEastWallX, wallY, localOfficeCenterZ + remoteOfficeOffsetZ]}
                 receiveShadow
               >
-                <boxGeometry args={[0.12, 1, localOfficeHeight]} />
+                <boxGeometry args={[wallDepth, wallHeight, weWallLength]} />
                 <meshStandardMaterial
                   color={wallColor}
                   emissive={wallEmissive}
                   emissiveIntensity={0.4}
                   roughness={0.9}
+                  polygonOffset
+                  polygonOffsetFactor={-1}
+                  polygonOffsetUnits={-1}
                 />
               </mesh>
             ) : null}
@@ -677,44 +714,47 @@ export const FloorAndWalls = memo(function FloorAndWalls({
         );
       })()}
 
-      <mesh position={[localOfficeCenterX, 0.03, localNorthWallZ + 0.04]}>
-        <boxGeometry args={[localOfficeWidth, 0.06, 0.04]} />
-        <meshLambertMaterial color="#0c0c10" />
+      {/* v38: baseboards lifted off the floor (y=0.035, height 0.05) to kill the
+          floor-corner z-fighting that flashed black. North/South baseboards also
+          shortened so they don't overlap the West/East baseboards at the corners. */}
+      <mesh position={[localOfficeCenterX, 0.035, localNorthWallZ + 0.04]}>
+        <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
+        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
       {showRemoteOffice ? (
-        <mesh position={[localOfficeCenterX, 0.03, localNorthWallZ + 0.04 + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[localOfficeWidth, 0.06, 0.04]} />
-          <meshLambertMaterial color="#0c0c10" />
+        <mesh position={[localOfficeCenterX, 0.035, localNorthWallZ + 0.04 + remoteOfficeOffsetZ]}>
+          <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
+          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
         </mesh>
       ) : null}
-      <mesh position={[localOfficeCenterX, 0.03, localSouthWallZ - 0.04]}>
-        <boxGeometry args={[localOfficeWidth, 0.06, 0.04]} />
-        <meshLambertMaterial color="#0c0c10" />
+      <mesh position={[localOfficeCenterX, 0.035, localSouthWallZ - 0.04]}>
+        <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
+        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
       {showRemoteOffice ? (
-        <mesh position={[localOfficeCenterX, 0.03, localSouthWallZ - 0.04 + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[localOfficeWidth, 0.06, 0.04]} />
-          <meshLambertMaterial color="#0c0c10" />
+        <mesh position={[localOfficeCenterX, 0.035, localSouthWallZ - 0.04 + remoteOfficeOffsetZ]}>
+          <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
+          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
         </mesh>
       ) : null}
-      <mesh position={[localWestWallX + 0.04, 0.03, localOfficeCenterZ]}>
-        <boxGeometry args={[0.04, 0.06, localOfficeHeight]} />
-        <meshLambertMaterial color="#0c0c10" />
+      <mesh position={[localWestWallX + 0.04, 0.035, localOfficeCenterZ]}>
+        <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
+        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
       {showRemoteOffice ? (
-        <mesh position={[localWestWallX + 0.04, 0.03, localOfficeCenterZ + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[0.04, 0.06, localOfficeHeight]} />
-          <meshLambertMaterial color="#0c0c10" />
+        <mesh position={[localWestWallX + 0.04, 0.035, localOfficeCenterZ + remoteOfficeOffsetZ]}>
+          <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
+          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
         </mesh>
       ) : null}
-      <mesh position={[localEastWallX - 0.04, 0.03, localOfficeCenterZ]}>
-        <boxGeometry args={[0.04, 0.06, localOfficeHeight]} />
-        <meshLambertMaterial color="#0c0c10" />
+      <mesh position={[localEastWallX - 0.04, 0.035, localOfficeCenterZ]}>
+        <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
+        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
       </mesh>
       {showRemoteOffice ? (
-        <mesh position={[localEastWallX - 0.04, 0.03, localOfficeCenterZ + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[0.04, 0.06, localOfficeHeight]} />
-          <meshLambertMaterial color="#0c0c10" />
+        <mesh position={[localEastWallX - 0.04, 0.035, localOfficeCenterZ + remoteOfficeOffsetZ]}>
+          <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
+          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
         </mesh>
       ) : null}
     </group>

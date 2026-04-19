@@ -636,7 +636,9 @@ export function astar(
 export const getDeskLocations = (items: FurnitureItem[]) =>
   items
     .filter((item) => item.type === "desk_cubicle")
-    .map((item) => ({ x: item.x + 40, y: item.y + 40 }));
+    // v38: center of desk footprint (100×55) so the nameplate sits directly
+    // over the computer instead of hanging to one side.
+    .map((item) => ({ x: item.x + 50, y: item.y + 28 }));
 
 export const getMeetingSeatLocations = (items: FurnitureItem[]) => {
   // Meeting seats are inferred from chair placement in the conference area so standup

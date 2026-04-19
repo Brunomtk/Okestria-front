@@ -62,9 +62,10 @@ export function InstancedWallSegmentsModel({
   if (items.length === 0) return null;
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, items.length]} receiveShadow>
+    <instancedMesh ref={meshRef} args={[undefined, undefined, items.length]} receiveShadow castShadow>
       <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial color="#787878" roughness={0.92} />
+      {/* v38: matte black to match the editor view / interior partitions */}
+      <meshStandardMaterial color="#0d0d11" roughness={0.9} metalness={0.08} />
     </instancedMesh>
   );
 }

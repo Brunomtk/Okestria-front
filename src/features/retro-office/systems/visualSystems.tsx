@@ -326,28 +326,45 @@ export function DeskNameplates({
         if (!agent) return null;
         const [wx, , wz] = toWorld(desk.x, desk.y);
 
+        // v38 nameplate — slim, centered on desk, accent strip on the left and a
+        // single clipped line of the agent's name. Text is rendered in the order
+        // background → accent → name so layering stays predictable.
+        const plateWidth = 0.92;
+        const plateHeight = 0.18;
+        const accentWidth = 0.06;
+        const accentX = -plateWidth / 2 + accentWidth / 2;
+        const textX = accentX + accentWidth / 2 + 0.02;
+
         return (
-          <Billboard key={`nameplate-${index}`} position={[wx, 0.55, wz]}>
-            <mesh position={[0, 0, -0.001]}>
-              <planeGeometry args={[1.1, 0.18]} />
-              <meshBasicMaterial color="#0a0804" transparent opacity={0.75} />
+          <Billboard key={`nameplate-${index}`} position={[wx, 0.62, wz]}>
+            {/* Background plate */}
+            <mesh position={[0, 0, -0.002]}>
+              <planeGeometry args={[plateWidth, plateHeight]} />
+              <meshBasicMaterial color="#0a0804" transparent opacity={0.82} />
             </mesh>
-            <mesh position={[-0.52, 0, 0]}>
-              <planeGeometry args={[0.04, 0.18]} />
+            {/* Thin inner border highlight */}
+            <mesh position={[0, 0, -0.001]}>
+              <planeGeometry args={[plateWidth - 0.01, plateHeight - 0.01]} />
+              <meshBasicMaterial color="#1a1410" transparent opacity={0.85} />
+            </mesh>
+            {/* Agent color accent strip (left side) */}
+            <mesh position={[accentX, 0, 0]}>
+              <planeGeometry args={[accentWidth, plateHeight - 0.02]} />
               <meshBasicMaterial color={agent.color} />
             </mesh>
+            {/* Agent name — left-anchored to the right of the accent strip */}
             <Text
-              position={[0.02, 0, 0.001]}
-              fontSize={0.09}
-              color="#c8a860"
-              anchorX="center"
+              position={[textX, 0, 0.001]}
+              fontSize={0.085}
+              color="#e8c97a"
+              anchorX="left"
               anchorY="middle"
-              maxWidth={1.0}
+              maxWidth={plateWidth - (textX + plateWidth / 2) - 0.04}
               font={undefined}
               overflowWrap="break-word"
               whiteSpace="nowrap"
             >
-              {agent.name.length > 14 ? agent.name.slice(0, 13) + "…" : agent.name}
+              {agent.name.length > 16 ? agent.name.slice(0, 15) + "…" : agent.name}
             </Text>
           </Billboard>
         );
