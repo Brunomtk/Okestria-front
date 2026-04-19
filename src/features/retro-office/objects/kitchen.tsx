@@ -1,8 +1,9 @@
+import { memo } from "react";
 import { SCALE } from "@/features/retro-office/core/constants";
 import { toWorld } from "@/features/retro-office/core/geometry";
 import { BasicFurnitureModelProps } from "@/features/retro-office/objects/types";
 
-export function VendingMachineModel({
+function VendingMachineModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -68,7 +69,7 @@ export function VendingMachineModel({
   );
 }
 
-export function DishwasherModel({
+function DishwasherModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -128,7 +129,7 @@ export function DishwasherModel({
   );
 }
 
-export function StoveModel({
+function StoveModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -195,7 +196,7 @@ export function StoveModel({
   );
 }
 
-export function MicrowaveModel({
+function MicrowaveModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -244,7 +245,7 @@ export function MicrowaveModel({
   );
 }
 
-export function WallCabinetModel({
+function WallCabinetModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -303,7 +304,7 @@ export function WallCabinetModel({
   );
 }
 
-export function SinkModel({
+function SinkModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -366,3 +367,10 @@ export function SinkModel({
     </group>
   );
 }
+
+export const VendingMachineModel = memo(VendingMachineModelInner);
+export const DishwasherModel = memo(DishwasherModelInner);
+export const StoveModel = memo(StoveModelInner);
+export const MicrowaveModel = memo(MicrowaveModelInner);
+export const WallCabinetModel = memo(WallCabinetModelInner);
+export const SinkModel = memo(SinkModelInner);

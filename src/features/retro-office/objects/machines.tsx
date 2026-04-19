@@ -1,5 +1,5 @@
 import { Text } from "@react-three/drei";
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import * as THREE from "three";
 import { SCALE } from "@/features/retro-office/core/constants";
 import {
@@ -27,7 +27,7 @@ const LEATHER_BLACK = "#111827";
 const LED_CYAN = "#22d3ee";
 const ACCENT_AMBER = "#f59e0b";
 
-export function AtmMachineModel({
+function AtmMachineModelInner({
   item,
   isSelected,
   isHovered,
@@ -208,7 +208,7 @@ export function AtmMachineModel({
   );
 }
 
-export function PhoneBoothModel({
+function PhoneBoothModelInner({
   item,
   isSelected,
   isHovered,
@@ -389,7 +389,7 @@ export function PhoneBoothModel({
   );
 }
 
-export function SmsBoothModel({
+function SmsBoothModelInner({
   item,
   isSelected,
   isHovered,
@@ -538,7 +538,7 @@ export function SmsBoothModel({
   );
 }
 
-export function ServerRackModel({
+function ServerRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -670,7 +670,7 @@ export function ServerRackModel({
   );
 }
 
-export function ServerTerminalModel({
+function ServerTerminalModelInner({
   item,
   isSelected,
   isHovered,
@@ -759,7 +759,7 @@ export function ServerTerminalModel({
   );
 }
 
-export function QaTerminalModel({
+function QaTerminalModelInner({
   item,
   isSelected,
   isHovered,
@@ -1481,7 +1481,7 @@ export function QaTerminalModel({
   );
 }
 
-export function DeviceRackModel({
+function DeviceRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -2049,7 +2049,7 @@ export function DeviceRackModel({
   );
 }
 
-export function TestBenchModel({
+function TestBenchModelInner({
   item,
   isSelected,
   isHovered,
@@ -2735,7 +2735,7 @@ export function TestBenchModel({
   );
 }
 
-export function PingPongTableModel({
+function PingPongTableModelInner({
   item,
   isSelected,
   isHovered,
@@ -2888,7 +2888,7 @@ export function PingPongTableModel({
   );
 }
 
-export function TreadmillModel({
+function TreadmillModelInner({
   item,
   isSelected,
   isHovered,
@@ -3234,7 +3234,7 @@ export function TreadmillModel({
   );
 }
 
-export function WeightBenchModel({
+function WeightBenchModelInner({
   item,
   isSelected,
   isHovered,
@@ -3470,7 +3470,7 @@ export function WeightBenchModel({
   );
 }
 
-export function DumbbellRackModel({
+function DumbbellRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -3758,7 +3758,7 @@ export function DumbbellRackModel({
   );
 }
 
-export function ExerciseBikeModel({
+function ExerciseBikeModelInner({
   item,
   isSelected,
   isHovered,
@@ -4059,7 +4059,7 @@ export function ExerciseBikeModel({
   );
 }
 
-export function PunchingBagModel({
+function PunchingBagModelInner({
   item,
   isSelected,
   isHovered,
@@ -4181,7 +4181,7 @@ export function PunchingBagModel({
   );
 }
 
-export function RowingMachineModel({
+function RowingMachineModelInner({
   item,
   isSelected,
   isHovered,
@@ -4336,7 +4336,7 @@ export function RowingMachineModel({
   );
 }
 
-export function KettlebellRackModel({
+function KettlebellRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -4592,7 +4592,7 @@ export function KettlebellRackModel({
   );
 }
 
-export function YogaMatModel({
+function YogaMatModelInner({
   item,
   isSelected,
   isHovered,
@@ -4726,7 +4726,7 @@ export function YogaMatModel({
   );
 }
 
-export function EaselModel({
+function EaselModelInner({
   item,
   isSelected,
   isHovered,
@@ -4811,7 +4811,7 @@ export function EaselModel({
   );
 }
 
-export function PaintTableModel({
+function PaintTableModelInner({
   item,
   isSelected,
   isHovered,
@@ -4895,7 +4895,7 @@ export function PaintTableModel({
   );
 }
 
-export function ArtRackModel({
+function ArtRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -4973,7 +4973,7 @@ export function ArtRackModel({
   );
 }
 
-export function SpeakerModel({
+function SpeakerModelInner({
   item,
   isSelected,
   isHovered,
@@ -5148,7 +5148,7 @@ export function SpeakerModel({
   );
 }
 
-export function SquatRackModel({
+function SquatRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -5454,7 +5454,7 @@ export function SquatRackModel({
   );
 }
 
-export function DeadliftPlatformModel({
+function DeadliftPlatformModelInner({
   item,
   isSelected,
   isHovered,
@@ -5693,7 +5693,7 @@ export function DeadliftPlatformModel({
   );
 }
 
-export function PlateRackModel({
+function PlateRackModelInner({
   item,
   isSelected,
   isHovered,
@@ -5892,7 +5892,7 @@ export function PlateRackModel({
   );
 }
 
-export function CableCrossoverModel({
+function CableCrossoverModelInner({
   item,
   isSelected,
   isHovered,
@@ -6152,3 +6152,34 @@ export function CableCrossoverModel({
     </group>
   );
 }
+
+// ---- Memoized exports (v40 performance pass) ----
+// All gym, QA lab, art, server, phone, SMS and ATM models are wrapped in
+// React.memo to avoid re-rendering when parent state changes but model props
+// are unchanged. This is critical because the office has many of these models
+// and they each contain dozens of meshes.
+export const AtmMachineModel = memo(AtmMachineModelInner);
+export const PhoneBoothModel = memo(PhoneBoothModelInner);
+export const SmsBoothModel = memo(SmsBoothModelInner);
+export const ServerRackModel = memo(ServerRackModelInner);
+export const ServerTerminalModel = memo(ServerTerminalModelInner);
+export const QaTerminalModel = memo(QaTerminalModelInner);
+export const DeviceRackModel = memo(DeviceRackModelInner);
+export const TestBenchModel = memo(TestBenchModelInner);
+export const PingPongTableModel = memo(PingPongTableModelInner);
+export const TreadmillModel = memo(TreadmillModelInner);
+export const WeightBenchModel = memo(WeightBenchModelInner);
+export const DumbbellRackModel = memo(DumbbellRackModelInner);
+export const ExerciseBikeModel = memo(ExerciseBikeModelInner);
+export const PunchingBagModel = memo(PunchingBagModelInner);
+export const RowingMachineModel = memo(RowingMachineModelInner);
+export const KettlebellRackModel = memo(KettlebellRackModelInner);
+export const YogaMatModel = memo(YogaMatModelInner);
+export const EaselModel = memo(EaselModelInner);
+export const PaintTableModel = memo(PaintTableModelInner);
+export const ArtRackModel = memo(ArtRackModelInner);
+export const SpeakerModel = memo(SpeakerModelInner);
+export const SquatRackModel = memo(SquatRackModelInner);
+export const DeadliftPlatformModel = memo(DeadliftPlatformModelInner);
+export const PlateRackModel = memo(PlateRackModelInner);
+export const CableCrossoverModel = memo(CableCrossoverModelInner);

@@ -1330,16 +1330,17 @@ function AdaptiveDprController() {
   const avgDeltaRef = useRef(1 / 60);
 
   useEffect(() => {
-    const initialDpr = Math.min(window.devicePixelRatio || 1, 0.95);
+    // v40: ceiling dropped 0.95 → 0.85 for baseline perf.
+    const initialDpr = Math.min(window.devicePixelRatio || 1, 0.85);
     currentDprRef.current = initialDpr;
     setDpr(initialDpr);
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") {
-        currentDprRef.current = 0.72;
-        setDpr(0.72);
+        currentDprRef.current = 0.6;
+        setDpr(0.6);
         return;
       }
-      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.95);
+      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.85);
       currentDprRef.current = restoredDpr;
       setDpr(restoredDpr);
     };
@@ -1356,8 +1357,8 @@ function AdaptiveDprController() {
     if (frameCounterRef.current < 24) return;
     frameCounterRef.current = 0;
 
-    const maxDpr = Math.min(window.devicePixelRatio || 1, 0.95);
-    const minDpr = 0.55;
+    const maxDpr = Math.min(window.devicePixelRatio || 1, 0.85);
+    const minDpr = 0.5;
     let nextDpr = currentDprRef.current;
     if (avgDeltaRef.current > 1 / 50) {
       nextDpr = Math.max(minDpr, currentDprRef.current - 0.1);
@@ -4476,8 +4477,10 @@ export function RetroOffice3D({
         {!immersiveOverlayActive ? (
           <Canvas
             orthographic
-            dpr={[0.5, 0.95]}
-            performance={{ min: 0.45 }}
+            // v40: lowered max DPR from 0.95 to 0.85 to reduce pixel fill cost
+            // on high-DPI displays (the biggest perf gain on retina/4K screens).
+            dpr={[0.5, 0.85]}
+            performance={{ min: 0.4 }}
             frameloop="always"
             camera={{
               position: cameraPosition,

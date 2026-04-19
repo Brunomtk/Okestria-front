@@ -71,39 +71,89 @@ export function PingPongBall({
   const ballRef = useRef<THREE.Mesh>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
   const shadowMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const visibleRef = useRef(false);
+  const idleCountRef = useRef(0);
 
   useFrame(() => {
     if (!ballRef.current || !shadowRef.current || !shadowMatRef.current) return;
-    const allPlayers = (agentsRef.current ?? [])
-      .filter(
-        (agent) =>
-          agent.pingPongUntil !== undefined &&
-          agent.pingPongTableUid !== undefined &&
-          agent.pingPongSide !== undefined,
-      )
-      .sort((left, right) => (left.pingPongSide ?? 0) - (right.pingPongSide ?? 0));
+
+    // v40 perf: when the ball has been invisible for many frames, throttle to
+    // every ~12 frames. This is the typical case (no ping-pong happening) and
+    // avoids the per-frame filter+sort below, which was a measurable hot path.
+    if (!visibleRef.current) {
+      idleCountRef.current++;
+      if (idleCountRef.current % 12 !== 0) return;
+    }
+
+    // Cheap first-pass scan — avoid allocating arrays if no ping-pong agents.
+    const roster = agentsRef.current ?? [];
+    let hasPlayer = false;
+    for (let i = 0; i < roster.length; i++) {
+      const agent = roster[i];
+      if (
+        agent.pingPongUntil !== undefined &&
+        agent.pingPongTableUid !== undefined &&
+        agent.pingPongSide !== undefined
+      ) {
+        hasPlayer = true;
+        break;
+      }
+    }
+    if (!hasPlayer) {
+      if (visibleRef.current) {
+        ballRef.current.visible = false;
+        shadowRef.current.visible = false;
+        visibleRef.current = false;
+      }
+      return;
+    }
+
+    const allPlayers: RenderAgent[] = [];
+    for (let i = 0; i < roster.length; i++) {
+      const agent = roster[i];
+      if (
+        agent.pingPongUntil !== undefined &&
+        agent.pingPongTableUid !== undefined &&
+        agent.pingPongSide !== undefined
+      ) {
+        allPlayers.push(agent);
+      }
+    }
+    allPlayers.sort((left, right) => (left.pingPongSide ?? 0) - (right.pingPongSide ?? 0));
     const activeTableUid = allPlayers[0]?.pingPongTableUid;
     const players = activeTableUid
       ? allPlayers.filter((agent) => agent.pingPongTableUid === activeTableUid)
       : [];
 
     if (players.length < 2) {
-      ballRef.current.visible = false;
-      shadowRef.current.visible = false;
+      if (visibleRef.current) {
+        ballRef.current.visible = false;
+        shadowRef.current.visible = false;
+        visibleRef.current = false;
+      }
       return;
     }
 
     const [leftPlayer, rightPlayer] = players;
     if (!leftPlayer || !rightPlayer) {
-      ballRef.current.visible = false;
-      shadowRef.current.visible = false;
+      if (visibleRef.current) {
+        ballRef.current.visible = false;
+        shadowRef.current.visible = false;
+        visibleRef.current = false;
+      }
       return;
     }
     if (leftPlayer.state === "walking" || rightPlayer.state === "walking") {
-      ballRef.current.visible = false;
-      shadowRef.current.visible = false;
+      if (visibleRef.current) {
+        ballRef.current.visible = false;
+        shadowRef.current.visible = false;
+        visibleRef.current = false;
+      }
       return;
     }
+    // At this point the ball will be visible — reset the idle frame counter.
+    visibleRef.current = true;
+    idleCountRef.current = 0;
 
     const [leftWx, , leftWz] = toWorld(leftPlayer.x + 18, leftPlayer.y);
     const [rightWx, , rightWz] = toWorld(rightPlayer.x - 18, rightPlayer.y);
@@ -205,6 +255,12 @@ export function SpotlightEffect({
 
   useFrame((_, delta) => {
     if (!lightRef.current) return;
+    // v40 perf: skip entire useFrame when spotlight is fully inactive
+    // (no agent selected AND faded out). This is the default case.
+    if (!agentId && progressRef.current <= 0) {
+      if (lightRef.current.intensity !== 0) lightRef.current.intensity = 0;
+      return;
+    }
     if (agentId) {
       progressRef.current = Math.min(1, progressRef.current + delta / 0.4);
     } else {
