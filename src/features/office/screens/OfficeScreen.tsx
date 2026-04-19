@@ -1,3 +1,4 @@
+import SquadChatPanel from "../components/SquadChatPanel";
 "use client";
 
 import {
