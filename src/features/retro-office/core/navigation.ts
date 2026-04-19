@@ -686,6 +686,8 @@ export const getGymWorkoutLocations = (
         "weight_bench",
         "dumbbell_rack",
         "exercise_bike",
+        "squat_rack",
+        "deadlift_platform",
         "punching_bag",
         "rowing_machine",
         "kettlebell_rack",
@@ -738,6 +740,26 @@ export const getGymWorkoutLocations = (
           y,
           facing: facingTowardEquipment(x, y),
           workoutStyle: "bike",
+        };
+      }
+      if (item.type === "squat_rack") {
+        const x = item.x + 30;
+        const y = item.y + 45;
+        return {
+          x,
+          y,
+          facing: facingTowardEquipment(x, y),
+          workoutStyle: "lift",
+        };
+      }
+      if (item.type === "deadlift_platform") {
+        const x = item.x + 75;
+        const y = item.y + 55;
+        return {
+          x,
+          y,
+          facing: facingTowardEquipment(x, y),
+          workoutStyle: "lift",
         };
       }
       if (item.type === "rowing_machine") {

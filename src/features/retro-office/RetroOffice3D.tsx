@@ -194,6 +194,8 @@ import {
   ServerTerminalModel as InteractiveServerTerminalModel,
   SmsBoothModel as InteractiveSmsBoothModel,
   SpeakerModel as InteractiveSpeakerModel,
+  SquatRackModel as InteractiveSquatRackModel,
+  DeadliftPlatformModel as InteractiveDeadliftPlatformModel,
   TestBenchModel as InteractiveTestBenchModel,
   TreadmillModel as InteractiveTreadmillModel,
   WeightBenchModel as InteractiveWeightBenchModel,
@@ -1102,6 +1104,28 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           />
         ) : item.type === "speaker" ? (
           <InteractiveSpeakerModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "squat_rack" ? (
+          <InteractiveSquatRackModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "deadlift_platform" ? (
+          <InteractiveDeadliftPlatformModel
             key={item._uid}
             item={item}
             isSelected={false}
@@ -4788,6 +4812,30 @@ export function RetroOffice3D({
                   />
                 ) : item.type === "speaker" ? (
                   <InteractiveSpeakerModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "squat_rack" ? (
+                  <InteractiveSquatRackModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "deadlift_platform" ? (
+                  <InteractiveDeadliftPlatformModel
                     key={item._uid}
                     item={item}
                     isSelected={item._uid === selectedUid}
