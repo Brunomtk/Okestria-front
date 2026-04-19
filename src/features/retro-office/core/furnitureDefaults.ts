@@ -276,8 +276,9 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "squat_rack",     x: GYM_ROOM_X + 220, y: EAST_WING_ROOM_TOP_Y + 20, facing: 270 },
   { type: "squat_rack",     x: GYM_ROOM_X + 278, y: EAST_WING_ROOM_TOP_Y + 20, facing: 270 },
   // 2 weight benches — replacing the rowing machines (90x45 → flat bench for supino)
-  { type: "weight_bench",   x: GYM_ROOM_X + 350, y: EAST_WING_ROOM_TOP_Y + 22, facing: 0 },
-  { type: "weight_bench",   x: GYM_ROOM_X + 450, y: EAST_WING_ROOM_TOP_Y + 22, facing: 0 },
+  // facing 90 so the bench runs perpendicular (user example: 1530, 20, 90°)
+  { type: "weight_bench",   x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 20, facing: 90 },
+  { type: "weight_bench",   x: GYM_ROOM_X + 455, y: EAST_WING_ROOM_TOP_Y + 20, facing: 90 },
 
   // Corner floor speakers + wall clock (top wall decor)
   { type: "speaker", x: GYM_ROOM_X + 14,  y: EAST_WING_ROOM_TOP_Y + 14 },
@@ -305,11 +306,11 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
 
   // === ROW 5 — AMENITIES (bottom wall, flush, facing 180 = toward yoga area) ===
   // Bottom wall: y = 352..360. Items flush: item_top = 352 - item_height
-  // Lockers (40×40 → y=312). All 4 in a row, facing 180 so the back is against the wall
-  { type: "locker", x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 312, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 302, y: EAST_WING_ROOM_TOP_Y + 312, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 344, y: EAST_WING_ROOM_TOP_Y + 312, facing: 180 },
-  { type: "locker", x: GYM_ROOM_X + 386, y: EAST_WING_ROOM_TOP_Y + 312, facing: 180 },
+  // Lockers (40×40 → y=300, slightly off the wall per user request). facing 180
+  { type: "locker", x: GYM_ROOM_X + 260, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 302, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 344, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
+  { type: "locker", x: GYM_ROOM_X + 386, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
 
   // Bench seat at user-specified absolute 1090, 310, facing 180
   { type: "bench_seat", x: 1090, y: 310, facing: 180 },
