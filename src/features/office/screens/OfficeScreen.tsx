@@ -66,10 +66,8 @@ import {
 } from "@/features/agents/components/AgentEditorModal";
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
-import { SquadChatPanel } from "@/features/office/components/SquadChatPanel";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
-import { SquadTaskWorkspace } from "@/features/office/components/SquadTaskWorkspace";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
@@ -4864,22 +4862,6 @@ export function OfficeScreen({
     : null;
 
 
-  const focusedSquadWorkspaceTasks = useMemo<SquadTaskSummary[]>(() => {
-    return focusedSquadChatTasks.map((task) => ({
-      id: task.id,
-      squadId: task.squadId,
-      squadName: focusedSquadChatTarget?.name ?? "Squad",
-      title: task.title,
-      executionMode: task.executionMode,
-      preferredModel: task.preferredModel,
-      status: task.status,
-      runCount: task.runs.length,
-      startedAtUtc: task.startedAtUtc,
-      finishedAtUtc: task.finishedAtUtc,
-      createdDate: task.createdDate,
-      updatedDate: task.updatedDate,
-    }));
-  }, [focusedSquadChatTarget?.name, focusedSquadChatTasks]);
 
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
@@ -6327,38 +6309,26 @@ export function OfficeScreen({
                         ) : null
                       }
                     />
-                  ) : focusedSquadChatTarget ? (
-                    <div className="flex h-full min-h-0 flex-col px-3 py-3 sm:px-4 sm:py-4">
-                      <SquadTaskWorkspace
-                        squad={focusedSquadChatTarget}
-                        tasks={focusedSquadWorkspaceTasks}
-                        selectedTask={activeFocusedSquadTask}
-                        selectedTaskId={activeFocusedSquadTask?.id ?? null}
-                        loading={squadOpsLoading && squadOpsSquadId === focusedSquadChatTarget.id}
-                        refreshingTask={Boolean(activeFocusedSquadTask && activeFocusedSquadTask.status === "running")}
-                        onSelectTask={(taskId) => {
-                          setActiveSquadChatTaskBySquadId((current) => ({
-                            ...current,
-                            [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]: taskId,
-                          }));
-                        }}
-                        emptyTitle="No squad task selected"
-                        emptyDescription="Create a squad task in Squad Ops and switch between member sessions directly from the workspace."
-                        topActions={
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSquadOpsSquadId(focusedSquadChatTarget.id);
-                              setSquadOpsModalOpen(true);
-                            }}
-                            className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-500/18"
-                          >
-                            Open Squad Ops
-                          </button>
-                        }
-                        compact
-                      />
-                    </div>
+                  ) : focusedSquadChatTarget && focusedSquadChatState ? (
+                    <RemoteAgentChatPanel
+                      agentName={focusedSquadChatTarget.name}
+                      canSend={remoteMessagingAvailable}
+                      sending={focusedSquadChatState.sending}
+                      draft={focusedSquadChatState.draft}
+                      error={focusedSquadChatState.error}
+                      messages={focusedSquadChatState.messages}
+                      disabledReason={remoteMessagingDisabledReason}
+                      onDraftChange={(value) => {
+                        updateRemoteChatSession(focusedSquadChatTarget.id, (session) => ({
+                          ...session,
+                          draft: value,
+                          error: null,
+                        }));
+                      }}
+                      onSend={(message) => {
+                        void handleChatSend(focusedSquadChatTarget.id, "", { text: message });
+                      }}
+                    />
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
                       agentName={focusedRemoteChatTarget.name}
