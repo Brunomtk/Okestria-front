@@ -144,7 +144,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
             <div className="mt-2 flex flex-wrap items-center gap-2 text-2xl font-semibold text-white">
               <span>{squad?.name ?? "Squad"}</span>
               <span className="text-white/25">•</span>
-              <span className="text-lg font-medium text-white/70">{squad?.memberCount ?? 0} members</span>
+              <span className="text-lg font-medium text-white/70">{squad?.members?.length ?? 0} members</span>
               <span className="text-white/25">•</span>
               <span className="text-lg font-medium text-white/55">{activeMode}</span>
             </div>
