@@ -211,8 +211,11 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                           onClick={() => handleModeChange(mode.value)}
                           className={`rounded-[18px] border px-3 py-3 text-left transition ${active ? "border-cyan-400/30 bg-cyan-500/12 text-cyan-100" : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/[0.05]"}`}
                         >
-                          <div className="text-sm font-semibold">{mode.title}</div>
-                          <div className="mt-1 text-xs leading-5 opacity-75">{mode.description}</div>
+                          <div className="flex items-center gap-2 text-sm font-semibold">
+                            <span className="shrink-0">{mode.icon}</span>
+                            <span>{mode.label}</span>
+                          </div>
+                          <div className="mt-1 text-xs leading-5 opacity-75">{mode.hint}</div>
                         </button>
                       );
                     })}
