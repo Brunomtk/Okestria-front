@@ -4864,6 +4864,23 @@ export function OfficeScreen({
       })()
     : null;
 
+  const focusedSquadWorkspaceTasks: SquadTaskSummary[] = focusedSquadChatTarget
+    ? focusedSquadChatTasks.map((task) => ({
+        id: task.id,
+        squadId: task.squadId,
+        squadName: focusedSquadChatTarget.name,
+        title: task.title,
+        executionMode: task.executionMode,
+        preferredModel: task.preferredModel,
+        status: task.status,
+        runCount: Array.isArray(task.runs) ? task.runs.length : 0,
+        startedAtUtc: task.startedAtUtc,
+        finishedAtUtc: task.finishedAtUtc,
+        createdDate: task.createdDate,
+        updatedDate: task.updatedDate ?? task.finishedAtUtc ?? task.startedAtUtc ?? task.createdDate,
+      }))
+    : [];
+
 
 
   useEffect(() => {
