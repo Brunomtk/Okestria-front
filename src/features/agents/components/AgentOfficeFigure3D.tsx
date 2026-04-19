@@ -77,7 +77,7 @@ const buildFaceTexture = (skin: string) => {
 // Full-body figure — mirror of AgentModel geometry (v42 polish).
 // A gentle rotate + breathe gives it life without needing an agent tick loop.
 // ──────────────────────────────────────────────────────────────────────────
-const OfficeFigure = ({
+export const OfficeFigure = ({
   profile,
   onReady,
 }: {

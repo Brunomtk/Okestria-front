@@ -406,12 +406,36 @@ export const AgentModel = memo(function AgentModel({
       }
     }
 
+    // Desk chair vs lounge vs meeting — each needs different recline.
+    const isDeskChairSit =
+      agent.state === "sitting" &&
+      (agent.interactionTarget === "desk" ||
+        agent.interactionTarget === "meeting_room");
+    const isLoungeSit =
+      agent.state === "sitting" && agent.interactionTarget === "lounge";
     const sittingBodyRotX =
       agent.state === "sitting"
-        ? agent.interactionTarget === "lounge"
+        ? isLoungeSit
           ? -0.28 // deeper recline on couch/beanbag
-          : -0.1 // desk chair — more upright, slight backward
+          : isDeskChairSit
+            ? -0.02 // desk chair — essentially upright, tiny ease-back
+            : -0.1 // any other sit (stool, bench, etc.)
         : 0;
+    // Lift the agent's root up onto the seat surface. Without this the
+    // model's feet-plane stays on the floor and the character appears to
+    // "float" through the chair cushion rather than sit on it. The values
+    // are tuned so that the agent's hip-pivot (where the legs rotate from)
+    // lands on top of the seat cushion, accounting for AGENT_SCALE (1.75)
+    // and the chair's own Y-scale (0.82 in ChairModel).
+    //   • Desk/meeting chair seat top ≈ 0.34 world → hip pivot needs lift ≈ 0.15
+    //   • Lounge cushion (couch/beanbag) is lower + softer — gentler lift.
+    const sittingLift = isDeskChairSit
+      ? 0.16
+      : isLoungeSit
+        ? 0.1
+        : agent.state === "sitting"
+          ? 0.13
+          : 0;
     // QA stations: slight forward-lean + micro-bob per station type.
     let qaBodyRotX = 0;
     if (isQaWorking) {
@@ -514,7 +538,11 @@ export const AgentModel = memo(function AgentModel({
         : agent.status === "error"
           ? 1.015 + Math.sin(agent.frame * 0.16) * 0.01
           : 1;
-    groupRef.current.position.set(wx + errorShakeX, bounce + breathe + idleFloat, wz + errorShakeZ);
+    groupRef.current.position.set(
+      wx + errorShakeX,
+      bounce + breathe + idleFloat + sittingLift,
+      wz + errorShakeZ,
+    );
     groupRef.current.scale.setScalar(statusScale);
 
     if (leftArmRef.current) {
@@ -650,17 +678,19 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.state === "sitting") {
         // Lounge vs desk: relaxed hands-on-lap for couch/beanbag,
         // forward-reaching typing pose for desk.
-        const isLoungeSit = agent.interactionTarget === "lounge";
-        if (isLoungeSit) {
+        const isLoungeSitLocal = agent.interactionTarget === "lounge";
+        if (isLoungeSitLocal) {
           // Arm resting on armrest / lap — slightly back and down
           leftArmRef.current.rotation.x = 0.45;
           leftArmRef.current.rotation.z = -0.18;
           leftArmRef.current.rotation.y = 0.05;
         } else {
-          // Desk/chair typing pose — arm forward on desk
-          leftArmRef.current.rotation.x = -0.55;
-          leftArmRef.current.rotation.z = -0.12;
-          leftArmRef.current.rotation.y = -0.05;
+          // Desk/chair typing pose — arm reaches forward onto the desk,
+          // with a subtle typing bob so the agent reads as actively working.
+          const typeBob = Math.sin(motionFrame * 0.22) * 0.04;
+          leftArmRef.current.rotation.x = -0.95 + typeBob;
+          leftArmRef.current.rotation.z = -0.18;
+          leftArmRef.current.rotation.y = -0.02;
         }
       } else if (isIdle) {
         // Enhanced idle animations for left arm
@@ -827,15 +857,18 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.08;
         }
       } else if (agent.state === "sitting") {
-        const isLoungeSit = agent.interactionTarget === "lounge";
-        if (isLoungeSit) {
+        const isLoungeSitLocal = agent.interactionTarget === "lounge";
+        if (isLoungeSitLocal) {
           rightArmRef.current.rotation.x = 0.45;
           rightArmRef.current.rotation.z = 0.18;
           rightArmRef.current.rotation.y = -0.05;
         } else {
-          rightArmRef.current.rotation.x = -0.55;
-          rightArmRef.current.rotation.z = 0.12;
-          rightArmRef.current.rotation.y = 0.05;
+          // Typing pose — phase-offset from left arm for an asymmetric,
+          // alive-looking cadence at the keyboard.
+          const typeBob = Math.sin(motionFrame * 0.22 + Math.PI / 2) * 0.04;
+          rightArmRef.current.rotation.x = -0.95 + typeBob;
+          rightArmRef.current.rotation.z = 0.18;
+          rightArmRef.current.rotation.y = 0.02;
         }
       } else if (isIdle) {
         // Enhanced idle animations for right arm
@@ -930,9 +963,12 @@ export const AgentModel = memo(function AgentModel({
         // Gentle standing sway at the station — no rep motion needed.
         leftLegX = 0.02 + Math.sin(motionFrame * 0.05) * 0.015;
       } else if (agent.state === "sitting") {
-        // Sitting: thighs horizontal (hip flex ~90°). Lounge a bit more reclined.
-        const isLoungeSit = agent.interactionTarget === "lounge";
-        leftLegX = isLoungeSit ? 0.72 : 0.85;
+        // Sitting: thighs rotate forward at the hip. Desk chair uses a
+        // steeper flex (~60°) so thighs look almost horizontal with the
+        // feet reaching the floor naturally given the sittingLift above.
+        // Lounge is a bit more reclined & relaxed.
+        const isLoungeSitLocal = agent.interactionTarget === "lounge";
+        leftLegX = isLoungeSitLocal ? 0.72 : 1.05;
       } else if (isIdle && idleAnim.type === 7) {
         // Tap foot animation - left leg taps
         leftLegX = Math.max(0, Math.sin(frameValue * 0.2)) * 0.12 * idleSmooth;
@@ -986,8 +1022,8 @@ export const AgentModel = memo(function AgentModel({
         // Counter-phase sway opposite the left leg.
         rightLegX = 0.02 + Math.sin(motionFrame * 0.05 + Math.PI) * 0.015;
       } else if (agent.state === "sitting") {
-        const isLoungeSit = agent.interactionTarget === "lounge";
-        rightLegX = isLoungeSit ? 0.72 : 0.85;
+        const isLoungeSitLocal = agent.interactionTarget === "lounge";
+        rightLegX = isLoungeSitLocal ? 0.72 : 1.05;
       } else if (isIdle && idleAnim.type === 4) {
         // Stretch - slight leg movement
         rightLegX = -Math.sin(idleProgress * Math.PI) * 0.05 * idleSmooth;
