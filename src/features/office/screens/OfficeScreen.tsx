@@ -6314,56 +6314,24 @@ export function OfficeScreen({
                     />
                   ) : focusedSquadChatTarget && focusedSquadChatState ? (
                     <SquadTaskWorkspace
-                      squadName={focusedSquadChatTarget.name}
-                      leaderName={focusedSquadSessionAgent?.name ?? focusedSquadChatTarget.name}
-                      entries={
-                        activeFocusedSquadTask
-                          ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []).map((message, index) => ({
-                              id: `${activeFocusedSquadTask.id}-${index}-${message.createdAt ?? "entry"}`,
-                              role: message.role,
-                              content: message.content,
-                              createdAt: message.createdAt,
-                            }))
-                          : []
+                      squad={focusedSquadChatTarget}
+                      tasks={focusedSquadWorkspaceTasks}
+                      selectedTask={activeFocusedSquadTask}
+                      selectedTaskId={activeFocusedSquadTask?.id ?? null}
+                      loading={false}
+                      refreshingTask={Boolean(activeFocusedSquadTask && activeFocusedSquadTask.status === "running")}
+                      topActions={
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSquadOpsSquadId(focusedSquadChatTarget.id);
+                            setSquadOpsModalOpen(true);
+                          }}
+                          className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-500/18"
+                        >
+                          Open Squad Ops
+                        </button>
                       }
-                      pending={Boolean(activeFocusedSquadTask && squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading)}
-                      inputValue={focusedSquadChatState?.draft ?? ""}
-                      onInputChange={(value) => {
-                        updateRemoteChatSession(focusedSquadChatTarget.id, (session) => ({
-                          ...session,
-                          draft: value,
-                          error: null,
-                        }));
-                      }}
-                      onSend={() => {}}
-                      onOpenSquadOps={() => {
-                        setSquadOpsSquadId(focusedSquadChatTarget.id);
-                        setSquadOpsModalOpen(true);
-                      }}
-                      onClearChat={() => {
-                        if (!activeFocusedSquadTask) return;
-                        setSquadTaskSessionByTaskId((current) => ({
-                          ...current,
-                          [activeFocusedSquadTask.id]: {
-                            sessionKey: current[activeFocusedSquadTask.id]?.sessionKey ?? "",
-                            loading: false,
-                            error: null,
-                            messages: [],
-                            outputLines: [],
-                          },
-                        }));
-                      }}
-                      onHideChat={() => setChatOpen(false)}
-                      canSend={false}
-                      modelLabel={selectedModelId || "Default model"}
-                      thinkingLabel={selectedThinkingLevel || "Default"}
-                      tasks={focusedSquadWorkspaceTasks.map((task) => ({
-                        id: task.id,
-                        title: task.title,
-                        status: task.status,
-                        runCount: typeof task.runCount === "number" ? task.runCount : null,
-                      }))}
-                      activeTaskId={activeFocusedSquadTask?.id ?? null}
                       onSelectTask={(taskId) => {
                         setActiveSquadChatTaskBySquadId((current) => ({
                           ...current,
