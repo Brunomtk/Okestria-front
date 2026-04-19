@@ -193,6 +193,7 @@ import {
   ServerRackModel as InteractiveServerRackModel,
   ServerTerminalModel as InteractiveServerTerminalModel,
   SmsBoothModel as InteractiveSmsBoothModel,
+  SpeakerModel as InteractiveSpeakerModel,
   TestBenchModel as InteractiveTestBenchModel,
   TreadmillModel as InteractiveTreadmillModel,
   WeightBenchModel as InteractiveWeightBenchModel,
@@ -1090,6 +1091,17 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           />
         ) : item.type === "yoga_mat" ? (
           <InteractiveYogaMatModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "speaker" ? (
+          <InteractiveSpeakerModel
             key={item._uid}
             item={item}
             isSelected={false}
@@ -4764,6 +4776,18 @@ export function RetroOffice3D({
                   />
                 ) : item.type === "yoga_mat" ? (
                   <InteractiveYogaMatModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "speaker" ? (
+                  <InteractiveSpeakerModel
                     key={item._uid}
                     item={item}
                     isSelected={item._uid === selectedUid}

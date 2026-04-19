@@ -276,10 +276,10 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "rowing_machine", x: GYM_ROOM_X + 460, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
   { type: "rowing_machine", x: GYM_ROOM_X + 555, y: EAST_WING_ROOM_TOP_Y + 25, facing: 90 },
 
-  // Corner plant + wall speaker near door
-  { type: "speaker", x: GYM_ROOM_X + 20,  y: EAST_WING_ROOM_TOP_Y + 6 },
+  // Corner floor speakers + clock
+  { type: "speaker", x: GYM_ROOM_X + 14,  y: EAST_WING_ROOM_TOP_Y + 14 },
   { type: "clock",   x: GYM_ROOM_X + 340, y: EAST_WING_ROOM_TOP_Y + 4 },
-  { type: "speaker", x: GYM_ROOM_X + 680, y: EAST_WING_ROOM_TOP_Y + 6 },
+  { type: "speaker", x: GYM_ROOM_X + 686, y: EAST_WING_ROOM_TOP_Y + 14 },
 
   // === ROW 2 — FREE WEIGHTS (middle, y≈110–160) ===
   { type: "weight_bench",   x: GYM_ROOM_X + 40,  y: EAST_WING_ROOM_TOP_Y + 120, facing: 90 },
