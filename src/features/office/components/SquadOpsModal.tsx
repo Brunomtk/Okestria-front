@@ -335,8 +335,8 @@ export function SquadOpsModal({
                   >
                     <option value="">Use squad default model</option>
                     {availableModels.map((model) => (
-                      <option key={model.value} value={model.value}>
-                        {model.label}
+                      <option key={model.id} value={model.id}>
+                        {model.name || model.id}
                       </option>
                     ))}
                   </select>
