@@ -37,7 +37,6 @@ export type OfficeAmbiencePreset =
 
 export type OfficeInteractionKind =
   | "couch_sit"
-  | "arcade_stand"
   | "tv_watch"
   | "desk_seat"
   | "window_stand";
@@ -270,7 +269,6 @@ const normalizeInteractionKind = (value: unknown): OfficeInteractionKind => {
   const normalized = asString(value);
   if (
     normalized === "couch_sit" ||
-    normalized === "arcade_stand" ||
     normalized === "tv_watch" ||
     normalized === "desk_seat" ||
     normalized === "window_stand"
@@ -506,18 +504,6 @@ export const createStarterOfficeMap = (params: {
         tags: ["tv"],
       },
       {
-        id: "arcade_a",
-        assetId: "arcade_machine",
-        layerId: "decor",
-        x: 1440,
-        y: 70,
-        rotation: 0,
-        flipX: false,
-        flipY: false,
-        zIndex: 261,
-        tags: ["arcade"],
-      },
-      {
         id: "coffee_bar",
         assetId: "coffee_station",
         layerId: "decor",
@@ -616,14 +602,6 @@ export const createStarterOfficeMap = (params: {
         x: 1190,
         y: 650,
         zoneId: "zone_lounge",
-        tags: [],
-      },
-      {
-        id: "point_arcade_stand",
-        kind: "arcade_stand",
-        x: 1390,
-        y: 90,
-        zoneId: "zone_game",
         tags: [],
       },
       {

@@ -394,24 +394,19 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "wall_cabinet", x: 878, y: 10, w: 80, h: 20, elevation: 0.9 },
   { type: "wall_cabinet", x: 960, y: 10, w: 80, h: 20, elevation: 0.9 },
 
-  // === REST / LOUNGE AREA v39 (next to the kitchen) ===
-  // Custom procedural models (couch/beanbag/tv_stand/arcade) — see primitives.tsx.
+  // === REST / LOUNGE AREA v46 (next to the kitchen) ===
+  // Custom procedural models (couch/beanbag/tv_stand) — see primitives.tsx.
   // Free zone: cx=400..780 × cy=10..140, nestled between the ATM (ends at cx=372)
   // and the kitchen (starts at cx=790). Tucked above the first desk row (starts at cy=150).
   //
   // Facing convention across the whole rest area: `facing: 180` → front of the
   // item points south (toward the TV for the couch/beanbags, into the room for
-  // the TV stand and arcade). This matches the chair convention the user
-  // pinned as the reference alignment.
+  // the TV stand). This matches the chair convention the user pinned as the
+  // reference alignment.
   //
-  // Symmetric around cx=590:
-  //   • Arcade cabinet anchors the west edge (the "video game" corner).
-  //   • TV stand centered against the north wall.
-  //   • Three-seat couch aligned with the TV, facing the screen.
-  //   • Two beanbag puffs flanking the couch, both facing the TV as well.
-  //   • Side tables removed per user request (v45) — cleaner lounge, less clutter.
-  { type: "arcade",     x: 410, y: 15,  facing: 180 },
-  { type: "tv_stand",   x: 550, y: 10,  facing: 180 },
+  // (v46) The arcade cabinet was removed per user request. The TV stand slides
+  // slightly west to keep the lounge balanced around the couch.
+  { type: "tv_stand",   x: 540, y: 10,  facing: 180 },
   { type: "couch",      x: 540, y: 100, w: 100, h: 40, facing: 180 },
   { type: "beanbag",    x: 488, y: 100, facing: 180 },
   { type: "beanbag",    x: 650, y: 100, facing: 180 },

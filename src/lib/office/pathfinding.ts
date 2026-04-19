@@ -22,7 +22,6 @@ const BLOCKING_ASSET_IDS = new Set([
   "desk_modern",
   "meeting_table",
   "wall_block",
-  "arcade_machine",
   "coffee_station",
   "tv_wall",
 ]);
@@ -75,7 +74,6 @@ const ASSET_SIZE: Record<string, [number, number]> = {
   desk_modern: [64, 32],
   meeting_table: [160, 80],
   wall_block: [32, 32],
-  arcade_machine: [32, 48],
   coffee_station: [64, 32],
   tv_wall: [80, 10],
   floor_tile: [32, 32],

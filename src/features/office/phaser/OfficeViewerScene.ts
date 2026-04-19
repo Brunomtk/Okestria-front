@@ -185,20 +185,6 @@ export const createOfficeViewerScene = (params: {
         gfx.destroy();
       }
 
-      // Arcade machine (glowy screen)
-      if (!this.textures.exists("arcade_machine")) {
-        const gfx = this.createTextureGraphics();
-        gfx.fillStyle(0x212121, 1);
-        gfx.fillRect(0, 0, 32, 48);
-        gfx.fillStyle(0x00e5ff, 1); // Screen
-        gfx.fillRect(4, 8, 24, 20);
-        gfx.fillStyle(0xff1744, 1); // Buttons
-        gfx.fillCircle(8, 36, 2);
-        gfx.fillCircle(16, 36, 2);
-        gfx.generateTexture("arcade_machine", 32, 48);
-        gfx.destroy();
-      }
-
       // Coffee station (counter with machine)
       if (!this.textures.exists("coffee_station")) {
         const gfx = this.createTextureGraphics();

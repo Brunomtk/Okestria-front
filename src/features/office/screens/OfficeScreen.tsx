@@ -1596,7 +1596,11 @@ export function OfficeScreen({
     });
   }, [companyScopedAgentIds, dispatch, state.agents]);
 
-  // Seed avatar profiles from backend on first load so agents render with persisted avatars
+  // Seed avatar profiles from backend on first load so agents render with the
+  // latest persisted avatar — always overwrite the local profile so freshly
+  // saved customizations (top style, hair, accessories, etc.) come back after
+  // a page reload. Previously this only hydrated when the local profile was
+  // missing, which caused the "old agent" to stick around on refresh.
   const backendAvatarSeedDoneRef = useRef(false);
   useEffect(() => {
     if (backendAvatarSeedDoneRef.current) return;
@@ -1616,9 +1620,10 @@ export function OfficeScreen({
             const gatewayAgentId = extractGatewayAgentId(details);
             if (!gatewayAgentId) continue;
             backendAgentByGatewayIdRef.current.set(gatewayAgentId, summary.id);
-            // Seed into local state and settings
+            // Seed into local state and settings — always overwrite so the
+            // 3D office scene and Agents screen pick up the newest fields.
             const existingAgent = state.agents.find((a) => a.agentId === gatewayAgentId);
-            if (existingAgent && !existingAgent.avatarProfile) {
+            if (existingAgent) {
               dispatch({
                 type: "updateAgent",
                 agentId: gatewayAgentId,

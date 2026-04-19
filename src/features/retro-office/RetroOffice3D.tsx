@@ -205,7 +205,6 @@ import {
   YogaMatModel as InteractiveYogaMatModel,
 } from "@/features/retro-office/objects/machines";
 import {
-  ArcadeModel as PrimitiveArcadeModel,
   BeanbagModel as PrimitiveBeanbagModel,
   ChairModel as PrimitiveChairModel,
   ClockModel as PrimitiveClockModel,
@@ -365,7 +364,7 @@ const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     key: "lounge",
     label: "Lounge",
-    items: ["couch", "couch_v", "beanbag", "ottoman", "jukebox", "arcade", "foosball", "air_hockey"],
+    items: ["couch", "couch_v", "beanbag", "ottoman", "jukebox", "foosball", "air_hockey"],
   },
   {
     key: "kitchen",
@@ -693,12 +692,6 @@ const PALETTE: PaletteEntry[] = [
     label: "Charging",
     icon: "🔋",
     defaults: { w: 24, h: 24, facing: 0 },
-  },
-  {
-    type: "arcade",
-    label: "Arcade",
-    icon: "🕹️",
-    defaults: { w: 30, h: 30, facing: 180 },
   },
   {
     type: "foosball",
@@ -1288,17 +1281,6 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           />
         ) : item.type === "tv_stand" ? (
           <PrimitiveTvStandModel
-            key={item._uid}
-            item={item}
-            isSelected={false}
-            isHovered={false}
-            editMode={false}
-            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
-            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
-            onPointerOut={NOOP_FURNITURE_HANDLER}
-          />
-        ) : item.type === "arcade" ? (
-          <PrimitiveArcadeModel
             key={item._uid}
             item={item}
             isSelected={false}
@@ -5140,18 +5122,6 @@ export function RetroOffice3D({
                   />
                 ) : item.type === "tv_stand" ? (
                   <PrimitiveTvStandModel
-                    key={item._uid}
-                    item={item}
-                    isSelected={item._uid === selectedUid}
-                    isHovered={item._uid === hoverUid}
-                    editMode={editMode}
-                    onPointerDown={handleFurniturePointerDown}
-                    onPointerOver={handleFurniturePointerOver}
-                    onPointerOut={handleFurniturePointerOut}
-                    onClick={handleDeskClick}
-                  />
-                ) : item.type === "arcade" ? (
-                  <PrimitiveArcadeModel
                     key={item._uid}
                     item={item}
                     isSelected={item._uid === selectedUid}

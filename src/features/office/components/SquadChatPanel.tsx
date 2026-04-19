@@ -3,7 +3,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronRight, Loader2, RefreshCcw, Send, Sparkles, Users2 } from "lucide-react";
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
-import { fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
+import { ackSquadTaskRender, fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
 
 type SquadTaskSessionFeedMessage = {
@@ -43,6 +43,11 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // Track message IDs that have already been ACKed in this browser session to
+  // avoid hammering the backend with duplicate render-acks when the polling
+  // cycle re-renders the same message. The backend is idempotent, but we still
+  // want to be a good citizen.
+  const ackedMessageIdsRef = useRef<Set<number>>(new Set());
 
   const loadTasks = async () => {
     setLoading(true);
@@ -144,6 +149,34 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
     if (!node || !isNearBottom(node, 140)) return;
     node.scrollTop = node.scrollHeight;
   }, [resolvedActiveTask, visibleTasks, loading]);
+
+  // v9: ACK rendered assistant turns. We only ACK messages that are backed by
+  // a real numeric id (i.e., came from the execution feed, not synthesized).
+  // Each message is ACKed at most once per client session.
+  useEffect(() => {
+    if (!resolvedActiveTask) return;
+    const taskId = resolvedActiveTask.id;
+    const alreadyAckedHere =
+      resolvedActiveTask.lastRenderedMessageId ?? 0;
+
+    (resolvedActiveTask.messages ?? []).forEach((message) => {
+      if (message.role !== "assistant") return;
+      if (!message.content || !message.content.trim()) return;
+      if (message.id <= 0) return;
+      if (message.id <= alreadyAckedHere) return;
+      if (ackedMessageIdsRef.current.has(message.id)) return;
+      ackedMessageIdsRef.current.add(message.id);
+      void ackSquadTaskRender(taskId, {
+        messageId: message.id,
+        renderedText: message.content,
+        clientTurnId: `squadchat-${taskId}-${message.id}`,
+      }).catch(() => {
+        // Best-effort: if the ACK fails, drop it from the set so we can retry
+        // on the next render loop.
+        ackedMessageIdsRef.current.delete(message.id);
+      });
+    });
+  }, [resolvedActiveTask]);
 
   const send = () => {
     const message = draft.trim();

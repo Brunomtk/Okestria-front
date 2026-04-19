@@ -394,7 +394,7 @@ const buildPantryAnchorPoints = (items: FurnitureItem[]): KitchenPoint[] => {
 
 const buildFunPoints = (items: FurnitureItem[]): FunPoint[] =>
   items
-    .filter((item) => ["jukebox", "arcade", "foosball", "air_hockey"].includes(item.type))
+    .filter((item) => ["jukebox", "foosball", "air_hockey"].includes(item.type))
     .flatMap((item) => {
       const width = item.w ?? 60;
       const height = item.h ?? 60;
@@ -889,7 +889,7 @@ export function useRebuiltAgentTick(
         ),
       );
       const hasJukebox = furniture.some((item) =>
-        ["jukebox", "arcade", "foosball", "air_hockey"].includes(item.type),
+        ["jukebox", "foosball", "air_hockey"].includes(item.type),
       );
       const hasSmsBooth = furniture.some((item) => item.type === "sms_booth");
       const hasPhoneBooth = furniture.some((item) => item.type === "phone_booth");

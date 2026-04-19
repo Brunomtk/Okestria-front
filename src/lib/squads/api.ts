@@ -415,6 +415,12 @@ export type SquadTaskRun = {
   lastSyncedAtUtc: string | null;
   startedAtUtc: string | null;
   finishedAtUtc: string | null;
+  // v9 render-state
+  lastRenderedMessageId: number | null;
+  lastRenderedAtUtc: string | null;
+  lastRenderedText: string | null;
+  renderVersion: number;
+  sessionKey: string | null;
 };
 
 export type SquadTaskSummary = {
@@ -464,6 +470,42 @@ export type SquadTask = SquadTaskSummary & {
   runs: SquadTaskRun[];
   messages: SquadTaskMessage[];
   events: SquadTaskEvent[];
+  // v9 render-state (task-level)
+  lastRenderedMessageId: number | null;
+  lastRenderedAtUtc: string | null;
+  lastUserText: string | null;
+  lastAssistantText: string | null;
+  executionSummary: string | null;
+  renderVersion: number;
+  sessionKey: string | null;
+};
+
+export type SquadTaskRenderAckPayload = {
+  messageId: number;
+  renderedText: string;
+  fingerprint?: string | null;
+  clientTurnId?: string | null;
+};
+
+export type SquadTaskRenderAckResult = {
+  taskId: number;
+  messageId: number;
+  renderVersion: number;
+  acceptedAtUtc: string;
+};
+
+export type SquadTaskContextSnapshot = {
+  taskId: number;
+  squadId: number;
+  sessionKey: string | null;
+  renderVersion: number;
+  lastRenderedMessageId: number | null;
+  lastRenderedAtUtc: string | null;
+  lastUserText: string | null;
+  lastAssistantText: string | null;
+  executionSummary: string | null;
+  contextJson: string | null;
+  updatedAtUtc: string | null;
 };
 
 
@@ -560,6 +602,12 @@ const normalizeExecutionRun = (raw: BackendSquadExecutionStep): SquadTaskRun => 
   lastSyncedAtUtc: readNullableString(raw.lastSyncedAtUtc),
   startedAtUtc: readNullableString(raw.startedAtUtc),
   finishedAtUtc: readNullableString(raw.finishedAtUtc),
+  // v9 render-state
+  lastRenderedMessageId: readNullableNumber(raw.lastRenderedMessageId),
+  lastRenderedAtUtc: readNullableString(raw.lastRenderedAtUtc),
+  lastRenderedText: readNullableString(raw.lastRenderedText),
+  renderVersion: readNumber(raw.renderVersion, 0),
+  sessionKey: readNullableString(raw.sessionKey ?? raw.externalSessionKey),
 });
 
 
@@ -627,6 +675,14 @@ const normalizeExecutionTask = (raw: unknown): SquadTask => {
     runs,
     messages,
     events,
+    // v9 render-state (task-level)
+    lastRenderedMessageId: readNullableNumber(record.lastRenderedMessageId),
+    lastRenderedAtUtc: readNullableString(record.lastRenderedAtUtc),
+    lastUserText: readNullableString(record.lastUserText),
+    lastAssistantText: readNullableString(record.lastAssistantText),
+    executionSummary: readNullableString(record.executionSummary),
+    renderVersion: readNumber(record.renderVersion, 0),
+    sessionKey: readNullableString(record.sessionKey),
   };
 };
 
@@ -771,4 +827,94 @@ export const updateSquadTaskRun = async (
     messages: [],
     events: [],
   } as unknown as SquadTaskRun;
+};
+
+// ---------------------------------------------------------------------------
+// v9: render-ack + context endpoints
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute a stable SHA-256 fingerprint of the rendered message text.
+ * Used to dedup render acks across page reloads & concurrent tabs.
+ */
+const computeRenderFingerprint = async (text: string): Promise<string> => {
+  try {
+    const enc = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", enc);
+    const bytes = Array.from(new Uint8Array(digest));
+    return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    // Fallback: non-cryptographic but deterministic.
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = (hash * 31 + text.charCodeAt(i)) | 0;
+    }
+    return `fallback-${(hash >>> 0).toString(16)}`;
+  }
+};
+
+/**
+ * POST /api/Squads/tasks/{taskId}/render-ack
+ *
+ * Tells the backend that `messageId` has been rendered to the user and the
+ * corresponding `renderedText` was visible in the DOM. The server uses this
+ * to advance the render-version and avoid re-sending the same turn on reload.
+ */
+export const ackSquadTaskRender = async (
+  taskId: number,
+  payload: SquadTaskRenderAckPayload,
+  token?: string | null,
+): Promise<SquadTaskRenderAckResult> => {
+  const fingerprint =
+    payload.fingerprint ?? (await computeRenderFingerprint(payload.renderedText));
+  const response = await requestBackendJson<Record<string, unknown>>(
+    `/api/Squads/tasks/${encodeURIComponent(String(taskId))}/render-ack`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        messageId: payload.messageId,
+        renderedText: payload.renderedText,
+        fingerprint,
+        clientTurnId: payload.clientTurnId ?? null,
+      }),
+    },
+    token,
+  );
+  return {
+    taskId: readNumber(response.taskId, taskId),
+    messageId: readNumber(response.messageId, payload.messageId),
+    renderVersion: readNumber(response.renderVersion, 0),
+    acceptedAtUtc: readString(response.acceptedAtUtc),
+  };
+};
+
+/**
+ * GET /api/Squads/tasks/{taskId}/context
+ *
+ * Returns the frozen render context for a task — what's been rendered, the
+ * last user/assistant turn, running summary, and any cached JSON context the
+ * backend hydrates from SquadTaskContextState.
+ */
+export const fetchSquadTaskContext = async (
+  taskId: number,
+  token?: string | null,
+): Promise<SquadTaskContextSnapshot> => {
+  const response = await requestBackendJson<Record<string, unknown>>(
+    `/api/Squads/tasks/${encodeURIComponent(String(taskId))}/context`,
+    undefined,
+    token,
+  );
+  return {
+    taskId: readNumber(response.taskId, taskId),
+    squadId: readNumber(response.squadId),
+    sessionKey: readNullableString(response.sessionKey),
+    renderVersion: readNumber(response.renderVersion, 0),
+    lastRenderedMessageId: readNullableNumber(response.lastRenderedMessageId),
+    lastRenderedAtUtc: readNullableString(response.lastRenderedAtUtc),
+    lastUserText: readNullableString(response.lastUserText),
+    lastAssistantText: readNullableString(response.lastAssistantText),
+    executionSummary: readNullableString(response.executionSummary),
+    contextJson: readNullableString(response.contextJson),
+    updatedAtUtc: readNullableString(response.updatedAtUtc),
+  };
 };
