@@ -228,22 +228,16 @@ export const FloorAndWalls = memo(function FloorAndWalls({
 
   return (
     <group>
+      {/* v42: collapsed to a single ground plane to kill z-fight flicker.
+          Previously there were two stacked planes at y=-0.015 and y=-0.012 only
+          0.003 units apart, which flickered black during camera motion. */}
       <mesh
-        position={[groundCenterX, -0.015, groundCenterZ]}
+        position={[groundCenterX, -0.04, groundCenterZ]}
         rotation={[-Math.PI / 2, 0, 0]}
         receiveShadow
       >
         <planeGeometry args={[groundWidth, groundHeight, 24, 14]} />
-        <meshStandardMaterial color="#263238" roughness={0.98} metalness={0.02} />
-      </mesh>
-
-      <mesh
-        position={[groundCenterX, -0.012, groundCenterZ]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-      >
-        <planeGeometry args={[groundWidth * 0.95, groundHeight * 0.9]} />
-        <meshStandardMaterial color="#1b232a" roughness={0.96} metalness={0.04} />
+        <meshStandardMaterial color="#2a3138" roughness={0.96} metalness={0.02} />
       </mesh>
 
       <mesh
@@ -598,9 +592,6 @@ export const FloorAndWalls = memo(function FloorAndWalls({
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
@@ -628,9 +619,6 @@ export const FloorAndWalls = memo(function FloorAndWalls({
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
@@ -658,9 +646,6 @@ export const FloorAndWalls = memo(function FloorAndWalls({
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
@@ -688,9 +673,6 @@ export const FloorAndWalls = memo(function FloorAndWalls({
                 emissive={wallEmissive}
                 emissiveIntensity={0.4}
                 roughness={0.9}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
               />
             </mesh>
             {showRemoteOffice ? (
@@ -714,49 +696,12 @@ export const FloorAndWalls = memo(function FloorAndWalls({
         );
       })()}
 
-      {/* v38: baseboards lifted off the floor (y=0.035, height 0.05) to kill the
-          floor-corner z-fighting that flashed black. North/South baseboards also
-          shortened so they don't overlap the West/East baseboards at the corners. */}
-      <mesh position={[localOfficeCenterX, 0.035, localNorthWallZ + 0.04]}>
-        <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
-        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-      </mesh>
-      {showRemoteOffice ? (
-        <mesh position={[localOfficeCenterX, 0.035, localNorthWallZ + 0.04 + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
-          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-        </mesh>
-      ) : null}
-      <mesh position={[localOfficeCenterX, 0.035, localSouthWallZ - 0.04]}>
-        <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
-        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-      </mesh>
-      {showRemoteOffice ? (
-        <mesh position={[localOfficeCenterX, 0.035, localSouthWallZ - 0.04 + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[localOfficeWidth - 0.12, 0.05, 0.04]} />
-          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-        </mesh>
-      ) : null}
-      <mesh position={[localWestWallX + 0.04, 0.035, localOfficeCenterZ]}>
-        <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
-        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-      </mesh>
-      {showRemoteOffice ? (
-        <mesh position={[localWestWallX + 0.04, 0.035, localOfficeCenterZ + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
-          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-        </mesh>
-      ) : null}
-      <mesh position={[localEastWallX - 0.04, 0.035, localOfficeCenterZ]}>
-        <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
-        <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-      </mesh>
-      {showRemoteOffice ? (
-        <mesh position={[localEastWallX - 0.04, 0.035, localOfficeCenterZ + remoteOfficeOffsetZ]}>
-          <boxGeometry args={[0.04, 0.05, localOfficeHeight]} />
-          <meshLambertMaterial color="#0c0c10" polygonOffset polygonOffsetFactor={-1} polygonOffsetUnits={-1} />
-        </mesh>
-      ) : null}
+      {/* v42: baseboards removed. Previously the black (#0c0c10) baseboards
+          flickered during camera motion because the front face of the baseboard
+          box was coplanar with the inner face of the wall box, and both had
+          polygonOffset=-1 — which produced the "faixa preta piscando no rodapé"
+          the user reported. A clean floor-to-wall junction looks cleaner and
+          eliminates the flicker entirely. */}
     </group>
   );
 });
