@@ -168,7 +168,6 @@ import { AgentModel as AgentObjectModel } from "@/features/retro-office/objects/
 import { JukeboxModel as InteractiveJukeboxModel } from "@/features/retro-office/objects/Jukebox";
 import {
   FurnitureModel as GenericFurnitureModel,
-  InstancedFurnitureItems as InstancedFurnitureItemsModel,
   PlacementGhost as FurniturePlacementGhost,
 } from "@/features/retro-office/objects/furniture";
 import {
@@ -204,7 +203,9 @@ import {
   YogaMatModel as InteractiveYogaMatModel,
 } from "@/features/retro-office/objects/machines";
 import {
+  ChairModel as PrimitiveChairModel,
   ClockModel as PrimitiveClockModel,
+  DeskCubicleModel as PrimitiveDeskCubicleModel,
   DoorModel as PrimitiveDoorModel,
   InstancedWallSegmentsModel as PrimitiveInstancedWallSegmentsModel,
   KeyboardModel as PrimitiveKeyboardModel,
@@ -854,8 +855,30 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
   return (
     <Suspense fallback={null}>
       <PrimitiveInstancedWallSegmentsModel items={wallItems} />
-      <InstancedFurnitureItemsModel itemType="desk_cubicle" items={deskItems} />
-      <InstancedFurnitureItemsModel itemType="chair" items={chairItems} />
+      {deskItems.map((deskItem) => (
+        <PrimitiveDeskCubicleModel
+          key={deskItem._uid}
+          item={deskItem}
+          isSelected={false}
+          isHovered={false}
+          editMode={false}
+          onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+          onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+          onPointerOut={NOOP_FURNITURE_HANDLER}
+        />
+      ))}
+      {chairItems.map((chairItem) => (
+        <PrimitiveChairModel
+          key={chairItem._uid}
+          item={chairItem}
+          isSelected={false}
+          isHovered={false}
+          editMode={false}
+          onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+          onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+          onPointerOut={NOOP_FURNITURE_HANDLER}
+        />
+      ))}
       {furniture.map((item) =>
         item.type === "wall" ||
         item.type === "desk_cubicle" ||
@@ -4512,19 +4535,6 @@ export function RetroOffice3D({
               {!editMode ? (
                 <PrimitiveInstancedWallSegmentsModel items={wallItems} />
               ) : null}
-              {!editMode ? (
-                <InstancedFurnitureItemsModel
-                  itemType="desk_cubicle"
-                  items={deskItems}
-                  onItemClick={handleDeskClick}
-                />
-              ) : null}
-              {!editMode ? (
-                <InstancedFurnitureItemsModel
-                  itemType="chair"
-                  items={chairItems}
-                />
-              ) : null}
               {furniture.map((item) =>
                 item.type === "wall" ? (
                   editMode ? (
@@ -4540,33 +4550,29 @@ export function RetroOffice3D({
                     />
                   ) : null
                 ) : item.type === "desk_cubicle" ? (
-                  editMode ? (
-                    <GenericFurnitureModel
-                      key={item._uid}
-                      item={item}
-                      isSelected={item._uid === selectedUid}
-                      isHovered={item._uid === hoverUid}
-                      editMode={editMode}
-                      onPointerDown={handleFurniturePointerDown}
-                      onPointerOver={handleFurniturePointerOver}
-                      onPointerOut={handleFurniturePointerOut}
-                      onClick={handleDeskClick}
-                    />
-                  ) : null
+                  <PrimitiveDeskCubicleModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
                 ) : item.type === "chair" ? (
-                  editMode ? (
-                    <GenericFurnitureModel
-                      key={item._uid}
-                      item={item}
-                      isSelected={item._uid === selectedUid}
-                      isHovered={item._uid === hoverUid}
-                      editMode={editMode}
-                      onPointerDown={handleFurniturePointerDown}
-                      onPointerOver={handleFurniturePointerOver}
-                      onPointerOut={handleFurniturePointerOut}
-                      onClick={handleDeskClick}
-                    />
-                  ) : null
+                  <PrimitiveChairModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
                 ) : item.type === "door" ? (
                   <PrimitiveDoorModel
                     key={item._uid}

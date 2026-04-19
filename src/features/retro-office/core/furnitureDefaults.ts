@@ -96,24 +96,29 @@ const PREVIOUS_SERVER_ROOM_ITEMS_TOP_RIGHT: FurnitureSeed[] = [
 // empty preserves the legacy server-room migration path without re-adding it.
 const DEFAULT_DINING_ITEMS: FurnitureSeed[] = [];
 
+// SERVER ROOM v35 — compact, walkable, only 2 racks (cx=0..215 · cy=560..720).
+// North wall runs the full width, east wall broken by door between cy=620..660.
+// 2 server racks stand side-by-side against the north wall, leaving a clear
+// south walkway for the agent to reach the server_terminal.
 const DEFAULT_SERVER_ROOM_ITEMS: FurnitureSeed[] = [
-  { type: "wall", x: 0, y: 560, w: 323, h: WALL_THICKNESS },
-  { type: "wall", x: 315, y: 560, w: WALL_THICKNESS, h: 60 },
+  // North wall (full width of the compact server room)
+  { type: "wall", x: 0, y: 560, w: 223, h: WALL_THICKNESS },
+  // East wall (top half + bottom half with door gap between)
+  { type: "wall", x: 215, y: 560, w: WALL_THICKNESS, h: 60 },
   {
     type: "door",
-    x: 299,
+    x: 199,
     y: 630,
     w: DOOR_LENGTH,
     h: DOOR_THICKNESS,
     facing: 90,
   },
-  { type: "wall", x: 315, y: 660, w: WALL_THICKNESS, h: 60 },
-  { type: "server_rack", x: 42, y: 580, facing: 0 },
-  { type: "server_rack", x: 102, y: 580, facing: 0 },
-  { type: "server_rack", x: 162, y: 580, facing: 0 },
-  { type: "server_rack", x: 222, y: 580, facing: 0 },
-  { type: "server_terminal", x: 64, y: 680, facing: 0 },
-  { type: "server_terminal", x: 210, y: 680, facing: 0 },
+  { type: "wall", x: 215, y: 660, w: WALL_THICKNESS, h: 60 },
+  // 2 server racks tight to the north wall, centered with even spacing
+  { type: "server_rack", x: 40, y: 580, facing: 0 },
+  { type: "server_rack", x: 130, y: 580, facing: 0 },
+  // Single admin terminal along the south wall (walkable aisle)
+  { type: "server_terminal", x: 96, y: 685, facing: 0 },
 ];
 
 const LEGACY_GYM_ROOM_ITEMS: FurnitureSeed[] = [
@@ -394,22 +399,24 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "wall", x: 315, y: 0, w: 8, h: 260 },
   { type: "door", x: 299, y: 276, w: 40, h: 8, facing: 90 },
   { type: "wall", x: 315, y: 300, w: 8, h: 260 },
-  // Rectangular conference table — sized so chairs fit comfortably on all sides
-  // Table footprint: cx=77..237 (w=160) · cy=60..460 (h=400); ~77px clearance on west, ~78px on east
-  { type: "conference_table", x: 77, y: 60, w: 160, h: 400 },
-  // 12 executive chairs — 5 west side, 5 east side, 1 north end, 1 south end, all flush to table
-  { type: "chair", x: 53,  y: 92,  facing: 90 },
-  { type: "chair", x: 53,  y: 172, facing: 90 },
-  { type: "chair", x: 53,  y: 252, facing: 90 },
-  { type: "chair", x: 53,  y: 332, facing: 90 },
-  { type: "chair", x: 53,  y: 412, facing: 90 },
-  { type: "chair", x: 237, y: 92,  facing: 270 },
-  { type: "chair", x: 237, y: 172, facing: 270 },
-  { type: "chair", x: 237, y: 252, facing: 270 },
-  { type: "chair", x: 237, y: 332, facing: 270 },
-  { type: "chair", x: 237, y: 412, facing: 270 },
-  { type: "chair", x: 145, y: 32,  facing: 180 },
-  { type: "chair", x: 145, y: 464, facing: 0 },
+  // Rectangular conference table — shortened so the two end chairs at y=60 and y=430 (user-specified) fit cleanly.
+  // Table footprint: cx=77..237 (w=160) · cy=100..418 (h=318); 16px clearance from each end chair.
+  { type: "conference_table", x: 77, y: 100, w: 160, h: 318 },
+  // 2 end chairs at user-specified exact positions: (150, 60 • 0°) and (150, 430 • 180°)
+  { type: "chair", x: 150, y: 60,  facing: 0 },
+  { type: "chair", x: 150, y: 430, facing: 180 },
+  // 10 side chairs — 5 west facing east, 5 east facing west — centered along the shorter table.
+  // Table center y = 259. Chair centers offset ±0, ±60, ±120 → top-left y = 127, 187, 247, 307, 367.
+  { type: "chair", x: 53,  y: 127, facing: 90 },
+  { type: "chair", x: 53,  y: 187, facing: 90 },
+  { type: "chair", x: 53,  y: 247, facing: 90 },
+  { type: "chair", x: 53,  y: 307, facing: 90 },
+  { type: "chair", x: 53,  y: 367, facing: 90 },
+  { type: "chair", x: 237, y: 127, facing: 270 },
+  { type: "chair", x: 237, y: 187, facing: 270 },
+  { type: "chair", x: 237, y: 247, facing: 270 },
+  { type: "chair", x: 237, y: 307, facing: 270 },
+  { type: "chair", x: 237, y: 367, facing: 270 },
 
   // === OPEN-OFFICE DESKS — 3 rows × 4 desks, all facing the meeting room (chair on south, worker looks north) ===
   // Row 1 (desks at y=150, chairs at y=193) — ATM clears at cx=372 so desks start at cx=400
@@ -490,17 +497,16 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "mouse", x: 909, y: 523 },
   { type: "trash", x: 886, y: 517 },
 
-  // === SERVER ROOM (bottom-left, x=0..315 · y=560..720 — matches meeting room width) ===
-  { type: "wall", x: 0, y: 560, w: 323, h: 8 },
-  { type: "wall", x: 315, y: 560, w: 8, h: 60 },
-  { type: "door", x: 299, y: 630, w: 40, h: 8, facing: 90 },
-  { type: "wall", x: 315, y: 660, w: 8, h: 60 },
-  { type: "server_rack", x: 42, y: 580, facing: 0 },
-  { type: "server_rack", x: 102, y: 580, facing: 0 },
-  { type: "server_rack", x: 162, y: 580, facing: 0 },
-  { type: "server_rack", x: 222, y: 580, facing: 0 },
-  { type: "server_terminal", x: 64, y: 680, facing: 0 },
-  { type: "server_terminal", x: 210, y: 680, facing: 0 },
+  // === SERVER ROOM v35 (compact, walkable — cx=0..215 · cy=560..720) ===
+  // Smaller room with only 2 server racks against the north wall and a single
+  // admin terminal along the south walkway. Door on east wall for easy entry.
+  { type: "wall", x: 0, y: 560, w: 223, h: 8 },
+  { type: "wall", x: 215, y: 560, w: 8, h: 60 },
+  { type: "door", x: 199, y: 630, w: 40, h: 8, facing: 90 },
+  { type: "wall", x: 215, y: 660, w: 8, h: 60 },
+  { type: "server_rack", x: 40, y: 580, facing: 0 },
+  { type: "server_rack", x: 130, y: 580, facing: 0 },
+  { type: "server_terminal", x: 96, y: 685, facing: 0 },
 
   // === EAST-WING ENTRANCE WALLS (preserved) ===
   { type: "wall", x: 1075, y: 0, w: 8, h: 150 },
