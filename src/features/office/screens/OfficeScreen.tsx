@@ -1,8 +1,5 @@
 "use client";
 
-import { SquadTaskWorkspace } from "../components/SquadTaskWorkspace";
-
-
 import {
   type ReactNode,
   useCallback,
@@ -69,6 +66,7 @@ import {
 } from "@/features/agents/components/AgentEditorModal";
 import { AgentCreateWizardModal } from "@/features/agents/components/AgentCreateWizardModal";
 import { CreateTargetModal } from "@/features/office/components/CreateTargetModal";
+import { SquadChatPanel } from "@/features/office/components/SquadChatPanel";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
@@ -4864,25 +4862,6 @@ export function OfficeScreen({
       })()
     : null;
 
-  const focusedSquadWorkspaceTasks: SquadTaskSummary[] = focusedSquadChatTarget
-    ? focusedSquadChatTasks.map((task) => ({
-        id: task.id,
-        squadId: task.squadId,
-        squadName: focusedSquadChatTarget.name,
-        title: task.title,
-        executionMode: task.executionMode,
-        preferredModel: task.preferredModel,
-        status: task.status,
-        runCount: Array.isArray(task.runs) ? task.runs.length : 0,
-        startedAtUtc: task.startedAtUtc,
-        finishedAtUtc: task.finishedAtUtc,
-        createdDate: task.createdDate,
-        updatedDate: task.updatedDate ?? task.finishedAtUtc ?? task.startedAtUtc ?? task.createdDate,
-      }))
-    : [];
-
-
-
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
 
@@ -6329,33 +6308,30 @@ export function OfficeScreen({
                         ) : null
                       }
                     />
-                  ) : focusedSquadChatTarget && focusedSquadChatState ? (
-                    <SquadTaskWorkspace
-                      squad={focusedSquadChatTarget}
-                      tasks={focusedSquadWorkspaceTasks}
-                      selectedTask={activeFocusedSquadTask}
-                      selectedTaskId={activeFocusedSquadTask?.id ?? null}
-                      loading={false}
-                      refreshingTask={Boolean(activeFocusedSquadTask && activeFocusedSquadTask.status === "running")}
-                      topActions={
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSquadOpsSquadId(focusedSquadChatTarget.id);
-                            setSquadOpsModalOpen(true);
-                          }}
-                          className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-500/18"
-                        >
-                          Open Squad Ops
-                        </button>
-                      }
-                      onSelectTask={(taskId) => {
-                        setActiveSquadChatTaskBySquadId((current) => ({
-                          ...current,
-                          [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]: taskId,
-                        }));
-                      }}
-                    />
+                  ) : focusedSquadChatTarget ? (
+                    focusedSquadSessionAgent ? (
+                      <AgentChatPanel
+                        agent={focusedSquadSessionAgent}
+                        isSelected
+                        canSend={false}
+                        models={gatewayModels}
+                        stopBusy={false}
+                        stopDisabledReason="Squad task sessions are opened in read-only mode here."
+                        onLoadMoreHistory={() => {}}
+                        onOpenSettings={() => {}}
+                        onNewSession={() => {}}
+                        onModelChange={() => {}}
+                        onThinkingChange={() => {}}
+                        onDraftChange={() => {}}
+                        onSend={() => {}}
+                        onStopRun={() => {}}
+                        onAvatarShuffle={() => {}}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center px-8 text-center text-sm text-white/40">
+                        Select or create a squad task to open its session like an agent conversation.
+                      </div>
+                    )
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
                       agentName={focusedRemoteChatTarget.name}
