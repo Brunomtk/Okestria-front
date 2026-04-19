@@ -272,9 +272,8 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "treadmill",      x: GYM_ROOM_X + 30,  y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
   { type: "treadmill",      x: GYM_ROOM_X + 90,  y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
   { type: "treadmill",      x: GYM_ROOM_X + 150, y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
-  // 2 squat racks (48x48 square, facing 270 as requested)
-  { type: "squat_rack",     x: GYM_ROOM_X + 220, y: EAST_WING_ROOM_TOP_Y + 20, facing: 270 },
-  { type: "squat_rack",     x: GYM_ROOM_X + 278, y: EAST_WING_ROOM_TOP_Y + 20, facing: 270 },
+  // 1 squat rack (user-specified absolute position: 1380, 20, facing 270°)
+  { type: "squat_rack",     x: 1380, y: 20, facing: 270 },
   // 2 weight benches — replacing the rowing machines (90x45 → flat bench for supino)
   // facing 90 so the bench runs perpendicular (user example: 1530, 20, 90°)
   { type: "weight_bench",   x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 20, facing: 90 },
@@ -294,13 +293,14 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "plate_rack",     x: GYM_ROOM_X + 310, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
   { type: "plate_rack",     x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
 
-  // === DEADLIFT PLATFORM (user-specified absolute 1640, 120, facing 270°) ===
+  // === DEADLIFT PLATFORM (user-specified absolute 1640, 90, facing 270°) ===
   // 150×80 footprint — with facing 270 it visually spans 80 wide × 150 tall on the right side
-  { type: "deadlift_platform", x: 1640, y: 120, facing: 270 },
+  { type: "deadlift_platform", x: 1640, y: 90, facing: 270 },
 
-  // === NEW: CABLE CROSSOVER (functional trainer — left of the deadlift platform) ===
-  // Two-tower cable station with weight stacks — pairs with deadlift for a powerlifting corner
-  { type: "cable_crossover", x: GYM_ROOM_X + 460, y: EAST_WING_ROOM_TOP_Y + 130, facing: 90 },
+  // === CABLE CROSSOVERS — two functional trainers along the south strip ===
+  // User-specified absolute positions: 1510,260 and 1620,260 (both facing 0°)
+  { type: "cable_crossover", x: 1510, y: 260, facing: 0 },
+  { type: "cable_crossover", x: 1620, y: 260, facing: 0 },
 
   // === ROW 3 — STRETCHING / YOGA (shifted LEFT & DOWN per user request) ===
   { type: "yoga_mat", x: GYM_ROOM_X + 15,  y: EAST_WING_ROOM_TOP_Y + 235, facing: 0, color: "#0f766e" },

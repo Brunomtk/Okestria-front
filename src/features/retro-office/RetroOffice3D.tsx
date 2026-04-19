@@ -372,7 +372,20 @@ const PALETTE_CATEGORIES: PaletteCategory[] = [
   {
     key: "gym",
     label: "Gym",
-    items: ["treadmill", "weight_bench", "dumbbell_rack", "exercise_bike", "rowing_machine", "kettlebell_rack", "punching_bag", "yoga_mat"],
+    items: [
+      "treadmill",
+      "squat_rack",
+      "weight_bench",
+      "deadlift_platform",
+      "cable_crossover",
+      "dumbbell_rack",
+      "kettlebell_rack",
+      "plate_rack",
+      "exercise_bike",
+      "rowing_machine",
+      "punching_bag",
+      "yoga_mat",
+    ],
   },
 ];
 
@@ -536,6 +549,30 @@ const PALETTE: PaletteEntry[] = [
     defaults: { facing: 90 },
   },
   {
+    type: "squat_rack",
+    label: "Squat Rack",
+    icon: "🏗️",
+    defaults: { w: 48, h: 48, facing: 270 },
+  },
+  {
+    type: "deadlift_platform",
+    label: "Deadlift",
+    icon: "⚙️",
+    defaults: { w: 150, h: 80, facing: 270 },
+  },
+  {
+    type: "cable_crossover",
+    label: "Cable Cross",
+    icon: "🔗",
+    defaults: { w: 100, h: 70, facing: 0 },
+  },
+  {
+    type: "plate_rack",
+    label: "Plate Rack",
+    icon: "💿",
+    defaults: { w: 40, h: 30, facing: 0 },
+  },
+  {
     type: "dumbbell_rack",
     label: "Dumbbells",
     icon: "🏋️",
@@ -556,7 +593,7 @@ const PALETTE: PaletteEntry[] = [
   {
     type: "kettlebell_rack",
     label: "Kettlebells",
-    icon: "��️",
+    icon: "🔔",
     defaults: { facing: 180 },
   },
   {
