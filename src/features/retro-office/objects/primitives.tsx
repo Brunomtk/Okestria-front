@@ -1,7 +1,7 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import { useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import {
   DOOR_LENGTH,
@@ -70,7 +70,7 @@ export function InstancedWallSegmentsModel({
   );
 }
 
-export function RoundTableModel({
+function RoundTableModelInner({
   item,
   isSelected,
   isHovered,
@@ -135,7 +135,7 @@ export function RoundTableModel({
   );
 }
 
-export function ConferenceTableModel({
+function ConferenceTableModelInner({
   item,
   isSelected,
   isHovered,
@@ -493,7 +493,7 @@ export function ConferenceTableModel({
   );
 }
 
-export function DeskCubicleModel({
+function DeskCubicleModelInner({
   item,
   isSelected,
   isHovered,
@@ -702,7 +702,7 @@ export function DeskCubicleModel({
   );
 }
 
-export function ChairModel({
+function ChairModelInner({
   item,
   isSelected,
   isHovered,
@@ -903,7 +903,7 @@ export function ChairModel({
   );
 }
 
-export function WallSegmentModel({
+function WallSegmentModelInner({
   item,
   isSelected,
   isHovered,
@@ -1172,7 +1172,7 @@ export function DoorModel({
   );
 }
 
-export function KeyboardModel({
+function KeyboardModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -1213,7 +1213,7 @@ export function KeyboardModel({
   );
 }
 
-export function MouseModel({
+function MouseModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -1254,7 +1254,7 @@ export function MouseModel({
   );
 }
 
-export function ClockModel({
+function ClockModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -1307,7 +1307,7 @@ export function ClockModel({
   );
 }
 
-export function TrashCanModel({
+function TrashCanModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -1347,7 +1347,7 @@ export function TrashCanModel({
   );
 }
 
-export function MugModel({
+function MugModelInner({
   item,
   onPointerDown,
   onPointerOver,
@@ -1387,3 +1387,722 @@ export function MugModel({
     </group>
   );
 }
+
+/**
+ * ============================================================================
+ * LOUNGE AREA MODELS v39
+ * ============================================================================
+ * All four lounge primitives are designed around the same facing convention
+ * used by ChairModel: at facing=180 the "front" of the object points SOUTH
+ * (+z in world space, away from the north wall). This keeps the rest area
+ * feeling cohesive — the TV and arcade screens face into the room, while the
+ * couch and beanbags seat occupants so they look NORTH toward the screen.
+ *
+ * Everything is built with stable memoized geometries/materials to keep the
+ * hot render path cheap. No per-frame work, no GLB loads, no cloning.
+ * ----------------------------------------------------------------------------
+ */
+
+// Shared highlight helpers for selection/hover affordances.
+const LOUNGE_HIGHLIGHT_COLOR = (isSelected: boolean, isHovered: boolean, editMode: boolean) =>
+  isSelected ? "#fbbf24" : isHovered && editMode ? "#c084fc" : "#000000";
+const LOUNGE_HIGHLIGHT_INTENSITY = (isSelected: boolean, isHovered: boolean, editMode: boolean) =>
+  isSelected ? 0.32 : isHovered && editMode ? 0.2 : 0;
+
+// ----------------------------------------------------------------------------
+// Shared lounge geometries/materials — cached at module scope so we don't
+// allocate dozens of BufferGeometry objects for every couch/beanbag/tv/arcade.
+// Many of these are re-used across multiple lounge components to keep the
+// GPU vertex/material budget low for a smooth 60fps.
+// ----------------------------------------------------------------------------
+const ARCADE_BUTTON_BASE_GEOM = new THREE.CylinderGeometry(0.018, 0.02, 0.018, 12);
+const ARCADE_BUTTON_CAP_GEOM = new THREE.CylinderGeometry(0.015, 0.017, 0.012, 12);
+const ARCADE_BUTTON_BASE_MAT = new THREE.MeshStandardMaterial({
+  color: "#0b0f17",
+  roughness: 0.6,
+  metalness: 0.35,
+});
+const ARCADE_BUTTON_COLORS = [
+  "#ef4444",
+  "#f59e0b",
+  "#10b981",
+  "#3b82f6",
+  "#a855f7",
+  "#ec4899",
+] as const;
+const ARCADE_BUTTON_CAP_MATS = ARCADE_BUTTON_COLORS.map(
+  (color) =>
+    new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: 0.25,
+      roughness: 0.35,
+      metalness: 0.1,
+    }),
+);
+
+// ----------------------------------------------------------------------------
+// CouchModel — 3-seat low-profile sofa with wood legs, boucle cushions, and
+// contrast throw pillows. Footprint 100×40 canvas units (1.8×0.72 world).
+//
+// NOTE on orientation: the couch type has a baked-in `FURNITURE_ROTATION.couch
+// = Math.PI`, so at `facing=180` the total rotation is 0. The canonical
+// design expects the backrest to sit on +z (south) at facing=180 (with the
+// occupants looking toward -z / north, which is where the TV lives). To keep
+// the math readable, we author the model with backrest at local -z and
+// then apply an extra +π rotation on the inner group so the final on-screen
+// orientation matches the design intent.
+// ----------------------------------------------------------------------------
+function CouchModelInner({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  // Add an extra +π flip to offset the FURNITURE_ROTATION.couch = π already
+  // baked in by getItemRotationRadians, so the model's "natural" orientation
+  // (backrest at -z local) lands at +z world at facing=180.
+  const rotY = getItemRotationRadians(item) + Math.PI;
+  const highlight = LOUNGE_HIGHLIGHT_COLOR(isSelected, isHovered, Boolean(editMode));
+  const intensity = LOUNGE_HIGHLIGHT_INTENSITY(isSelected, isHovered, Boolean(editMode));
+
+  // Body dimensions (relative to footprint).
+  const bodyW = widthWorld * 0.96;
+  const bodyD = depthWorld * 0.78;
+  const seatH = 0.22;
+  const backH = 0.42;
+
+  return (
+    <group
+      position={[wx, item.elevation ?? 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* Floor shadow */}
+        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[widthWorld * 1.05, depthWorld * 1.2]} />
+          <meshStandardMaterial color="#0a0a0c" transparent opacity={0.24} roughness={1} />
+        </mesh>
+
+        {/* Wood legs (4) — no castShadow (floor shadow plane covers the silhouette). */}
+        {[
+          [-bodyW * 0.44, bodyD * 0.36],
+          [bodyW * 0.44, bodyD * 0.36],
+          [-bodyW * 0.44, -bodyD * 0.36],
+          [bodyW * 0.44, -bodyD * 0.36],
+        ].map(([lx, lz], i) => (
+          <mesh key={`leg_${i}`} position={[lx, 0.055, lz]}>
+            <cylinderGeometry args={[0.028, 0.022, 0.11, 10]} />
+            <meshStandardMaterial color="#3a2412" roughness={0.65} metalness={0.08} />
+          </mesh>
+        ))}
+
+        {/* Frame / skirt */}
+        <mesh position={[0, 0.14, 0]} castShadow receiveShadow>
+          <boxGeometry args={[bodyW, 0.08, bodyD]} />
+          <meshStandardMaterial color="#1f2b33" roughness={0.75} metalness={0.05} />
+        </mesh>
+
+        {/* Seat platform */}
+        <mesh position={[0, 0.2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[bodyW * 0.98, 0.06, bodyD * 0.94]} />
+          <meshStandardMaterial color="#243540" roughness={0.8} metalness={0.04} />
+        </mesh>
+
+        {/* Three seat cushions (slightly separated) */}
+        {[-bodyW * 0.32, 0, bodyW * 0.32].map((cx, i) => (
+          <group key={`seat_${i}`} position={[cx, 0.27, bodyD * 0.05]}>
+            <mesh castShadow receiveShadow>
+              <boxGeometry args={[bodyW * 0.3, 0.14, bodyD * 0.78]} />
+              <meshStandardMaterial color="#2f566a" roughness={0.92} metalness={0.02} />
+            </mesh>
+            {/* Cushion top piping */}
+            <mesh position={[0, 0.076, 0]}>
+              <boxGeometry args={[bodyW * 0.305, 0.006, bodyD * 0.79]} />
+              <meshStandardMaterial color="#1f3f52" roughness={0.85} metalness={0.04} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Backrest slab — at -z at facing=0 → at +z at facing=180 (behind occupants). */}
+        <mesh position={[0, seatH + backH * 0.45, -bodyD * 0.42]} castShadow receiveShadow>
+          <boxGeometry args={[bodyW, backH, bodyD * 0.18]} />
+          <meshStandardMaterial color="#2a4a5a" roughness={0.9} metalness={0.03} />
+        </mesh>
+        {/* Back cushion row */}
+        {[-bodyW * 0.32, 0, bodyW * 0.32].map((cx, i) => (
+          <mesh
+            key={`back_${i}`}
+            position={[cx, seatH + backH * 0.35, -bodyD * 0.34]}
+            castShadow
+          >
+            <boxGeometry args={[bodyW * 0.3, backH * 0.7, bodyD * 0.14]} />
+            <meshStandardMaterial color="#345e72" roughness={0.95} metalness={0.02} />
+          </mesh>
+        ))}
+        {/* Backrest top roll */}
+        <mesh position={[0, seatH + backH * 0.82, -bodyD * 0.39]} castShadow>
+          <boxGeometry args={[bodyW, 0.08, bodyD * 0.2]} />
+          <meshStandardMaterial color="#1f3f52" roughness={0.85} metalness={0.03} />
+        </mesh>
+
+        {/* Left armrest */}
+        <group position={[-bodyW * 0.48, seatH + 0.08, 0]}>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[bodyW * 0.08, 0.34, bodyD * 0.92]} />
+            <meshStandardMaterial color="#2a4a5a" roughness={0.9} metalness={0.03} />
+          </mesh>
+          {/* Arm roll top */}
+          <mesh position={[0, 0.18, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.045, 0.045, bodyD * 0.92, 14]} />
+            <meshStandardMaterial color="#345e72" roughness={0.92} metalness={0.03} />
+          </mesh>
+        </group>
+        {/* Right armrest */}
+        <group position={[bodyW * 0.48, seatH + 0.08, 0]}>
+          <mesh castShadow receiveShadow>
+            <boxGeometry args={[bodyW * 0.08, 0.34, bodyD * 0.92]} />
+            <meshStandardMaterial color="#2a4a5a" roughness={0.9} metalness={0.03} />
+          </mesh>
+          <mesh position={[0, 0.18, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.045, 0.045, bodyD * 0.92, 14]} />
+            <meshStandardMaterial color="#345e72" roughness={0.92} metalness={0.03} />
+          </mesh>
+        </group>
+
+        {/* Throw pillows — brighten the composition */}
+        <mesh position={[-bodyW * 0.28, seatH + 0.18, -bodyD * 0.08]} rotation={[0, 0.2, 0.1]} castShadow>
+          <boxGeometry args={[0.12, 0.11, 0.12]} />
+          <meshStandardMaterial color="#d88a5a" roughness={0.85} metalness={0.03} />
+        </mesh>
+        <mesh position={[bodyW * 0.3, seatH + 0.19, -bodyD * 0.06]} rotation={[0, -0.15, -0.08]} castShadow>
+          <boxGeometry args={[0.12, 0.11, 0.12]} />
+          <meshStandardMaterial color="#e7c27a" roughness={0.85} metalness={0.03} />
+        </mesh>
+
+        {/* Selection/hover glow ring */}
+        {intensity > 0 ? (
+          <mesh position={[0, seatH + 0.005, 0]}>
+            <boxGeometry args={[bodyW * 1.02, 0.004, bodyD * 1.02]} />
+            <meshStandardMaterial
+              color={highlight}
+              emissive={highlight}
+              emissiveIntensity={intensity * 2}
+              transparent
+              opacity={0.75}
+            />
+          </mesh>
+        ) : null}
+      </group>
+    </group>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// BeanbagModel — round puff with a stitched center seam and a sat-in top
+// indent. Footprint 40×40 (0.72 world). Symmetric — rotation mostly decorative.
+// ----------------------------------------------------------------------------
+function BeanbagModelInner({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlight = LOUNGE_HIGHLIGHT_COLOR(isSelected, isHovered, Boolean(editMode));
+  const intensity = LOUNGE_HIGHLIGHT_INTENSITY(isSelected, isHovered, Boolean(editMode));
+  // Accept a custom tint via item.color, fallback to a warm mustard.
+  const tint = item.color ?? "#c06448";
+
+  const bodyR = Math.min(widthWorld, depthWorld) * 0.52;
+
+  return (
+    <group
+      position={[wx, item.elevation ?? 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* Floor shadow */}
+        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[bodyR * 1.15, 24]} />
+          <meshStandardMaterial color="#0a0a0c" transparent opacity={0.26} roughness={1} />
+        </mesh>
+
+        {/* Lower hemisphere (squashed) — main body, sits on floor */}
+        <mesh position={[0, bodyR * 0.48, 0]} scale={[1, 0.65, 1]} castShadow receiveShadow>
+          <sphereGeometry args={[bodyR, 22, 18]} />
+          <meshStandardMaterial color={tint} roughness={0.95} metalness={0.02} />
+        </mesh>
+        {/* Upper crown — slightly smaller, gives a rounded top */}
+        <mesh position={[0, bodyR * 0.82, 0]} scale={[0.9, 0.55, 0.9]} castShadow>
+          <sphereGeometry args={[bodyR * 0.9, 20, 16]} />
+          <meshStandardMaterial color={tint} roughness={0.98} metalness={0.02} />
+        </mesh>
+        {/* Sat-in indent at the top */}
+        <mesh position={[0, bodyR * 1.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[bodyR * 0.42, 20]} />
+          <meshStandardMaterial color="#6b3019" roughness={1} metalness={0} />
+        </mesh>
+        {/* Seam ring around the equator */}
+        <mesh position={[0, bodyR * 0.48, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <torusGeometry args={[bodyR * 0.99, 0.012, 6, 26]} />
+          <meshStandardMaterial color="#3e1a0c" roughness={0.85} metalness={0.05} />
+        </mesh>
+        {/* Stitched seam — vertical accent along the front (south side at facing=180) */}
+        <mesh position={[0, bodyR * 0.48, bodyR * 0.9]} rotation={[0, 0, 0]}>
+          <boxGeometry args={[0.008, bodyR * 0.9, 0.012]} />
+          <meshStandardMaterial color="#2f1409" roughness={0.8} metalness={0.04} />
+        </mesh>
+
+        {/* Selection/hover glow ring */}
+        {intensity > 0 ? (
+          <mesh position={[0, bodyR * 1.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[bodyR * 0.9, bodyR * 1.05, 24]} />
+            <meshStandardMaterial
+              color={highlight}
+              emissive={highlight}
+              emissiveIntensity={intensity * 2}
+              transparent
+              opacity={0.7}
+            />
+          </mesh>
+        ) : null}
+      </group>
+    </group>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// TvStandModel — console base with two drawers + a wall-backed flat-panel TV
+// with an emissive screen. Footprint 80×24 (1.44 × 0.432 world).
+// At facing=180 the screen points south (into the room).
+// ----------------------------------------------------------------------------
+function TvStandModelInner({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlight = LOUNGE_HIGHLIGHT_COLOR(isSelected, isHovered, Boolean(editMode));
+  const intensity = LOUNGE_HIGHLIGHT_INTENSITY(isSelected, isHovered, Boolean(editMode));
+
+  // Console dimensions
+  const consoleW = widthWorld * 0.98;
+  const consoleD = depthWorld * 0.88;
+  const consoleH = 0.32;
+  // TV panel (wider than the console, taller up)
+  const panelW = widthWorld * 0.86;
+  const panelH = 0.52;
+  // At facing=0 the screen should be at -z, so that facing=180 rotates it to +z.
+  const screenZ = -depthWorld * 0.22;
+
+  return (
+    <group
+      position={[wx, item.elevation ?? 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* Floor shadow */}
+        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[widthWorld * 1.08, depthWorld * 1.2]} />
+          <meshStandardMaterial color="#0a0a0c" transparent opacity={0.22} roughness={1} />
+        </mesh>
+
+        {/* Console base */}
+        <mesh position={[0, consoleH / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[consoleW, consoleH, consoleD]} />
+          <meshStandardMaterial color="#28323a" roughness={0.7} metalness={0.14} />
+        </mesh>
+        {/* Top surface accent */}
+        <mesh position={[0, consoleH + 0.006, 0]}>
+          <boxGeometry args={[consoleW * 1.02, 0.012, consoleD * 1.05]} />
+          <meshStandardMaterial color="#111a22" roughness={0.55} metalness={0.2} />
+        </mesh>
+        {/* Two drawers (fronts at +z at rest → back-side at facing=180, walker-visible at -z) */}
+        {[-consoleW * 0.24, consoleW * 0.24].map((dx, i) => (
+          <group key={`drw_${i}`} position={[dx, consoleH * 0.5, consoleD * 0.5 + 0.005]}>
+            <mesh>
+              <boxGeometry args={[consoleW * 0.44, consoleH * 0.7, 0.012]} />
+              <meshStandardMaterial color="#1b242c" roughness={0.55} metalness={0.25} />
+            </mesh>
+            <mesh position={[0, 0, 0.007]}>
+              <boxGeometry args={[consoleW * 0.3, 0.018, 0.004]} />
+              <meshStandardMaterial color="#8a98a6" roughness={0.3} metalness={0.85} />
+            </mesh>
+          </group>
+        ))}
+        {/* Stand feet */}
+        {[-consoleW * 0.42, consoleW * 0.42].map((fx, i) => (
+          <mesh key={`foot_${i}`} position={[fx, 0.015, 0]} castShadow>
+            <boxGeometry args={[consoleW * 0.14, 0.028, consoleD * 0.95]} />
+            <meshStandardMaterial color="#0c141b" roughness={0.6} metalness={0.2} />
+          </mesh>
+        ))}
+
+        {/* TV BACK — mounts to north wall side. */}
+        <mesh
+          position={[0, consoleH + 0.04 + panelH / 2, screenZ + 0.02]}
+          castShadow
+        >
+          <boxGeometry args={[panelW, panelH, 0.035]} />
+          <meshStandardMaterial color="#0b0b0e" roughness={0.5} metalness={0.25} />
+        </mesh>
+        {/* TV BEZEL — slightly larger than screen */}
+        <mesh position={[0, consoleH + 0.04 + panelH / 2, screenZ]}>
+          <boxGeometry args={[panelW * 0.99, panelH * 0.98, 0.018]} />
+          <meshStandardMaterial color="#050507" roughness={0.4} metalness={0.35} />
+        </mesh>
+        {/* TV SCREEN — emissive, sits forward of the bezel (at -z at rest → +z at facing=180). */}
+        <mesh position={[0, consoleH + 0.04 + panelH / 2, screenZ - 0.013]}>
+          <planeGeometry args={[panelW * 0.93, panelH * 0.9]} />
+          <meshStandardMaterial
+            color="#133a5a"
+            emissive="#3a7bb8"
+            emissiveIntensity={0.85}
+            roughness={0.3}
+            metalness={0.0}
+          />
+        </mesh>
+        {/* Bright highlight strip inside the screen (mock UI) */}
+        <mesh position={[-panelW * 0.24, consoleH + 0.04 + panelH / 2 + 0.06, screenZ - 0.014]}>
+          <planeGeometry args={[panelW * 0.2, 0.04]} />
+          <meshStandardMaterial
+            color="#f4e4a0"
+            emissive="#f4e4a0"
+            emissiveIntensity={1.1}
+            transparent
+            opacity={0.85}
+          />
+        </mesh>
+        <mesh position={[panelW * 0.14, consoleH + 0.04 + panelH / 2 - 0.02, screenZ - 0.014]}>
+          <planeGeometry args={[panelW * 0.42, 0.16]} />
+          <meshStandardMaterial
+            color="#bde3ff"
+            emissive="#bde3ff"
+            emissiveIntensity={0.6}
+            transparent
+            opacity={0.45}
+          />
+        </mesh>
+        {/* Brand dot below screen */}
+        <mesh position={[0, consoleH + 0.04 + 0.022, screenZ - 0.013]}>
+          <circleGeometry args={[0.006, 12]} />
+          <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={0.8} />
+        </mesh>
+
+        {/* Soundbar on top of console */}
+        <mesh position={[0, consoleH + 0.025, -consoleD * 0.1]} castShadow>
+          <boxGeometry args={[panelW * 0.76, 0.04, consoleD * 0.22]} />
+          <meshStandardMaterial color="#111a22" roughness={0.6} metalness={0.25} />
+        </mesh>
+        {/* Soundbar mesh grille stripes */}
+        {[-0.4, -0.2, 0, 0.2, 0.4].map((sx, i) => (
+          <mesh
+            key={`sb_${i}`}
+            position={[panelW * sx * 0.76, consoleH + 0.035, -consoleD * 0.22]}
+          >
+            <boxGeometry args={[panelW * 0.12, 0.015, 0.003]} />
+            <meshStandardMaterial color="#0a0d10" roughness={0.9} metalness={0.05} />
+          </mesh>
+        ))}
+
+        {/* Selection/hover glow ring */}
+        {intensity > 0 ? (
+          <mesh position={[0, consoleH + 0.04, 0]}>
+            <boxGeometry args={[consoleW * 1.02, 0.004, consoleD * 1.02]} />
+            <meshStandardMaterial
+              color={highlight}
+              emissive={highlight}
+              emissiveIntensity={intensity * 2}
+              transparent
+              opacity={0.7}
+            />
+          </mesh>
+        ) : null}
+      </group>
+    </group>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// ArcadeModel — retro arcade cabinet with marquee, angled monitor, control
+// panel with joystick + buttons, and coin slot. Footprint 30×30 (0.54 world).
+// At facing=180 the screen/control panel point south into the room.
+// ----------------------------------------------------------------------------
+function ArcadeModelInner({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlight = LOUNGE_HIGHLIGHT_COLOR(isSelected, isHovered, Boolean(editMode));
+  const intensity = LOUNGE_HIGHLIGHT_INTENSITY(isSelected, isHovered, Boolean(editMode));
+
+  const bodyW = widthWorld * 0.82;
+  const bodyD = depthWorld * 0.9;
+  const cabHeight = 1.35;
+
+  return (
+    <group
+      position={[wx, item.elevation ?? 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* Floor shadow */}
+        <mesh position={[0, 0.003, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[widthWorld * 1.05, depthWorld * 1.1]} />
+          <meshStandardMaterial color="#0a0a0c" transparent opacity={0.3} roughness={1} />
+        </mesh>
+
+        {/* Base pedestal */}
+        <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+          <boxGeometry args={[bodyW * 1.02, 0.08, bodyD * 1.02]} />
+          <meshStandardMaterial color="#0a0a0d" roughness={0.8} metalness={0.08} />
+        </mesh>
+
+        {/* Main cabinet body (tall box) */}
+        <mesh position={[0, cabHeight * 0.45 + 0.08, 0]} castShadow receiveShadow>
+          <boxGeometry args={[bodyW, cabHeight * 0.9, bodyD]} />
+          <meshStandardMaterial color="#6b21a8" roughness={0.55} metalness={0.2} />
+        </mesh>
+        {/* Side art accent strip (facing=180 puts these on the east/west sides) */}
+        <mesh position={[-bodyW * 0.5 - 0.002, cabHeight * 0.45 + 0.08, 0]}>
+          <boxGeometry args={[0.006, cabHeight * 0.78, bodyD * 0.8]} />
+          <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={0.5} />
+        </mesh>
+        <mesh position={[bodyW * 0.5 + 0.002, cabHeight * 0.45 + 0.08, 0]}>
+          <boxGeometry args={[0.006, cabHeight * 0.78, bodyD * 0.8]} />
+          <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={0.5} />
+        </mesh>
+
+        {/* CONTROL PANEL — on the front (-z at rest → +z at facing=180). */}
+        {/* Slight outward tilt angle for ergonomic look */}
+        <group position={[0, 0.78, -bodyD * 0.48]} rotation={[0.28, 0, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[bodyW * 0.96, 0.06, bodyD * 0.42]} />
+            <meshStandardMaterial color="#111827" roughness={0.6} metalness={0.25} />
+          </mesh>
+          {/* Joystick base */}
+          <mesh position={[-bodyW * 0.24, 0.036, 0]}>
+            <cylinderGeometry args={[0.028, 0.032, 0.012, 14]} />
+            <meshStandardMaterial color="#1f2937" roughness={0.4} metalness={0.6} />
+          </mesh>
+          {/* Joystick shaft */}
+          <mesh position={[-bodyW * 0.24, 0.072, 0]}>
+            <cylinderGeometry args={[0.008, 0.008, 0.06, 10]} />
+            <meshStandardMaterial color="#d1d5db" roughness={0.3} metalness={0.8} />
+          </mesh>
+          {/* Joystick ball */}
+          <mesh position={[-bodyW * 0.24, 0.108, 0]} castShadow>
+            <sphereGeometry args={[0.018, 16, 12]} />
+            <meshStandardMaterial color="#ef4444" roughness={0.45} metalness={0.1} />
+          </mesh>
+          {/* 6 arcade buttons (2 rows x 3) — shared geometry/material at module scope */}
+          {[0, 1, 2].map((col) =>
+            [0, 1].map((row) => {
+              const key = `btn_${col}_${row}`;
+              const bx = bodyW * (0.02 + col * 0.11);
+              const bz = (row - 0.5) * bodyD * 0.14;
+              const colorIndex = col * 2 + row;
+              return (
+                <group key={key} position={[bx, 0.03, bz]}>
+                  <mesh
+                    geometry={ARCADE_BUTTON_BASE_GEOM}
+                    material={ARCADE_BUTTON_BASE_MAT}
+                  />
+                  <mesh
+                    position={[0, 0.012, 0]}
+                    geometry={ARCADE_BUTTON_CAP_GEOM}
+                    material={ARCADE_BUTTON_CAP_MATS[colorIndex]}
+                  />
+                </group>
+              );
+            })
+          )}
+        </group>
+
+        {/* MONITOR RECESS — angled back, above the control panel. */}
+        <group position={[0, 1.05, -bodyD * 0.42]} rotation={[-0.18, 0, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[bodyW * 0.9, 0.44, 0.05]} />
+            <meshStandardMaterial color="#060609" roughness={0.6} metalness={0.2} />
+          </mesh>
+          {/* Screen (emissive) */}
+          <mesh position={[0, 0, -0.03]}>
+            <planeGeometry args={[bodyW * 0.8, 0.36]} />
+            <meshStandardMaterial
+              color="#1a1a3e"
+              emissive="#6366f1"
+              emissiveIntensity={0.95}
+              roughness={0.3}
+            />
+          </mesh>
+          {/* Pixel art accent — faux game sprite */}
+          <mesh position={[0, 0, -0.032]}>
+            <planeGeometry args={[bodyW * 0.45, 0.08]} />
+            <meshStandardMaterial
+              color="#facc15"
+              emissive="#facc15"
+              emissiveIntensity={0.7}
+              transparent
+              opacity={0.55}
+            />
+          </mesh>
+        </group>
+
+        {/* MARQUEE — top panel with glowing title. */}
+        <mesh position={[0, cabHeight + 0.08, -bodyD * 0.18]} castShadow>
+          <boxGeometry args={[bodyW * 0.94, 0.22, bodyD * 0.66]} />
+          <meshStandardMaterial color="#1f0a3a" roughness={0.55} metalness={0.2} />
+        </mesh>
+        <mesh position={[0, cabHeight + 0.08, -bodyD * 0.49]}>
+          <planeGeometry args={[bodyW * 0.9, 0.18]} />
+          <meshStandardMaterial
+            color="#fbbf24"
+            emissive="#fbbf24"
+            emissiveIntensity={0.8}
+          />
+        </mesh>
+
+        {/* COIN SLOT housing in front center */}
+        <mesh position={[0, 0.22, -bodyD * 0.5 - 0.005]}>
+          <boxGeometry args={[bodyW * 0.28, 0.18, 0.01]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.55} metalness={0.5} />
+        </mesh>
+        <mesh position={[0, 0.28, -bodyD * 0.5 - 0.011]}>
+          <boxGeometry args={[0.05, 0.008, 0.004]} />
+          <meshStandardMaterial color="#000000" roughness={0.8} />
+        </mesh>
+
+        {/* Selection/hover glow ring */}
+        {intensity > 0 ? (
+          <mesh position={[0, 0.1, 0]}>
+            <boxGeometry args={[bodyW * 1.06, 0.004, bodyD * 1.06]} />
+            <meshStandardMaterial
+              color={highlight}
+              emissive={highlight}
+              emissiveIntensity={intensity * 2}
+              transparent
+              opacity={0.7}
+            />
+          </mesh>
+        ) : null}
+      </group>
+    </group>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Memoized exports — these models are replicated heavily (20+ chairs, 12+
+// desks, 10+ cabinets) or live in the hot interactive render path. Since
+// their item props only change when the user moves/selects/hovers a piece,
+// React.memo skips the vast majority of re-renders for free.
+// ----------------------------------------------------------------------------
+export const CouchModel = memo(CouchModelInner);
+export const BeanbagModel = memo(BeanbagModelInner);
+export const TvStandModel = memo(TvStandModelInner);
+export const ArcadeModel = memo(ArcadeModelInner);
+export const ChairModel = memo(ChairModelInner);
+export const DeskCubicleModel = memo(DeskCubicleModelInner);
+export const ConferenceTableModel = memo(ConferenceTableModelInner);
+export const RoundTableModel = memo(RoundTableModelInner);
+export const KeyboardModel = memo(KeyboardModelInner);
+export const MouseModel = memo(MouseModelInner);
+export const MugModel = memo(MugModelInner);
+export const ClockModel = memo(ClockModelInner);
+export const TrashCanModel = memo(TrashCanModelInner);
+export const WallSegmentModel = memo(WallSegmentModelInner);

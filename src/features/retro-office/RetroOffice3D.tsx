@@ -203,17 +203,21 @@ import {
   YogaMatModel as InteractiveYogaMatModel,
 } from "@/features/retro-office/objects/machines";
 import {
+  ArcadeModel as PrimitiveArcadeModel,
+  BeanbagModel as PrimitiveBeanbagModel,
   ChairModel as PrimitiveChairModel,
   ClockModel as PrimitiveClockModel,
+  ConferenceTableModel as PrimitiveConferenceTableModel,
+  CouchModel as PrimitiveCouchModel,
   DeskCubicleModel as PrimitiveDeskCubicleModel,
   DoorModel as PrimitiveDoorModel,
   InstancedWallSegmentsModel as PrimitiveInstancedWallSegmentsModel,
   KeyboardModel as PrimitiveKeyboardModel,
   MouseModel as PrimitiveMouseModel,
   MugModel as PrimitiveMugModel,
-  ConferenceTableModel as PrimitiveConferenceTableModel,
   RoundTableModel as PrimitiveRoundTableModel,
   TrashCanModel as PrimitiveTrashCanModel,
+  TvStandModel as PrimitiveTvStandModel,
   WallSegmentModel as PrimitiveWallSegmentModel,
 } from "@/features/retro-office/objects/primitives";
 import {
@@ -1253,6 +1257,50 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           <KitchenWallCabinetModel
             key={item._uid}
             item={item}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "couch" ? (
+          <PrimitiveCouchModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "beanbag" ? (
+          <PrimitiveBeanbagModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "tv_stand" ? (
+          <PrimitiveTvStandModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "arcade" ? (
+          <PrimitiveArcadeModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
             editMode={false}
             onPointerDown={NOOP_FURNITURE_UID_HANDLER}
             onPointerOver={NOOP_FURNITURE_UID_HANDLER}
@@ -4987,6 +5035,54 @@ export function RetroOffice3D({
                     onPointerDown={handleFurniturePointerDown}
                     onPointerOver={handleFurniturePointerOver}
                     onPointerOut={handleFurniturePointerOut}
+                  />
+                ) : item.type === "couch" ? (
+                  <PrimitiveCouchModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "beanbag" ? (
+                  <PrimitiveBeanbagModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "tv_stand" ? (
+                  <PrimitiveTvStandModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "arcade" ? (
+                  <PrimitiveArcadeModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
                   />
                 ) : (
                   <GenericFurnitureModel

@@ -392,27 +392,30 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "wall_cabinet", x: 878, y: 10, w: 80, h: 20, elevation: 0.9 },
   { type: "wall_cabinet", x: 960, y: 10, w: 80, h: 20, elevation: 0.9 },
 
-  // === REST / LOUNGE AREA v38 (next to the kitchen) ===
+  // === REST / LOUNGE AREA v39 (next to the kitchen) ===
+  // Custom procedural models (couch/beanbag/tv_stand/arcade) — see primitives.tsx.
   // Free zone: cx=400..780 × cy=10..140, nestled between the ATM (ends at cx=372)
   // and the kitchen (starts at cx=790). Tucked above the first desk row (starts at cy=150).
   //
-  // Symmetric around cx=590:
-  //   • TV mounted to the north wall (tv_stand).
-  //   • Side tables flanking the TV as decor plinths.
-  //   • Small coffee table (side_table) centered in front of the TV.
-  //   • Three-seat couch aligned with the TV (also centered on cx=590), facing north.
-  //   • Two beanbag puffs flanking the couch, angled toward the screen.
-  //   • Arcade cabinet on the west edge — the "video game" corner.
+  // Facing convention across the whole rest area: `facing: 180` → front of the
+  // item points south (toward the TV for the couch/beanbags, into the room for
+  // the TV stand and arcade). This matches the chair convention the user
+  // pinned as the reference alignment.
   //
-  // Facing convention: "180" → person/item faces NORTH (toward the TV).
+  // Symmetric around cx=590:
+  //   • Arcade cabinet anchors the west edge (the "video game" corner).
+  //   • TV stand centered against the north wall.
+  //   • Side tables bracket the TV as plinths + one coffee table in front.
+  //   • Three-seat couch aligned with the TV, facing the screen.
+  //   • Two beanbag puffs flanking the couch, both facing the TV as well.
   { type: "arcade",     x: 410, y: 15,  facing: 180 },
   { type: "tv_stand",   x: 550, y: 10,  facing: 180 },
   { type: "side_table", x: 468, y: 14 },
   { type: "side_table", x: 708, y: 14 },
   { type: "side_table", x: 580, y: 52 },
   { type: "couch",      x: 540, y: 100, w: 100, h: 40, facing: 180 },
-  { type: "beanbag",    x: 488, y: 100, facing: 90 },
-  { type: "beanbag",    x: 650, y: 100, facing: 270 },
+  { type: "beanbag",    x: 488, y: 100, facing: 180 },
+  { type: "beanbag",    x: 650, y: 100, facing: 180 },
 
   // === MEETING ROOM (expanded — cx=0..315 · cy=0..560, nearly touching ATM at cx=330) ===
   // East wall at cx=315 separates room from open office, with a centered door at cy=280.
