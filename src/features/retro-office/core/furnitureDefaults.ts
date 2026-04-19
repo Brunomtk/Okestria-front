@@ -284,14 +284,15 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "clock",   x: GYM_ROOM_X + 345, y: EAST_WING_ROOM_TOP_Y + 4 },
   { type: "speaker", x: GYM_ROOM_X + 686, y: EAST_WING_ROOM_TOP_Y + 14 },
 
-  // === ROW 2 — FREE WEIGHTS + PLATE STORAGE (middle, shifted left & down per user request) ===
-  // Dumbbells and kettlebells on the left half
-  { type: "dumbbell_rack",  x: GYM_ROOM_X + 30,  y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
-  { type: "dumbbell_rack",  x: GYM_ROOM_X + 130, y: EAST_WING_ROOM_TOP_Y + 130, facing: 0 },
-  { type: "kettlebell_rack",x: GYM_ROOM_X + 230, y: EAST_WING_ROOM_TOP_Y + 132, facing: 0 },
-  // 2 plate racks — shifted LEFT and DOWN (off the door zone, closer to deadlift vertical strip)
-  { type: "plate_rack",     x: GYM_ROOM_X + 310, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
-  { type: "plate_rack",     x: GYM_ROOM_X + 380, y: EAST_WING_ROOM_TOP_Y + 155, facing: 0 },
+  // === ROW 2 — FREE WEIGHTS + PLATE STORAGE (user-specified absolute positions) ===
+  // Dumbbells (two racks) – evenly spaced on the left half, facing 0°
+  { type: "dumbbell_rack",   x: 1160, y: 130, facing: 0 },
+  { type: "dumbbell_rack",   x: 1260, y: 130, facing: 0 },
+  // Kettlebells – next in the row
+  { type: "kettlebell_rack", x: 1360, y: 130, facing: 0 },
+  // Plate racks – rotated 270° to form a vertical weight-storage strip
+  { type: "plate_rack",      x: 1460, y: 140, facing: 270 },
+  { type: "plate_rack",      x: 1520, y: 140, facing: 270 },
 
   // === DEADLIFT PLATFORM (user-specified absolute 1640, 90, facing 270°) ===
   // 150×80 footprint — with facing 270 it visually spans 80 wide × 150 tall on the right side
@@ -323,9 +324,8 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "locker", x: GYM_ROOM_X + 404, y: EAST_WING_ROOM_TOP_Y + 300, facing: 180 },
 
   // Bench seat at user-specified absolute 1090, 310, facing 180
+  // (right-side bench removed per user request)
   { type: "bench_seat", x: 1090, y: 310, facing: 180 },
-  // Second bench seat on the right side for symmetry, same rotation
-  { type: "bench_seat", x: GYM_ROOM_X + 450, y: 310, facing: 180 },
 
   // Trash bin along bottom wall (water_cooler + first_aid removed per user request)
   { type: "trash",        x: GYM_ROOM_X + 566, y: EAST_WING_ROOM_TOP_Y + 330 },
@@ -337,34 +337,37 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
 ];
 
 const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
-  // === QA LAB WALLS - Only front wall with door ===
-  // Front wall (left side) - above door
+  // === QA LAB WALLS — Front (left) wall with door. Right side meets canvas edge. ===
   { type: "wall", x: QA_LAB_X, y: QA_LAB_TOP_Y, w: WALL_THICKNESS, h: QA_LAB_TOP_WALL_HEIGHT },
-  // Door on front wall (facing: 90 for vertical wall)
   createVerticalWallDoor(QA_LAB_X, QA_LAB_DOOR_Y),
-  // Front wall - below door
   { type: "wall", x: QA_LAB_X, y: QA_LAB_DOOR_BOTTOM_Y, w: WALL_THICKNESS, h: QA_LAB_BOTTOM_WALL_HEIGHT_CALC },
-  
-  // === QA EQUIPMENT - Spread across the room ===
-  // Row 1 - QA Terminals (near top)
-  { type: "qa_terminal", x: QA_LAB_X + 60, y: QA_LAB_TOP_Y + 50, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 160, y: QA_LAB_TOP_Y + 50, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 260, y: QA_LAB_TOP_Y + 50, facing: 90 },
-  { type: "qa_terminal", x: QA_LAB_X + 360, y: QA_LAB_TOP_Y + 50, facing: 90 },
-  
-  // Row 2 - Device racks
-  { type: "device_rack", x: QA_LAB_X + 500, y: QA_LAB_TOP_Y + 50, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 600, y: QA_LAB_TOP_Y + 50, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 500, y: QA_LAB_TOP_Y + 150, facing: 180 },
-  { type: "device_rack", x: QA_LAB_X + 600, y: QA_LAB_TOP_Y + 150, facing: 180 },
-  
-  // Row 3 - Test benches (bottom)
-  { type: "test_bench", x: QA_LAB_X + 60, y: QA_LAB_TOP_Y + 150, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 160, y: QA_LAB_TOP_Y + 150, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 60, y: QA_LAB_TOP_Y + 250, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 160, y: QA_LAB_TOP_Y + 250, facing: 90 },
-  { type: "test_bench", x: QA_LAB_X + 260, y: QA_LAB_TOP_Y + 250, facing: 90 },
-  
+  { type: "wall", x: QA_LAB_X, y: QA_LAB_BOTTOM_Y - WALL_THICKNESS, w: QA_LAB_END_X - QA_LAB_X, h: WALL_THICKNESS },
+
+  // === ROW 1 — QA TERMINALS (top row, 4 workstations evenly spaced) ===
+  // qa_terminal footprint 54×38 • facing 180° so monitors face south into the room
+  { type: "qa_terminal", x: 1110, y: QA_LAB_TOP_Y + 30, facing: 180 },
+  { type: "qa_terminal", x: 1270, y: QA_LAB_TOP_Y + 30, facing: 180 },
+  { type: "qa_terminal", x: 1430, y: QA_LAB_TOP_Y + 30, facing: 180 },
+  { type: "qa_terminal", x: 1590, y: QA_LAB_TOP_Y + 30, facing: 180 },
+
+  // === ROW 2 — TEST BENCHES (middle row, 3 benches evenly spaced) ===
+  // test_bench footprint 90×42 • facing 0° • clear of the entry door on the left wall
+  { type: "test_bench", x: 1180, y: QA_LAB_TOP_Y + 130, facing: 0 },
+  { type: "test_bench", x: 1370, y: QA_LAB_TOP_Y + 130, facing: 0 },
+  { type: "test_bench", x: 1560, y: QA_LAB_TOP_Y + 130, facing: 0 },
+
+  // === ROW 3 — DEVICE RACKS (along the bottom wall, 4 racks evenly spaced) ===
+  // device_rack footprint 70×36 • facing 180° (back to south wall)
+  { type: "device_rack", x: 1130, y: QA_LAB_TOP_Y + 260, facing: 180 },
+  { type: "device_rack", x: 1290, y: QA_LAB_TOP_Y + 260, facing: 180 },
+  { type: "device_rack", x: 1470, y: QA_LAB_TOP_Y + 260, facing: 180 },
+  { type: "device_rack", x: 1630, y: QA_LAB_TOP_Y + 260, facing: 180 },
+
+  // === PLANTS — corner accents ===
+  { type: "plant", x: QA_LAB_X + 14, y: QA_LAB_TOP_Y + 90,  facing: 90 },
+  { type: "plant", x: QA_LAB_X + 14, y: QA_LAB_TOP_Y + 210, facing: 90 },
+  { type: "plant", x: 1770,          y: QA_LAB_TOP_Y + 10 },
+  { type: "plant", x: 1770,          y: QA_LAB_TOP_Y + 320 },
 ];
 
 

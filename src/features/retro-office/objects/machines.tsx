@@ -763,6 +763,7 @@ export function QaTerminalModel({
   item,
   isSelected,
   isHovered,
+  editMode,
   onPointerDown,
   onPointerOver,
   onPointerOut,
@@ -775,10 +776,10 @@ export function QaTerminalModel({
   const rotY = getItemRotationRadians(item);
   const highlightColor = isSelected
     ? "#fbbf24"
-    : isHovered
+    : isHovered && editMode
       ? "#c084fc"
       : "#000000";
-  const highlightIntensity = isSelected ? 0.34 : isHovered ? 0.22 : 0;
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.22 : 0;
 
   return (
     <group
@@ -800,96 +801,300 @@ export function QaTerminalModel({
         onClick?.(item._uid);
       }}
     >
+      {/*
+        QA TEST CONSOLE — full workstation (footprint 54×38)
+        • Steel-frame desk on 4 tapered legs, cable-management shelf underneath
+        • Desktop surface in dark matte purple (QA brand color)
+        • DUAL MONITOR setup: primary 27" curved QA dashboard (purple), secondary vertical
+          monitor for log tail (cyan)
+        • Mechanical keyboard + precision mouse, cable to CPU tower tucked under desk
+        • Small CPU tower to right, status LED stack (green/amber/red)
+        • QA label plate with brand LED
+        • Coffee mug + papers for realism
+      */}
       <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
-        <mesh position={[0, 0.37, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld, 0.74, depthWorld * 0.88]} />
+        {/* === 4 tapered legs === */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`leg_${sx}_${sz}`}
+              position={[widthWorld * 0.42 * sx, 0.24, depthWorld * 0.36 * sz]}
+              castShadow
+            >
+              <boxGeometry args={[0.04, 0.48, 0.04]} />
+              <meshStandardMaterial color="#1e1b4b" roughness={0.45} metalness={0.55} />
+            </mesh>
+          )),
+        )}
+        {/* Chrome foot caps */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`foot_${sx}_${sz}`}
+              position={[widthWorld * 0.42 * sx, 0.015, depthWorld * 0.36 * sz]}
+            >
+              <boxGeometry args={[0.052, 0.03, 0.052]} />
+              <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
+            </mesh>
+          )),
+        )}
+
+        {/* Cable-management tray underneath */}
+        <mesh position={[0, 0.12, -depthWorld * 0.25]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.8, 0.025, depthWorld * 0.25]} />
+          <meshStandardMaterial color="#312e81" roughness={0.55} metalness={0.3} />
+        </mesh>
+
+        {/* === DESKTOP SURFACE === */}
+        <mesh position={[0, 0.48, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.98, 0.035, depthWorld * 0.92]} />
           <meshStandardMaterial
-            color="#12081c"
-            roughness={0.5}
-            metalness={0.26}
+            color="#1e1b4b"
+            roughness={0.38}
+            metalness={0.42}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        <mesh position={[0, 0.58, 0]} castShadow>
-          <boxGeometry args={[widthWorld * 0.94, 0.04, depthWorld * 0.9]} />
-          <meshStandardMaterial color="#231235" metalness={0.55} roughness={0.24} />
+        {/* Glossy top coat */}
+        <mesh position={[0, 0.499, 0]}>
+          <planeGeometry args={[widthWorld * 0.96, depthWorld * 0.9]} />
+          <meshStandardMaterial color="#2d2b6e" roughness={0.24} metalness={0.55} />
         </mesh>
-        {[-widthWorld * 0.2, widthWorld * 0.2].map((x, index) => (
-          <group key={x} position={[x, 0.52, depthWorld * 0.41]} rotation={[-0.16, 0, 0]}>
-            <mesh>
-              <planeGeometry args={[widthWorld * 0.28, 0.24]} />
-              <meshStandardMaterial
-                color={index === 0 ? "#8b5cf6" : "#38bdf8"}
-                emissive={index === 0 ? "#8b5cf6" : "#38bdf8"}
-                emissiveIntensity={0.9}
-              />
-            </mesh>
-            <mesh position={[0, 0, 0.01]}>
-              <planeGeometry args={[widthWorld * 0.24, 0.18]} />
-              <meshStandardMaterial
-                color={index === 0 ? "#ede9fe" : "#e0f2fe"}
-                emissive={index === 0 ? "#c084fc" : "#38bdf8"}
-                emissiveIntensity={0.18}
-              />
-            </mesh>
-          </group>
-        ))}
-        <Text
-          position={[0, 0.73, 0]}
-          fontSize={0.034}
-          color="#faf5ff"
-          anchorX="center"
-          anchorY="middle"
-        >
-          QA LAB
-        </Text>
-        <Text
-          position={[0, 0.66, 0]}
-          fontSize={0.014}
-          color="#ddd6fe"
-          anchorX="center"
-          anchorY="middle"
-        >
-          TEST CONSOLE
-        </Text>
-        <mesh position={[0, 0.16, depthWorld * 0.4]}>
-          <boxGeometry args={[widthWorld * 0.78, 0.07, 0.15]} />
-          <meshStandardMaterial color="#241237" roughness={0.48} metalness={0.22} />
+        {/* Edge trim — chrome */}
+        <mesh position={[0, 0.48, depthWorld * 0.46]}>
+          <boxGeometry args={[widthWorld * 0.98, 0.037, 0.008]} />
+          <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
         </mesh>
-        <mesh position={[0, 0.2, depthWorld * 0.44]}>
-          <boxGeometry args={[widthWorld * 0.48, 0.02, 0.07]} />
-          <meshStandardMaterial color="#111827" metalness={0.55} roughness={0.2} />
+        <mesh position={[0, 0.48, -depthWorld * 0.46]}>
+          <boxGeometry args={[widthWorld * 0.98, 0.037, 0.008]} />
+          <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
         </mesh>
-        {[-widthWorld * 0.44, widthWorld * 0.44].map((x) => (
-          <mesh key={x} position={[x, 0.4, 0]}>
-            <boxGeometry args={[0.03, 0.64, 0.03]} />
+
+        {/* === PRIMARY MONITOR (left — 27" curved QA dashboard) === */}
+        <group position={[-widthWorld * 0.22, 0.5, -depthWorld * 0.14]}>
+          {/* Monitor stand base */}
+          <mesh position={[0, 0.018, 0]}>
+            <cylinderGeometry args={[0.06, 0.07, 0.012, 20]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.35} metalness={0.65} />
+          </mesh>
+          {/* Neck */}
+          <mesh position={[0, 0.1, 0]}>
+            <boxGeometry args={[0.022, 0.16, 0.03]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.35} metalness={0.65} />
+          </mesh>
+          {/* Bezel — slightly curved, angled toward user */}
+          <mesh position={[0, 0.24, 0.01]} rotation={[-0.12, 0, 0]} castShadow>
+            <boxGeometry args={[widthWorld * 0.4, 0.26, 0.022]} />
+            <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.45} />
+          </mesh>
+          {/* Screen content — QA dashboard (purple glow) */}
+          <mesh position={[0, 0.24, 0.023]} rotation={[-0.12, 0, 0]}>
+            <planeGeometry args={[widthWorld * 0.37, 0.23]} />
             <meshStandardMaterial
-              color="#8b5cf6"
-              emissive="#8b5cf6"
-              emissiveIntensity={0.7}
-              metalness={0.35}
-              roughness={0.28}
+              color="#7c3aed"
+              emissive="#7c3aed"
+              emissiveIntensity={1.15}
+              roughness={0.3}
             />
           </mesh>
-        ))}
-        {[-widthWorld * 0.3, 0, widthWorld * 0.3].map((x, index) => (
-          <mesh key={x} position={[x, 0.09, depthWorld * 0.47]}>
-            <boxGeometry args={[0.05, 0.01, 0.02]} />
+          {/* Test result grid overlay (simulated bars) */}
+          {[0, 1, 2].map((row) =>
+            [0, 1, 2, 3].map((col) => (
+              <mesh
+                key={`grid-${row}-${col}`}
+                position={[
+                  -widthWorld * 0.14 + col * 0.03,
+                  0.3 - row * 0.04,
+                  0.025 - row * 0.005,
+                ]}
+                rotation={[-0.12, 0, 0]}
+              >
+                <planeGeometry args={[0.02, 0.02]} />
+                <meshStandardMaterial
+                  color={row === 0 && col < 3 ? "#22c55e" : row === 1 && col === 2 ? "#ef4444" : "#c4b5fd"}
+                  emissive={row === 0 && col < 3 ? "#22c55e" : row === 1 && col === 2 ? "#ef4444" : "#c4b5fd"}
+                  emissiveIntensity={0.8}
+                />
+              </mesh>
+            )),
+          )}
+          {/* Brand badge on bezel bottom */}
+          <Text
+            position={[0, 0.115, 0.024]}
+            rotation={[-0.12, 0, 0]}
+            fontSize={0.014}
+            color="#c4b5fd"
+            anchorX="center"
+            anchorY="middle"
+          >
+            QA DASH
+          </Text>
+        </group>
+
+        {/* === SECONDARY MONITOR (right — vertical log tail) === */}
+        <group position={[widthWorld * 0.22, 0.5, -depthWorld * 0.14]}>
+          <mesh position={[0, 0.018, 0]}>
+            <cylinderGeometry args={[0.06, 0.07, 0.012, 20]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.35} metalness={0.65} />
+          </mesh>
+          <mesh position={[0, 0.1, 0]}>
+            <boxGeometry args={[0.022, 0.16, 0.03]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.35} metalness={0.65} />
+          </mesh>
+          {/* Vertical portrait bezel */}
+          <mesh position={[0, 0.25, 0.01]} rotation={[-0.12, 0, 0]} castShadow>
+            <boxGeometry args={[0.22, 0.3, 0.022]} />
+            <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.45} />
+          </mesh>
+          {/* Cyan log-stream screen */}
+          <mesh position={[0, 0.25, 0.023]} rotation={[-0.12, 0, 0]}>
+            <planeGeometry args={[0.2, 0.27]} />
             <meshStandardMaterial
-              color={index === 1 ? "#22c55e" : "#38bdf8"}
-              emissive={index === 1 ? "#22c55e" : "#38bdf8"}
-              emissiveIntensity={1.2}
+              color="#0891b2"
+              emissive="#22d3ee"
+              emissiveIntensity={1.05}
+              roughness={0.32}
             />
           </mesh>
-        ))}
-        <mesh position={[widthWorld * 0.36, 0.3, -depthWorld * 0.18]} rotation={[0, -0.3, 0]}>
-          <boxGeometry args={[0.08, 0.18, 0.08]} />
-          <meshStandardMaterial color="#0f172a" roughness={0.4} metalness={0.55} />
+          {/* Simulated log lines */}
+          {Array.from({ length: 8 }).map((_, i) => (
+            <mesh
+              key={`log-${i}`}
+              position={[0, 0.36 - i * 0.03, 0.025 - i * 0.002]}
+              rotation={[-0.12, 0, 0]}
+            >
+              <planeGeometry args={[0.17, 0.012]} />
+              <meshStandardMaterial
+                color="#ecfeff"
+                emissive="#ecfeff"
+                emissiveIntensity={0.45}
+                transparent
+                opacity={i === 3 ? 1 : 0.65}
+              />
+            </mesh>
+          ))}
+        </group>
+
+        {/* === KEYBOARD (low-profile mechanical) === */}
+        <mesh position={[-widthWorld * 0.08, 0.506, depthWorld * 0.22]} castShadow>
+          <boxGeometry args={[widthWorld * 0.46, 0.018, 0.11]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.55} metalness={0.3} />
         </mesh>
-        <mesh position={[widthWorld * 0.36, 0.39, -depthWorld * 0.18]} rotation={[0, -0.3, 0]}>
-          <planeGeometry args={[0.05, 0.07]} />
-          <meshStandardMaterial color="#f43f5e" emissive="#f43f5e" emissiveIntensity={0.8} />
+        {/* Keyboard keys area (slight inset) */}
+        <mesh position={[-widthWorld * 0.08, 0.516, depthWorld * 0.22]}>
+          <boxGeometry args={[widthWorld * 0.44, 0.002, 0.1]} />
+          <meshStandardMaterial color="#1e1b4b" roughness={0.68} metalness={0.2} />
+        </mesh>
+        {/* RGB underglow on keyboard */}
+        <mesh position={[-widthWorld * 0.08, 0.512, depthWorld * 0.29]}>
+          <planeGeometry args={[widthWorld * 0.46, 0.008]} />
+          <meshStandardMaterial
+            color="#a855f7"
+            emissive="#a855f7"
+            emissiveIntensity={1.2}
+          />
+        </mesh>
+
+        {/* === MOUSE (precision gaming mouse) === */}
+        <mesh position={[widthWorld * 0.22, 0.508, depthWorld * 0.24]} rotation={[0, 0.05, 0]} castShadow>
+          <boxGeometry args={[0.05, 0.018, 0.08]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.55} metalness={0.3} />
+        </mesh>
+        {/* Scroll wheel */}
+        <mesh position={[widthWorld * 0.22, 0.52, depthWorld * 0.24]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.006, 0.006, 0.018, 10]} />
+          <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.7} />
+        </mesh>
+        {/* Mouse pad */}
+        <mesh position={[widthWorld * 0.22, 0.501, depthWorld * 0.22]}>
+          <planeGeometry args={[0.12, 0.16]} />
+          <meshStandardMaterial color="#312e81" roughness={0.85} metalness={0.1} transparent opacity={0.85} />
+        </mesh>
+
+        {/* === CPU TOWER (under-desk right corner) === */}
+        <mesh position={[widthWorld * 0.36, 0.25, -depthWorld * 0.3]} castShadow receiveShadow>
+          <boxGeometry args={[0.08, 0.36, 0.16]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.45} metalness={0.5} />
+        </mesh>
+        {/* Tower vent stripes */}
+        {[0.12, 0.18, 0.24, 0.3, 0.36].map((y, idx) => (
+          <mesh key={`vent-${idx}`} position={[widthWorld * 0.42, y, -depthWorld * 0.3]}>
+            <boxGeometry args={[0.003, 0.005, 0.12]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.3} metalness={0.7} />
+          </mesh>
+        ))}
+        {/* Power LED */}
+        <mesh position={[widthWorld * 0.42, 0.4, -depthWorld * 0.3]}>
+          <boxGeometry args={[0.004, 0.008, 0.008]} />
+          <meshStandardMaterial color="#22c55e" emissive="#22c55e" emissiveIntensity={1.4} />
+        </mesh>
+
+        {/* === STATUS LED STACK (left corner — build status) === */}
+        <group position={[-widthWorld * 0.42, 0.52, -depthWorld * 0.36]}>
+          {/* Tower base */}
+          <mesh position={[0, 0.01, 0]}>
+            <cylinderGeometry args={[0.018, 0.022, 0.018, 14]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.4} metalness={0.6} />
+          </mesh>
+          {/* Red/Amber/Green lights stacked */}
+          {[
+            { y: 0.04, color: "#ef4444" },
+            { y: 0.08, color: "#f59e0b" },
+            { y: 0.12, color: "#22c55e" },
+          ].map((lamp, idx) => (
+            <mesh key={`lamp-${idx}`} position={[0, lamp.y, 0]}>
+              <cylinderGeometry args={[0.014, 0.014, 0.028, 14]} />
+              <meshStandardMaterial
+                color={lamp.color}
+                emissive={lamp.color}
+                emissiveIntensity={idx === 2 ? 1.4 : 0.25}
+                transparent
+                opacity={0.9}
+              />
+            </mesh>
+          ))}
+          {/* Top cap */}
+          <mesh position={[0, 0.145, 0]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.006, 12]} />
+            <meshStandardMaterial color={CHROME} roughness={0.25} metalness={0.9} />
+          </mesh>
+        </group>
+
+        {/* === COFFEE MUG === */}
+        <group position={[widthWorld * 0.36, 0.53, depthWorld * 0.22]}>
+          <mesh castShadow>
+            <cylinderGeometry args={[0.028, 0.028, 0.055, 18]} />
+            <meshStandardMaterial color="#ede9fe" roughness={0.6} metalness={0.05} />
+          </mesh>
+          {/* Handle */}
+          <mesh position={[0.03, 0, 0]} rotation={[Math.PI / 2, 0, Math.PI / 2]}>
+            <torusGeometry args={[0.016, 0.005, 8, 16, Math.PI]} />
+            <meshStandardMaterial color="#ede9fe" roughness={0.6} metalness={0.05} />
+          </mesh>
+          {/* Coffee top */}
+          <mesh position={[0, 0.028, 0]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.002, 18]} />
+            <meshStandardMaterial color="#3b2014" roughness={0.5} />
+          </mesh>
+        </group>
+
+        {/* === PAPERS / NOTEBOOK === */}
+        <mesh position={[-widthWorld * 0.35, 0.508, depthWorld * 0.3]} rotation={[0, 0.15, 0]}>
+          <boxGeometry args={[0.09, 0.006, 0.065]} />
+          <meshStandardMaterial color="#f1f5f9" roughness={0.8} metalness={0.02} />
+        </mesh>
+
+        {/* === FRONT QA BADGE (amber LED strip at front edge) === */}
+        <mesh position={[0, 0.455, depthWorld * 0.47]}>
+          <boxGeometry args={[widthWorld * 0.3, 0.02, 0.008]} />
+          <meshStandardMaterial
+            color={ACCENT_AMBER}
+            emissive={ACCENT_AMBER}
+            emissiveIntensity={0.8}
+            roughness={0.35}
+            metalness={0.5}
+          />
         </mesh>
       </group>
     </group>
@@ -900,6 +1105,7 @@ export function DeviceRackModel({
   item,
   isSelected,
   isHovered,
+  editMode,
   onPointerDown,
   onPointerOver,
   onPointerOut,
@@ -912,10 +1118,10 @@ export function DeviceRackModel({
   const rotY = getItemRotationRadians(item);
   const highlightColor = isSelected
     ? "#fbbf24"
-    : isHovered
+    : isHovered && editMode
       ? "#38bdf8"
       : "#000000";
-  const highlightIntensity = isSelected ? 0.34 : isHovered ? 0.18 : 0;
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.2 : 0;
 
   return (
     <group
@@ -937,63 +1143,302 @@ export function DeviceRackModel({
         onClick?.(item._uid);
       }}
     >
+      {/*
+        DEVICE TEST RACK (footprint 70×36, ~1.3m tall server-style cabinet)
+        • Anodized black frame with perforated sides
+        • 4 shelves, each loaded with a different device class:
+            bottom → laptops (silver)
+            shelf2  → tablets (various angles)
+            shelf3  → smartphones (portrait, status LEDs)
+            top    → smartwatches + small IoT devices
+        • USB hub with colored cables running to each device
+        • Front LED status stack (each row: green OK / amber test / red fail)
+        • Brand plate with cyan LED
+      */}
       <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
-        <mesh position={[0, 0.5, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld, 1.0, depthWorld * 0.92]} />
+        {/* === BASE PLATE with rubber feet === */}
+        <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.98, 0.06, depthWorld * 0.92]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.55} metalness={0.4} />
+        </mesh>
+        {([-0.44, 0.44] as const).map((sx) =>
+          ([-0.4, 0.4] as const).map((sz) => (
+            <mesh
+              key={`foot-${sx}-${sz}`}
+              position={[widthWorld * sx, 0.01, depthWorld * sz]}
+            >
+              <cylinderGeometry args={[0.018, 0.022, 0.02, 12]} />
+              <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.05} />
+            </mesh>
+          )),
+        )}
+
+        {/* === CABINET BODY === */}
+        <mesh position={[0, 0.62, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.96, 1.12, depthWorld * 0.9]} />
           <meshStandardMaterial
-            color="#0f172a"
+            color="#111827"
             roughness={0.45}
-            metalness={0.58}
+            metalness={0.55}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {[-0.26, 0, 0.26].map((offset, columnIndex) => (
-          <group key={offset} position={[offset, 0.22, depthWorld / 2 + 0.01]}>
-            {[0, 0.24, 0.48].map((level, rowIndex) => (
-              <group key={`${offset}:${level}`} position={[0, level, 0]}>
-                <mesh>
-                  <boxGeometry args={[widthWorld * 0.24, 0.16, 0.03]} />
-                  <meshStandardMaterial color="#111827" />
+        {/* Perforated side panels (left) */}
+        {[-1, 1].map((side) => (
+          <group key={`perf-${side}`}>
+            <mesh position={[widthWorld * 0.48 * side, 0.62, 0]}>
+              <boxGeometry args={[0.006, 1.08, depthWorld * 0.86]} />
+              <meshStandardMaterial color="#1f2937" roughness={0.55} metalness={0.5} />
+            </mesh>
+            {Array.from({ length: 12 }).map((_, row) =>
+              Array.from({ length: 3 }).map((__, col) => (
+                <mesh
+                  key={`hole-${side}-${row}-${col}`}
+                  position={[
+                    widthWorld * 0.482 * side,
+                    0.14 + row * 0.08,
+                    depthWorld * (-0.28 + col * 0.28),
+                  ]}
+                >
+                  <boxGeometry args={[0.002, 0.03, 0.02]} />
+                  <meshStandardMaterial color="#000000" />
                 </mesh>
-                <mesh position={[0, 0, 0.018]}>
-                  <planeGeometry args={[widthWorld * 0.18, 0.09]} />
-                  <meshStandardMaterial
-                    color={
-                      rowIndex === 1
-                        ? "#22c55e"
-                        : columnIndex === 1
-                          ? "#8b5cf6"
-                          : "#38bdf8"
-                    }
-                    emissive={
-                      rowIndex === 1
-                        ? "#22c55e"
-                        : columnIndex === 1
-                          ? "#8b5cf6"
-                          : "#38bdf8"
-                    }
-                    emissiveIntensity={0.8}
-                  />
-                </mesh>
-              </group>
-            ))}
+              )),
+            )}
           </group>
         ))}
-        {[-widthWorld * 0.47, widthWorld * 0.47].map((x) => (
-          <mesh key={x} position={[x, 0.5, 0]}>
-            <boxGeometry args={[0.02, 0.96, depthWorld * 0.94]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.55} />
+        {/* Top cap */}
+        <mesh position={[0, 1.19, 0]}>
+          <boxGeometry args={[widthWorld * 0.99, 0.02, depthWorld * 0.92]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.42} metalness={0.6} />
+        </mesh>
+
+        {/* === GLASS FRONT (semi-transparent with frame) === */}
+        <mesh position={[0, 0.62, depthWorld * 0.452]}>
+          <boxGeometry args={[widthWorld * 0.94, 1.1, 0.003]} />
+          <meshStandardMaterial
+            color="#38bdf8"
+            transparent
+            opacity={0.11}
+            emissive="#22d3ee"
+            emissiveIntensity={0.1}
+            metalness={0.6}
+            roughness={0.1}
+          />
+        </mesh>
+        {/* Glass frame */}
+        {[-0.48, 0.48].map((sx) => (
+          <mesh key={`gframe-v-${sx}`} position={[widthWorld * sx, 0.62, depthWorld * 0.455]}>
+            <boxGeometry args={[0.01, 1.12, 0.008]} />
+            <meshStandardMaterial color={CHROME} roughness={0.26} metalness={0.9} />
           </mesh>
         ))}
+        {[0.07, 1.17].map((yy, i) => (
+          <mesh key={`gframe-h-${i}`} position={[0, yy, depthWorld * 0.455]}>
+            <boxGeometry args={[widthWorld * 0.96, 0.01, 0.008]} />
+            <meshStandardMaterial color={CHROME} roughness={0.26} metalness={0.9} />
+          </mesh>
+        ))}
+        {/* Door handle */}
+        <mesh position={[widthWorld * 0.42, 0.62, depthWorld * 0.46]}>
+          <boxGeometry args={[0.02, 0.08, 0.014]} />
+          <meshStandardMaterial color={CHROME} roughness={0.26} metalness={0.9} />
+        </mesh>
+
+        {/* ====== 4 SHELVES OF DEVICES ====== */}
+
+        {/* --- Shelf 1 (bottom, ~y=0.18) — LAPTOPS --- */}
+        <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.9, 0.012, depthWorld * 0.78]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.45} />
+        </mesh>
+        {([-0.22, 0.22] as const).map((sx, i) => (
+          <group
+            key={`lap-${i}`}
+            position={[widthWorld * sx, 0.2, 0]}
+            rotation={[0, 0, 0]}
+          >
+            {/* Laptop base */}
+            <mesh castShadow>
+              <boxGeometry args={[widthWorld * 0.3, 0.018, depthWorld * 0.52]} />
+              <meshStandardMaterial color="#cbd5e1" roughness={0.35} metalness={0.78} />
+            </mesh>
+            {/* Laptop screen (open at ~110°) */}
+            <mesh
+              position={[0, 0.08, -depthWorld * 0.22]}
+              rotation={[-0.35, 0, 0]}
+              castShadow
+            >
+              <boxGeometry args={[widthWorld * 0.3, 0.18, 0.012]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.4} />
+            </mesh>
+            {/* Laptop screen content — test runner */}
+            <mesh
+              position={[0, 0.09, -depthWorld * 0.215]}
+              rotation={[-0.35, 0, 0]}
+            >
+              <planeGeometry args={[widthWorld * 0.28, 0.16]} />
+              <meshStandardMaterial
+                color={i === 0 ? "#16a34a" : "#2563eb"}
+                emissive={i === 0 ? "#16a34a" : "#2563eb"}
+                emissiveIntensity={0.9}
+              />
+            </mesh>
+          </group>
+        ))}
+
+        {/* --- Shelf 2 (~y=0.48) — TABLETS --- */}
+        <mesh position={[0, 0.48, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.9, 0.012, depthWorld * 0.78]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.45} />
+        </mesh>
+        {([-0.3, 0, 0.3] as const).map((sx, i) => (
+          <group
+            key={`tab-${i}`}
+            position={[widthWorld * sx, 0.55, 0]}
+            rotation={[-0.2, 0, 0]}
+          >
+            {/* Tablet body (propped up) */}
+            <mesh castShadow>
+              <boxGeometry args={[widthWorld * 0.22, 0.16, 0.012]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.55} />
+            </mesh>
+            {/* Tablet screen */}
+            <mesh position={[0, 0, 0.008]}>
+              <planeGeometry args={[widthWorld * 0.19, 0.14]} />
+              <meshStandardMaterial
+                color={i === 0 ? "#8b5cf6" : i === 1 ? "#22d3ee" : "#f59e0b"}
+                emissive={i === 0 ? "#8b5cf6" : i === 1 ? "#22d3ee" : "#f59e0b"}
+                emissiveIntensity={1.05}
+              />
+            </mesh>
+            {/* Stand */}
+            <mesh position={[0, -0.07, -0.02]} rotation={[0.35, 0, 0]}>
+              <boxGeometry args={[0.018, 0.06, 0.012]} />
+              <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.5} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* --- Shelf 3 (~y=0.78) — SMARTPHONES --- */}
+        <mesh position={[0, 0.78, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.9, 0.012, depthWorld * 0.78]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.45} />
+        </mesh>
+        {([-0.38, -0.19, 0, 0.19, 0.38] as const).map((sx, i) => (
+          <group
+            key={`phone-${i}`}
+            position={[widthWorld * sx, 0.82, 0]}
+            rotation={[-0.1, 0, 0]}
+          >
+            {/* Phone body (portrait) */}
+            <mesh castShadow>
+              <boxGeometry args={[0.04, 0.085, 0.008]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.35} metalness={0.55} />
+            </mesh>
+            {/* Phone screen */}
+            <mesh position={[0, 0.005, 0.005]}>
+              <planeGeometry args={[0.032, 0.07]} />
+              <meshStandardMaterial
+                color={["#22c55e", "#f43f5e", "#38bdf8", "#f59e0b", "#a855f7"][i % 5]}
+                emissive={["#22c55e", "#f43f5e", "#38bdf8", "#f59e0b", "#a855f7"][i % 5]}
+                emissiveIntensity={1.15}
+              />
+            </mesh>
+            {/* Small status LED above each phone */}
+            <mesh position={[0, 0.052, 0]}>
+              <boxGeometry args={[0.006, 0.003, 0.006]} />
+              <meshStandardMaterial
+                color={i % 3 === 0 ? "#22c55e" : i % 3 === 1 ? "#f59e0b" : "#ef4444"}
+                emissive={i % 3 === 0 ? "#22c55e" : i % 3 === 1 ? "#f59e0b" : "#ef4444"}
+                emissiveIntensity={1.3}
+              />
+            </mesh>
+          </group>
+        ))}
+
+        {/* --- Shelf 4 (top ~y=1.05) — WEARABLES / IoT --- */}
+        <mesh position={[0, 1.05, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.9, 0.012, depthWorld * 0.78]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.45} />
+        </mesh>
+        {/* Watch stands */}
+        {([-0.3, -0.1, 0.1, 0.3] as const).map((sx, i) => (
+          <group key={`watch-${i}`} position={[widthWorld * sx, 1.08, 0]}>
+            {/* Stand pillar */}
+            <mesh>
+              <cylinderGeometry args={[0.012, 0.018, 0.05, 14]} />
+              <meshStandardMaterial color={GUNMETAL} roughness={0.42} metalness={0.6} />
+            </mesh>
+            {/* Watch face */}
+            <mesh position={[0, 0.03, 0]}>
+              <cylinderGeometry args={[0.018, 0.018, 0.012, 18]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.35} metalness={0.55} />
+            </mesh>
+            <mesh position={[0, 0.037, 0]}>
+              <cylinderGeometry args={[0.015, 0.015, 0.002, 18]} />
+              <meshStandardMaterial
+                color={["#22d3ee", "#22c55e", "#a855f7", "#f59e0b"][i]}
+                emissive={["#22d3ee", "#22c55e", "#a855f7", "#f59e0b"][i]}
+                emissiveIntensity={1.1}
+              />
+            </mesh>
+          </group>
+        ))}
+
+        {/* === USB HUB at top right — status + cables === */}
+        <mesh position={[widthWorld * 0.33, 1.14, 0]}>
+          <boxGeometry args={[0.14, 0.025, 0.05]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.5} metalness={0.4} />
+        </mesh>
+        {Array.from({ length: 5 }).map((_, i) => (
+          <mesh
+            key={`usb-led-${i}`}
+            position={[widthWorld * 0.33 - 0.04 + i * 0.018, 1.145, 0.025]}
+          >
+            <boxGeometry args={[0.005, 0.004, 0.003]} />
+            <meshStandardMaterial
+              color="#22c55e"
+              emissive="#22c55e"
+              emissiveIntensity={1.2}
+            />
+          </mesh>
+        ))}
+
+        {/* === FRONT LED STATUS STACK (left outer — one per shelf) === */}
+        {[0.18, 0.48, 0.78, 1.05].map((yy, idx) => (
+          <group key={`sled-${idx}`} position={[-widthWorld * 0.46, yy + 0.02, depthWorld * 0.455]}>
+            {/* Green "shelf OK" strip */}
+            <mesh>
+              <boxGeometry args={[0.018, 0.006, 0.004]} />
+              <meshStandardMaterial
+                color={idx === 2 ? "#ef4444" : "#22c55e"}
+                emissive={idx === 2 ? "#ef4444" : "#22c55e"}
+                emissiveIntensity={1.3}
+              />
+            </mesh>
+          </group>
+        ))}
+
+        {/* === BRAND PLATE at top === */}
+        <mesh position={[0, 1.18, depthWorld * 0.456]}>
+          <boxGeometry args={[widthWorld * 0.4, 0.06, 0.004]} />
+          <meshStandardMaterial
+            color={LED_CYAN}
+            emissive={LED_CYAN}
+            emissiveIntensity={0.85}
+            roughness={0.35}
+          />
+        </mesh>
         <Text
-          position={[0, 1.05, 0]}
-          fontSize={0.04}
-          color="#e0f2fe"
+          position={[0, 1.18, depthWorld * 0.46]}
+          fontSize={0.028}
+          color="#0b1e2a"
           anchorX="center"
           anchorY="middle"
         >
-          DEVICES
+          DEVICE LAB
         </Text>
       </group>
     </group>
@@ -1004,6 +1449,7 @@ export function TestBenchModel({
   item,
   isSelected,
   isHovered,
+  editMode,
   onPointerDown,
   onPointerOver,
   onPointerOut,
@@ -1016,10 +1462,10 @@ export function TestBenchModel({
   const rotY = getItemRotationRadians(item);
   const highlightColor = isSelected
     ? "#fbbf24"
-    : isHovered
+    : isHovered && editMode
       ? "#c084fc"
       : "#000000";
-  const highlightIntensity = isSelected ? 0.34 : isHovered ? 0.18 : 0;
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.2 : 0;
 
   return (
     <group
@@ -1041,62 +1487,403 @@ export function TestBenchModel({
         onClick?.(item._uid);
       }}
     >
+      {/*
+        ELECTRONICS TEST BENCH (footprint 90×42)
+        • Steel frame workbench with anti-static rubber top (blue-green ESD mat)
+        • Pegboard / backboard with tool outlines
+        • Oscilloscope (big screen, multiple traces)
+        • Bench power supply with dual analog meters
+        • Soldering station with iron on holder + wet sponge + fume extractor
+        • Magnifier lamp on articulated arm
+        • Parts bins (4 small colored drawer bins)
+        • DUT (device under test) in the middle — a circuit board
+        • Cable coils hanging from pegboard
+      */}
       <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
-        <mesh position={[0, 0.44, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld, 0.08, depthWorld]} />
+        {/* === LEGS (4 steel tube legs) === */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`leg_${sx}_${sz}`}
+              position={[widthWorld * 0.44 * sx, 0.22, depthWorld * 0.4 * sz]}
+              castShadow
+            >
+              <boxGeometry args={[0.055, 0.44, 0.055]} />
+              <meshStandardMaterial color={GUNMETAL} roughness={0.42} metalness={0.6} />
+            </mesh>
+          )),
+        )}
+        {/* Rubber foot caps */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`foot_${sx}_${sz}`}
+              position={[widthWorld * 0.44 * sx, 0.01, depthWorld * 0.4 * sz]}
+            >
+              <boxGeometry args={[0.065, 0.02, 0.065]} />
+              <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.05} />
+            </mesh>
+          )),
+        )}
+
+        {/* Lower storage shelf */}
+        <mesh position={[0, 0.14, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.86, 0.02, depthWorld * 0.82]} />
+          <meshStandardMaterial color="#1f2937" roughness={0.55} metalness={0.4} />
+        </mesh>
+        {/* Toolbox on lower shelf */}
+        <mesh position={[-widthWorld * 0.22, 0.2, 0]} castShadow>
+          <boxGeometry args={[0.18, 0.11, 0.12]} />
+          <meshStandardMaterial color="#dc2626" roughness={0.5} metalness={0.35} />
+        </mesh>
+        {/* Power strip with 4 sockets + LED */}
+        <mesh position={[widthWorld * 0.25, 0.165, depthWorld * 0.2]}>
+          <boxGeometry args={[0.22, 0.02, 0.05]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.5} metalness={0.4} />
+        </mesh>
+        <mesh position={[widthWorld * 0.36, 0.175, depthWorld * 0.2]}>
+          <boxGeometry args={[0.005, 0.004, 0.006]} />
+          <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.3} />
+        </mesh>
+
+        {/* === BENCH TOP (ESD anti-static rubber mat) === */}
+        <mesh position={[0, 0.46, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.98, 0.04, depthWorld * 0.92]} />
           <meshStandardMaterial
-            color="#312e81"
-            roughness={0.62}
-            metalness={0.14}
+            color="#1e293b"
+            roughness={0.55}
+            metalness={0.15}
             emissive={highlightColor}
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {[-widthWorld * 0.34, widthWorld * 0.34].map((x) =>
-          [-depthWorld * 0.34, depthWorld * 0.34].map((z) => (
-            <mesh key={`${x}:${z}`} position={[x, 0.22, z]} castShadow>
-              <boxGeometry args={[0.05, 0.44, 0.05]} />
-              <meshStandardMaterial color="#1f2937" roughness={0.52} metalness={0.2} />
+        {/* ESD-green surface layer */}
+        <mesh position={[0, 0.481, 0]}>
+          <planeGeometry args={[widthWorld * 0.96, depthWorld * 0.9]} />
+          <meshStandardMaterial color="#065f46" roughness={0.88} metalness={0.05} />
+        </mesh>
+        {/* Chrome edge strips */}
+        <mesh position={[0, 0.462, depthWorld * 0.46]}>
+          <boxGeometry args={[widthWorld * 0.98, 0.042, 0.008]} />
+          <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
+        </mesh>
+        <mesh position={[0, 0.462, -depthWorld * 0.46]}>
+          <boxGeometry args={[widthWorld * 0.98, 0.042, 0.008]} />
+          <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.88} />
+        </mesh>
+
+        {/* === PEGBOARD BACK WALL === */}
+        <mesh position={[0, 0.82, -depthWorld * 0.42]} castShadow>
+          <boxGeometry args={[widthWorld * 0.92, 0.72, 0.015]} />
+          <meshStandardMaterial color="#78350f" roughness={0.78} metalness={0.08} />
+        </mesh>
+        {/* Pegboard hole grid */}
+        {Array.from({ length: 10 }).map((_, col) =>
+          Array.from({ length: 5 }).map((__, row) => (
+            <mesh
+              key={`peg-${row}-${col}`}
+              position={[
+                widthWorld * (-0.4 + col * 0.09),
+                0.58 + row * 0.12,
+                -depthWorld * 0.412,
+              ]}
+            >
+              <cylinderGeometry args={[0.004, 0.004, 0.004, 8]} />
+              <meshStandardMaterial color="#0b0b1a" />
             </mesh>
           )),
         )}
-        <mesh position={[-widthWorld * 0.18, 0.52, 0]}>
-          <boxGeometry args={[widthWorld * 0.22, 0.12, 0.02]} />
-          <meshStandardMaterial color="#111827" />
+        {/* Hanging tools on pegboard */}
+        {/* Wrench outline */}
+        <mesh position={[-widthWorld * 0.35, 0.86, -depthWorld * 0.408]} rotation={[0, 0, 0.3]}>
+          <boxGeometry args={[0.02, 0.12, 0.008]} />
+          <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.85} />
         </mesh>
-        <mesh position={[-widthWorld * 0.18, 0.52, 0.016]}>
-          <planeGeometry args={[widthWorld * 0.18, 0.08]} />
-          <meshStandardMaterial color="#38bdf8" emissive="#38bdf8" emissiveIntensity={0.6} />
+        {/* Screwdriver */}
+        <mesh position={[-widthWorld * 0.25, 0.86, -depthWorld * 0.408]}>
+          <boxGeometry args={[0.012, 0.14, 0.008]} />
+          <meshStandardMaterial color="#f59e0b" roughness={0.5} metalness={0.4} />
         </mesh>
-        <mesh position={[widthWorld * 0.16, 0.5, 0]} rotation={[0, 0.16, 0]}>
-          <boxGeometry args={[0.1, 0.02, 0.14]} />
-          <meshStandardMaterial color="#111827" roughness={0.24} metalness={0.58} />
+        <mesh position={[-widthWorld * 0.25, 0.94, -depthWorld * 0.408]}>
+          <boxGeometry args={[0.006, 0.05, 0.006]} />
+          <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.9} />
         </mesh>
-        <mesh position={[widthWorld * 0.04, 0.52, -depthWorld * 0.22]} rotation={[0, 0.3, 0]}>
-          <boxGeometry args={[0.12, 0.02, 0.08]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.18} metalness={0.65} />
+        {/* Pliers */}
+        <mesh position={[-widthWorld * 0.14, 0.88, -depthWorld * 0.408]}>
+          <boxGeometry args={[0.04, 0.12, 0.008]} />
+          <meshStandardMaterial color="#ef4444" roughness={0.5} metalness={0.4} />
         </mesh>
-        <mesh position={[widthWorld * 0.04, 0.54, -depthWorld * 0.22]} rotation={[0, 0.3, 0]}>
-          <planeGeometry args={[0.09, 0.05]} />
-          <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.8} />
-        </mesh>
-        <mesh position={[-widthWorld * 0.36, 0.5, -depthWorld * 0.16]}>
-          <cylinderGeometry args={[0.015, 0.022, 0.18, 14]} />
-          <meshStandardMaterial color="#cbd5e1" roughness={0.32} metalness={0.7} />
-        </mesh>
-        <mesh position={[-widthWorld * 0.31, 0.6, -depthWorld * 0.1]} rotation={[0, 0, -0.7]}>
-          <boxGeometry args={[0.12, 0.018, 0.018]} />
-          <meshStandardMaterial color="#e2e8f0" roughness={0.28} metalness={0.65} />
-        </mesh>
-        <Text
-          position={[0, 0.64, 0]}
-          fontSize={0.034}
-          color="#ede9fe"
-          anchorX="center"
-          anchorY="middle"
+        {/* Cable coil */}
+        <mesh
+          position={[widthWorld * 0.3, 0.88, -depthWorld * 0.405]}
+          rotation={[Math.PI / 2, 0, 0]}
         >
-          TEST BENCH
-        </Text>
+          <torusGeometry args={[0.05, 0.012, 8, 20]} />
+          <meshStandardMaterial color="#0b0b1a" roughness={0.85} metalness={0.1} />
+        </mesh>
+
+        {/* === OSCILLOSCOPE (center-back on bench) === */}
+        <group position={[-widthWorld * 0.2, 0.55, -depthWorld * 0.22]}>
+          {/* Body */}
+          <mesh castShadow>
+            <boxGeometry args={[0.26, 0.2, 0.16]} />
+            <meshStandardMaterial color="#374151" roughness={0.45} metalness={0.45} />
+          </mesh>
+          {/* Screen bezel */}
+          <mesh position={[0, 0, 0.082]}>
+            <boxGeometry args={[0.2, 0.15, 0.008]} />
+            <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.45} />
+          </mesh>
+          {/* Screen content — cyan waveform */}
+          <mesh position={[0, 0, 0.088]}>
+            <planeGeometry args={[0.18, 0.13]} />
+            <meshStandardMaterial
+              color="#052e2b"
+              emissive="#22d3ee"
+              emissiveIntensity={1.1}
+              roughness={0.3}
+            />
+          </mesh>
+          {/* Waveform lines (simulated) */}
+          {[0, 1, 2].map((wave) => (
+            <mesh
+              key={`wave-${wave}`}
+              position={[0, 0.02 - wave * 0.025, 0.093]}
+            >
+              <planeGeometry args={[0.16, 0.003]} />
+              <meshStandardMaterial
+                color={wave === 0 ? "#fbbf24" : wave === 1 ? "#22d3ee" : "#a855f7"}
+                emissive={wave === 0 ? "#fbbf24" : wave === 1 ? "#22d3ee" : "#a855f7"}
+                emissiveIntensity={1.3}
+              />
+            </mesh>
+          ))}
+          {/* Knob row under screen */}
+          {[-0.08, -0.04, 0, 0.04, 0.08].map((kx, i) => (
+            <mesh key={`knob-${i}`} position={[kx, -0.1, 0.082]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.012, 0.012, 0.01, 14]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.55} metalness={0.45} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* === BENCH POWER SUPPLY (center) === */}
+        <group position={[widthWorld * 0.05, 0.54, -depthWorld * 0.22]}>
+          {/* Body */}
+          <mesh castShadow>
+            <boxGeometry args={[0.22, 0.16, 0.16]} />
+            <meshStandardMaterial color="#0b1e2a" roughness={0.5} metalness={0.45} />
+          </mesh>
+          {/* Two analog voltmeters */}
+          {([-0.05, 0.05] as const).map((mx, i) => (
+            <group key={`meter-${i}`} position={[mx, 0.03, 0.082]}>
+              <mesh>
+                <cylinderGeometry args={[0.035, 0.035, 0.008, 22]} />
+                <meshStandardMaterial color="#cbd5e1" roughness={0.4} metalness={0.55} />
+              </mesh>
+              {/* Meter face */}
+              <mesh position={[0, 0, 0.005]}>
+                <cylinderGeometry args={[0.028, 0.028, 0.002, 22]} />
+                <meshStandardMaterial color="#f1f5f9" roughness={0.7} />
+              </mesh>
+              {/* Needle */}
+              <mesh position={[0, 0, 0.008]} rotation={[0, 0, i === 0 ? -0.4 : 0.3]}>
+                <boxGeometry args={[0.002, 0.02, 0.001]} />
+                <meshStandardMaterial color="#dc2626" />
+              </mesh>
+            </group>
+          ))}
+          {/* Front knobs & terminals */}
+          {[-0.08, -0.04, 0.04, 0.08].map((kx, i) => (
+            <mesh key={`ps-knob-${i}`} position={[kx, -0.05, 0.082]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.01, 0.012, 0.01, 14]} />
+              <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.85} />
+            </mesh>
+          ))}
+          {/* Terminal posts (red/black) */}
+          {[-0.02, 0.02].map((tx, i) => (
+            <mesh key={`term-${i}`} position={[tx, -0.05, 0.085]}>
+              <cylinderGeometry args={[0.007, 0.007, 0.012, 12]} />
+              <meshStandardMaterial
+                color={i === 0 ? "#dc2626" : "#0b0b1a"}
+                roughness={0.45}
+                metalness={0.45}
+              />
+            </mesh>
+          ))}
+        </group>
+
+        {/* === SOLDERING STATION (right side) === */}
+        <group position={[widthWorld * 0.3, 0.53, -depthWorld * 0.24]}>
+          {/* Station body */}
+          <mesh castShadow>
+            <boxGeometry args={[0.14, 0.14, 0.1]} />
+            <meshStandardMaterial color="#fbbf24" roughness={0.42} metalness={0.35} />
+          </mesh>
+          {/* Digital display */}
+          <mesh position={[0, 0.02, 0.052]}>
+            <planeGeometry args={[0.08, 0.03]} />
+            <meshStandardMaterial
+              color="#ef4444"
+              emissive="#ef4444"
+              emissiveIntensity={1.3}
+            />
+          </mesh>
+          <Text
+            position={[0, 0.02, 0.053]}
+            fontSize={0.014}
+            color="#0b0b1a"
+            anchorX="center"
+            anchorY="middle"
+          >
+            350°C
+          </Text>
+          {/* Knob */}
+          <mesh position={[0.04, -0.03, 0.052]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.01, 14]} />
+            <meshStandardMaterial color="#0b0b1a" roughness={0.55} metalness={0.45} />
+          </mesh>
+        </group>
+        {/* Iron holder (coiled spring) */}
+        <group position={[widthWorld * 0.4, 0.5, -depthWorld * 0.2]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.018, 0.003, 8, 20]} />
+            <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.85} />
+          </mesh>
+          {/* Iron body */}
+          <mesh position={[0, 0.025, 0]} rotation={[0.5, 0, 0]}>
+            <boxGeometry args={[0.018, 0.1, 0.018]} />
+            <meshStandardMaterial color="#0b0b1a" roughness={0.5} metalness={0.4} />
+          </mesh>
+          {/* Tip (orange glow) */}
+          <mesh position={[0, 0.08, 0.028]}>
+            <coneGeometry args={[0.005, 0.018, 10]} />
+            <meshStandardMaterial
+              color="#f97316"
+              emissive="#f97316"
+              emissiveIntensity={1.1}
+            />
+          </mesh>
+          {/* Wet sponge tray */}
+          <mesh position={[-0.04, 0.02, 0]}>
+            <boxGeometry args={[0.04, 0.01, 0.05]} />
+            <meshStandardMaterial color="#1e293b" roughness={0.6} metalness={0.3} />
+          </mesh>
+          <mesh position={[-0.04, 0.027, 0]}>
+            <boxGeometry args={[0.035, 0.005, 0.045]} />
+            <meshStandardMaterial color="#fbbf24" roughness={0.9} metalness={0.05} />
+          </mesh>
+        </group>
+
+        {/* === MAGNIFIER LAMP on articulated arm (left-front) === */}
+        <group position={[-widthWorld * 0.36, 0.5, depthWorld * 0.24]}>
+          {/* Base clamp */}
+          <mesh>
+            <cylinderGeometry args={[0.03, 0.035, 0.02, 16]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.42} metalness={0.58} />
+          </mesh>
+          {/* Arm segment 1 */}
+          <mesh position={[0.05, 0.08, 0]} rotation={[0, 0, -0.6]}>
+            <cylinderGeometry args={[0.008, 0.008, 0.16, 10]} />
+            <meshStandardMaterial color="#cbd5e1" roughness={0.35} metalness={0.65} />
+          </mesh>
+          {/* Elbow */}
+          <mesh position={[0.1, 0.14, 0]}>
+            <sphereGeometry args={[0.012, 12, 10]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.4} metalness={0.6} />
+          </mesh>
+          {/* Arm segment 2 */}
+          <mesh position={[0.16, 0.12, 0]} rotation={[0, 0, 0.9]}>
+            <cylinderGeometry args={[0.008, 0.008, 0.14, 10]} />
+            <meshStandardMaterial color="#cbd5e1" roughness={0.35} metalness={0.65} />
+          </mesh>
+          {/* Magnifier head */}
+          <mesh position={[0.2, 0.08, 0]} rotation={[0.2, 0, -0.3]}>
+            <cylinderGeometry args={[0.05, 0.05, 0.015, 24]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.4} metalness={0.6} />
+          </mesh>
+          {/* Lens (glassy cyan) */}
+          <mesh position={[0.2, 0.075, 0]} rotation={[0.2, 0, -0.3]}>
+            <cylinderGeometry args={[0.038, 0.038, 0.004, 24]} />
+            <meshStandardMaterial
+              color="#67e8f9"
+              emissive="#67e8f9"
+              emissiveIntensity={0.6}
+              transparent
+              opacity={0.55}
+              metalness={0.4}
+              roughness={0.15}
+            />
+          </mesh>
+        </group>
+
+        {/* === DUT (device under test — PCB on the bench) === */}
+        <group position={[-widthWorld * 0.05, 0.5, depthWorld * 0.1]}>
+          {/* PCB board */}
+          <mesh castShadow>
+            <boxGeometry args={[0.14, 0.01, 0.08]} />
+            <meshStandardMaterial color="#065f46" roughness={0.55} metalness={0.3} />
+          </mesh>
+          {/* Chips */}
+          {([-0.035, 0.02] as const).map((cx, i) => (
+            <mesh key={`chip-${i}`} position={[cx, 0.012, 0]} castShadow>
+              <boxGeometry args={[0.03, 0.008, 0.025]} />
+              <meshStandardMaterial color="#0b0b1a" roughness={0.4} metalness={0.5} />
+            </mesh>
+          ))}
+          {/* LEDs on PCB */}
+          {[-0.05, -0.03, 0.04].map((lx, i) => (
+            <mesh key={`pcbled-${i}`} position={[lx, 0.008, 0.03]}>
+              <boxGeometry args={[0.004, 0.003, 0.004]} />
+              <meshStandardMaterial
+                color={["#22c55e", "#f59e0b", "#ef4444"][i]}
+                emissive={["#22c55e", "#f59e0b", "#ef4444"][i]}
+                emissiveIntensity={1.3}
+              />
+            </mesh>
+          ))}
+          {/* Probe wires (red/black) */}
+          <mesh position={[-0.06, 0.03, 0]} rotation={[0, 0, -0.5]}>
+            <cylinderGeometry args={[0.002, 0.002, 0.1, 8]} />
+            <meshStandardMaterial color="#dc2626" />
+          </mesh>
+          <mesh position={[0.06, 0.03, 0]} rotation={[0, 0, 0.5]}>
+            <cylinderGeometry args={[0.002, 0.002, 0.1, 8]} />
+            <meshStandardMaterial color="#0b0b1a" />
+          </mesh>
+        </group>
+
+        {/* === PARTS BINS (4 small colored organizer bins, back-right) === */}
+        {[
+          { x: 0.32, color: "#ef4444" },
+          { x: 0.37, color: "#22c55e" },
+          { x: 0.42, color: "#3b82f6" },
+          { x: 0.47, color: "#fbbf24" },
+        ].map((bin, i) => (
+          <group key={`bin-${i}`} position={[widthWorld * bin.x - widthWorld * 0.05, 0.5, depthWorld * 0.32]}>
+            <mesh castShadow>
+              <boxGeometry args={[0.038, 0.04, 0.05]} />
+              <meshStandardMaterial color={bin.color} roughness={0.55} metalness={0.25} />
+            </mesh>
+            {/* Tag window */}
+            <mesh position={[0, 0, 0.026]}>
+              <planeGeometry args={[0.025, 0.012]} />
+              <meshStandardMaterial color="#f1f5f9" roughness={0.8} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* === FRONT QA BADGE (amber LED strip) === */}
+        <mesh position={[0, 0.432, depthWorld * 0.47]}>
+          <boxGeometry args={[widthWorld * 0.3, 0.02, 0.008]} />
+          <meshStandardMaterial
+            color={ACCENT_AMBER}
+            emissive={ACCENT_AMBER}
+            emissiveIntensity={0.8}
+            roughness={0.35}
+            metalness={0.5}
+          />
+        </mesh>
       </group>
     </group>
   );
