@@ -1328,6 +1328,8 @@ function AdaptiveDprController() {
   const currentDprRef = useRef(1);
   const frameCounterRef = useRef(0);
   const avgDeltaRef = useRef(1 / 60);
+  const lastInteractionRef = useRef(0);
+  const interactingDprRef = useRef(false);
 
   useEffect(() => {
     // v40: ceiling dropped 0.95 → 0.85 for baseline perf.
@@ -1345,14 +1347,48 @@ function AdaptiveDprController() {
       setDpr(restoredDpr);
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // v41: track pointer + wheel interaction so we can drop DPR while the
+    // user is actively panning/rotating the camera — the biggest perceived
+    // lag source. Resets 200ms after last interaction.
+    const markInteraction = () => {
+      lastInteractionRef.current = performance.now();
+    };
+    const canvas = gl.domElement;
+    canvas.addEventListener("pointerdown", markInteraction);
+    canvas.addEventListener("pointermove", markInteraction);
+    canvas.addEventListener("wheel", markInteraction, { passive: true });
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      canvas.removeEventListener("pointerdown", markInteraction);
+      canvas.removeEventListener("pointermove", markInteraction);
+      canvas.removeEventListener("wheel", markInteraction);
     };
-  }, [setDpr]);
+  }, [gl, setDpr]);
 
   useFrame((_, delta) => {
     if (document.visibilityState !== "visible") return;
     avgDeltaRef.current = avgDeltaRef.current * 0.92 + delta * 0.08;
+
+    // v41: aggressive DPR drop while user is actively interacting. Restores
+    // to normal ~220ms after last pointer/wheel event.
+    const now = performance.now();
+    const isInteracting = now - lastInteractionRef.current < 220;
+    if (isInteracting && !interactingDprRef.current) {
+      interactingDprRef.current = true;
+      const interactionDpr = 0.55;
+      currentDprRef.current = interactionDpr;
+      setDpr(interactionDpr);
+      gl.info.reset();
+    } else if (!isInteracting && interactingDprRef.current) {
+      interactingDprRef.current = false;
+      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.85);
+      currentDprRef.current = restoredDpr;
+      setDpr(restoredDpr);
+      gl.info.reset();
+    }
+    if (isInteracting) return; // Skip the measurement pass during interaction.
+
     frameCounterRef.current += 1;
     if (frameCounterRef.current < 24) return;
     frameCounterRef.current = 0;
@@ -4514,11 +4550,13 @@ export function RetroOffice3D({
             <OrbitControls
               ref={orbitRef}
               enabled={followAgentId === null && (!editMode || spaceDown)}
+              // v41: lighter damping = snappier feel + fewer trailing frames
+              // of post-interaction settling work.
               enableDamping
-              dampingFactor={0.06}
-              rotateSpeed={0.8}
-              zoomSpeed={1.05}
-              panSpeed={0.85}
+              dampingFactor={0.12}
+              rotateSpeed={0.95}
+              zoomSpeed={1.15}
+              panSpeed={1.0}
               minZoom={25}
               maxZoom={120}
               maxPolarAngle={Math.PI / 2.2}

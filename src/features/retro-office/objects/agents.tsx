@@ -1,7 +1,28 @@
 import { Billboard, Text } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { memo, useMemo, useRef } from "react";
 import * as THREE from "three";
+
+// Module-level helpers for frustum culling without per-agent allocations.
+const _cullFrustum = new THREE.Frustum();
+const _cullMatrix = new THREE.Matrix4();
+const _cullSphere = new THREE.Sphere(new THREE.Vector3(), 0.8);
+let _cullFrustumFrame = -1;
+let _cullFrustumCamera: THREE.Camera | null = null;
+// Update the shared frustum at most once per frame (called from every
+// AgentModel useFrame). Uses `renderer.info.render.frame` as a frame token —
+// but @react-three/fiber doesn't expose it cleanly, so we key off the clock
+// elapsed time rounded to microseconds via the shared camera identity.
+function refreshFrustum(camera: THREE.Camera, token: number) {
+  if (_cullFrustumFrame === token && _cullFrustumCamera === camera) return;
+  _cullFrustumFrame = token;
+  _cullFrustumCamera = camera;
+  _cullMatrix.multiplyMatrices(
+    camera.projectionMatrix,
+    camera.matrixWorldInverse,
+  );
+  _cullFrustum.setFromProjectionMatrix(_cullMatrix);
+}
 import { createDefaultAgentAvatarProfile } from "@/lib/avatars/profile";
 import {
   AGENT_SCALE,
@@ -103,14 +124,21 @@ export const AgentModel = memo(function AgentModel({
     nextChange: 180,
   });
   const headTiltRef = useRef({ x: 0, y: 0 });
+  // v41 perf: track if opacity was last set so we avoid re-running the
+  // whole-subtree traverse() every frame. Also used to throttle idle-agent
+  // animation math to 30fps (imperceptible at rest).
+  const lastAwayRef = useRef<boolean | null>(null);
+  const frameTickRef = useRef(0);
+  const { camera } = useThree();
   const resolvedAppearance = useMemo(
     () => appearance ?? createDefaultAgentAvatarProfile(agentId),
     [agentId, appearance],
   );
   const nameLabel = useMemo(() => normalizeAgentNameLabel(name), [name]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     motionTimeRef.current += Math.min(0.05, delta) * 60;
+    frameTickRef.current = (frameTickRef.current + 1) | 0;
     const agent =
       agentLookupRef?.current?.get(agentId) ??
       agentsRef.current?.find((candidate) => candidate.id === agentId);
@@ -118,6 +146,43 @@ export const AgentModel = memo(function AgentModel({
 
     const [wx, , wz] = toWorld(agent.x, agent.y);
     pos.current.set(wx, 0, wz);
+
+    // ---- v41 perf: frustum cull ----
+    // If the agent is fully offscreen, skip the entire body-animation block.
+    // We still allow a minimal position update every ~8 frames so that when
+    // the agent re-enters the viewport it snaps to roughly the right place.
+    refreshFrustum(camera, state.clock.elapsedTime);
+    _cullSphere.center.set(wx, 0.6, wz);
+    const inFrustum = _cullFrustum.intersectsSphere(_cullSphere);
+    if (!inFrustum) {
+      if ((frameTickRef.current & 7) === 0) {
+        groupRef.current.position.set(wx, 0, wz);
+      }
+      return;
+    }
+
+    // ---- v41 perf: half-rate animation for idle/sitting agents ----
+    // Walking, workout, dancing, janitor, and ping-pong agents always run at
+    // full rate. Everyone else alternates frames (30fps pose math, still 60fps
+    // rendering) — imperceptible for subtle idle micro-motion.
+    const lightweight =
+      agent.state !== "walking" &&
+      agent.state !== "working_out" &&
+      agent.state !== "dancing" &&
+      !agent.pingPongUntil &&
+      !("role" in agent && agent.role === "janitor");
+    if (lightweight && (frameTickRef.current & 1) === 0) {
+      // Still lerp position/rotation for smooth camera pans; skip the rest.
+      const positionLerp = 1 - Math.exp(-Math.min(0.05, delta) * 12);
+      groupRef.current.position.lerp(pos.current, positionLerp);
+      const targetY = agent.facing;
+      let rotDelta = targetY - groupRef.current.rotation.y;
+      while (rotDelta > Math.PI) rotDelta -= Math.PI * 2;
+      while (rotDelta < -Math.PI) rotDelta += Math.PI * 2;
+      const rotationLerp = 1 - Math.exp(-Math.min(0.05, delta) * 14);
+      groupRef.current.rotation.y += rotDelta * rotationLerp;
+      return;
+    }
     const positionLerp = 1 - Math.exp(-Math.min(0.05, delta) * 12);
     groupRef.current.position.lerp(pos.current, positionLerp);
 
@@ -562,14 +627,19 @@ export const AgentModel = memo(function AgentModel({
 
     if (awayBubbleRef.current) awayBubbleRef.current.visible = isAway;
     if (bodyMatRef.current) bodyMatRef.current.opacity = isAway ? 0.45 : 1;
-    if (groupRef.current) {
+    // v41 perf: only traverse the mesh tree when `isAway` actually flips.
+    // Previously this ran EVERY FRAME for EVERY agent — the single biggest hot
+    // path in the scene (each traverse walks ~40 meshes per agent).
+    if (groupRef.current && lastAwayRef.current !== isAway) {
+      lastAwayRef.current = isAway;
+      const opacity = isAway ? 0.45 : 1;
       groupRef.current.traverse((child) => {
         if (
           child instanceof THREE.Mesh &&
           child.material instanceof THREE.MeshLambertMaterial
         ) {
           child.material.transparent = isAway;
-          child.material.opacity = isAway ? 0.45 : 1;
+          child.material.opacity = opacity;
         }
       });
     }
