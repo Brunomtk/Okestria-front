@@ -295,7 +295,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                           <div className="min-w-0 flex-1">
                             <div className="line-clamp-2 text-sm font-semibold text-white">{task.title}</div>
                             <div className="mt-1 text-xs text-white/35">{fmtDate(task.createdDate)}</div>
-                            <div className="mt-2 text-[11px] text-white/50">{task.runs.length} runs</div>
+                            <div className="mt-2 text-[11px] text-white/50">{task.runCount} {task.runCount === 1 ? "run" : "runs"}</div>
                           </div>
                           <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${statusTone(task.status)}`}>
                             {task.status || "draft"}
