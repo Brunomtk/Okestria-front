@@ -50,6 +50,7 @@ const ITEM_COLOR_BY_TYPE: Record<string, string> = {
   exercise_bike: "#90a4ae",
   squat_rack: "#37474f",
   deadlift_platform: "#6d4c41",
+  plate_rack: "#455a64",
   punching_bag: "#ef5350",
   rowing_machine: "#90a4ae",
   kettlebell_rack: "#546e7a",

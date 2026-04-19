@@ -1684,16 +1684,16 @@ export function WeightBenchModel({
           <boxGeometry args={[0.08, 0.34, 0.1]} />
           <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
         </mesh>
-        {/* Diagonal brace for back pad */}
-        <mesh position={[widthWorld * 0.04, 0.32, 0]} rotation={[0, 0, 0.5]} castShadow>
-          <boxGeometry args={[0.08, 0.52, 0.08]} />
+        {/* Second vertical support for back-pad end (no diagonal — flat bench) */}
+        <mesh position={[widthWorld * 0.08, 0.27, 0]} castShadow>
+          <boxGeometry args={[0.08, 0.34, 0.1]} />
           <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
         </mesh>
 
-        {/* === PADS === */}
-        {/* Seat pad (horizontal) */}
-        <mesh position={[-widthWorld * 0.22, 0.46, 0]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld * 0.42, 0.09, depthWorld * 0.36]} />
+        {/* === PADS (FLAT bench — single continuous horizontal pad for supino reto) === */}
+        {/* Full-length horizontal pad */}
+        <mesh position={[-widthWorld * 0.07, 0.46, 0]} castShadow receiveShadow>
+          <boxGeometry args={[widthWorld * 0.74, 0.09, depthWorld * 0.36]} />
           <meshStandardMaterial
             color={LEATHER_BLACK}
             roughness={0.4}
@@ -1702,25 +1702,14 @@ export function WeightBenchModel({
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {/* Seat pad top highlight */}
-        <mesh position={[-widthWorld * 0.22, 0.505, 0]}>
-          <boxGeometry args={[widthWorld * 0.4, 0.001, depthWorld * 0.34]} />
+        {/* Pad top highlight */}
+        <mesh position={[-widthWorld * 0.07, 0.505, 0]}>
+          <boxGeometry args={[widthWorld * 0.72, 0.001, depthWorld * 0.34]} />
           <meshStandardMaterial color="#1f2937" roughness={0.6} metalness={0.1} />
         </mesh>
-        {/* Seat stitch accent (red racing stripe along length) */}
-        <mesh position={[-widthWorld * 0.22, 0.506, 0]}>
-          <boxGeometry args={[widthWorld * 0.38, 0.001, 0.01]} />
-          <meshStandardMaterial color="#dc2626" roughness={0.6} metalness={0.1} />
-        </mesh>
-
-        {/* Back pad (inclined — rises toward uprights) */}
-        <mesh position={[widthWorld * 0.08, 0.56, 0]} rotation={[0, 0, 0.32]} castShadow receiveShadow>
-          <boxGeometry args={[widthWorld * 0.36, 0.09, depthWorld * 0.36]} />
-          <meshStandardMaterial color={LEATHER_BLACK} roughness={0.4} metalness={0.08} />
-        </mesh>
-        {/* Back pad stitch stripe */}
-        <mesh position={[widthWorld * 0.08, 0.605, 0]} rotation={[0, 0, 0.32]}>
-          <boxGeometry args={[widthWorld * 0.34, 0.001, 0.01]} />
+        {/* Red racing stripe down the length of the pad */}
+        <mesh position={[-widthWorld * 0.07, 0.506, 0]}>
+          <boxGeometry args={[widthWorld * 0.7, 0.001, 0.01]} />
           <meshStandardMaterial color="#dc2626" roughness={0.6} metalness={0.1} />
         </mesh>
 
@@ -3339,9 +3328,9 @@ export function SquatRackModel({
   // Squat rack / power rack:
   // - Two tall uprights at the rear (-X side), one on each Z end (spaced across Z)
   // - Barbell resting in J-cups running along Z
-  // - Safety pins lower, weight storage pegs on the rear posts
+  // - Safety pins lower, spotter arms forward, weight storage pegs on the rear posts
   // - User stands on +X side
-  const uprightHeight = 2.1;
+  const uprightHeight = 1.85;
 
   return (
     <group
@@ -3454,7 +3443,7 @@ export function SquatRackModel({
 
         {/* ===== J-cups (barbell catches, chrome L-shaped) ===== */}
         {([-0.4, 0.4] as const).map((zSide, i) => (
-          <group key={`jcup_${i}`} position={[-widthWorld * 0.25, 1.3, depthWorld * zSide]}>
+          <group key={`jcup_${i}`} position={[-widthWorld * 0.25, 1.15, depthWorld * zSide]}>
             {/* Horizontal arm */}
             <mesh castShadow>
               <boxGeometry args={[0.18, 0.05, 0.09]} />
@@ -3468,18 +3457,40 @@ export function SquatRackModel({
           </group>
         ))}
 
-        {/* ===== Safety pins (lower horizontal pipes, across Z) ===== */}
+        {/* ===== Spotter arms (forward-projecting safety catchers) ===== */}
+        {([-0.4, 0.4] as const).map((zSide, i) => (
+          <group key={`spotter_${i}`}>
+            {/* Main horizontal spotter bar extending forward from upright */}
+            <mesh position={[widthWorld * 0.02, 0.95, depthWorld * zSide]} castShadow>
+              <boxGeometry args={[widthWorld * 0.62, 0.06, 0.08]} />
+              <meshStandardMaterial color={ACCENT_AMBER} roughness={0.45} metalness={0.35} />
+            </mesh>
+            {/* Rubber catch pad on top of spotter (black) */}
+            <mesh position={[widthWorld * 0.02, 0.985, depthWorld * zSide]}>
+              <boxGeometry args={[widthWorld * 0.6, 0.015, 0.09]} />
+              <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.02} />
+            </mesh>
+            {/* Mount block where it pins into the upright (on rear) */}
+            <mesh position={[-widthWorld * 0.3, 0.95, depthWorld * zSide]} castShadow>
+              <boxGeometry args={[0.14, 0.12, 0.12]} />
+              <meshStandardMaterial color="#0f172a" roughness={0.55} metalness={0.5} />
+            </mesh>
+            {/* Locking pin (small cylinder through mount) */}
+            <mesh
+              position={[-widthWorld * 0.26, 0.95, depthWorld * zSide]}
+              rotation={[Math.PI / 2, 0, 0]}
+            >
+              <cylinderGeometry args={[0.015, 0.015, 0.16, 12]} />
+              <meshStandardMaterial color={STEEL} roughness={0.45} metalness={0.7} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* ===== Safety pins (below spotter arms for pin-safety on heavy squats) ===== */}
         <mesh
-          position={[-widthWorld * 0.2, 0.85, 0]}
+          position={[-widthWorld * 0.2, 0.72, 0]}
           rotation={[Math.PI / 2, 0, 0]}
           castShadow
-        >
-          <cylinderGeometry args={[0.028, 0.028, depthWorld * 0.8, 14]} />
-          <meshStandardMaterial color={ACCENT_AMBER} roughness={0.55} metalness={0.2} />
-        </mesh>
-        <mesh
-          position={[-widthWorld * 0.2, 0.78, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
         >
           <cylinderGeometry args={[0.026, 0.026, depthWorld * 0.8, 14]} />
           <meshStandardMaterial color={ACCENT_AMBER} roughness={0.55} metalness={0.2} />
@@ -3488,7 +3499,7 @@ export function SquatRackModel({
         {/* ===== Barbell resting in J-cups (long along Z) ===== */}
         {/* Bar shaft (chrome) */}
         <mesh
-          position={[-widthWorld * 0.22, 1.36, 0]}
+          position={[-widthWorld * 0.22, 1.21, 0]}
           rotation={[Math.PI / 2, 0, 0]}
           castShadow
         >
@@ -3499,7 +3510,7 @@ export function SquatRackModel({
         {([-0.12, 0.12] as const).map((kz, i) => (
           <mesh
             key={`bk_${i}`}
-            position={[-widthWorld * 0.22, 1.36, depthWorld * kz]}
+            position={[-widthWorld * 0.22, 1.21, depthWorld * kz]}
             rotation={[Math.PI / 2, 0, 0]}
           >
             <cylinderGeometry args={[0.024, 0.024, depthWorld * 0.12, 18]} />
@@ -3510,7 +3521,7 @@ export function SquatRackModel({
         {([-0.48, 0.48] as const).map((cz, i) => (
           <mesh
             key={`sl_${i}`}
-            position={[-widthWorld * 0.22, 1.36, depthWorld * cz]}
+            position={[-widthWorld * 0.22, 1.21, depthWorld * cz]}
             rotation={[Math.PI / 2, 0, 0]}
             castShadow
           >
@@ -3518,31 +3529,32 @@ export function SquatRackModel({
             <meshStandardMaterial color={CHROME} roughness={0.26} metalness={0.9} />
           </mesh>
         ))}
-        {/* ===== Plates loaded on each side (IPF colors) ===== */}
-        {/* Outer red 25kg on each end, inner blue 20kg inboard */}
-        {([-0.55, 0.55] as const).map((cz, i) => (
+        {/* ===== Plates loaded on each side (IPF colors) =====
+            Order (largest→smallest from bar center outward):
+            25kg red (innermost, against collar) → 20kg blue (outer) → chrome clip */}
+        {([-1, 1] as const).map((side, i) => (
           <group key={`plates_${i}`}>
-            {/* 25kg red (outermost) */}
+            {/* 25kg red (innermost — closest to bar center) */}
             <mesh
-              position={[-widthWorld * 0.22, 1.36, depthWorld * cz]}
+              position={[-widthWorld * 0.22, 1.21, depthWorld * side * 0.48]}
               rotation={[Math.PI / 2, 0, 0]}
               castShadow
             >
               <cylinderGeometry args={[0.22, 0.22, 0.04, 28]} />
               <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.4} metalness={0.25} />
             </mesh>
-            {/* 20kg blue (inside of 25) */}
+            {/* 20kg blue (outer) */}
             <mesh
-              position={[-widthWorld * 0.22, 1.36, depthWorld * (cz - 0.06 * Math.sign(cz))]}
+              position={[-widthWorld * 0.22, 1.21, depthWorld * side * 0.54]}
               rotation={[Math.PI / 2, 0, 0]}
               castShadow
             >
               <cylinderGeometry args={[0.2, 0.2, 0.036, 28]} />
               <meshStandardMaterial color={PLATE_COLORS.p20} roughness={0.4} metalness={0.25} />
             </mesh>
-            {/* Chrome clip collar (outboard of red) */}
+            {/* Chrome clip collar (outermost) */}
             <mesh
-              position={[-widthWorld * 0.22, 1.36, depthWorld * (cz + 0.045 * Math.sign(cz))]}
+              position={[-widthWorld * 0.22, 1.21, depthWorld * side * 0.59]}
               rotation={[Math.PI / 2, 0, 0]}
             >
               <cylinderGeometry args={[0.05, 0.05, 0.025, 18]} />
@@ -3620,10 +3632,12 @@ export function DeadliftPlatformModel({
   const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.22 : 0;
 
   // Classic lifting platform:
-  // - Footprint 150x80 (long along X)
-  // - Center section: wooden platform (lighter wood)
-  // - Left and right "drop zones": black rubber (heavy-duty)
-  // - A loaded barbell lies on the center platform (axis along Z), with IPF plates loaded
+  // - Footprint 150x80 (LONG along X, short along Z)
+  // - The wooden lifting zone is the CENTER strip (along the long X axis)
+  // - Rubber drop zones are on the two SHORT sides (±Z)
+  // - The loaded Olympic bar lies ALONG the platform's long axis (X),
+  //   with plates stacked on each END hanging over the rubber drop zones
+  // - Plates ordered largest→smallest from bar center outward: 25, 25, 20, 15
   // - Chalk bowl off to one side for flavor
 
   return (
@@ -3660,27 +3674,38 @@ export function DeadliftPlatformModel({
           />
         </mesh>
 
-        {/* Left black rubber drop zone (-X side) */}
-        <mesh position={[-widthWorld * 0.32, 0.045, 0]} receiveShadow>
-          <boxGeometry args={[widthWorld * 0.32, 0.015, depthWorld * 0.9]} />
+        {/* Rubber drop zone — far Z end (+Z side, plate-drop zone) */}
+        <mesh position={[0, 0.045, depthWorld * 0.34]} receiveShadow>
+          <boxGeometry args={[widthWorld * 0.95, 0.015, depthWorld * 0.3]} />
           <meshStandardMaterial color="#111827" roughness={0.95} metalness={0.05} />
         </mesh>
-        {/* Right black rubber drop zone (+X side) */}
-        <mesh position={[widthWorld * 0.32, 0.045, 0]} receiveShadow>
-          <boxGeometry args={[widthWorld * 0.32, 0.015, depthWorld * 0.9]} />
+        {/* Rubber drop zone — near Z end (-Z side) */}
+        <mesh position={[0, 0.045, -depthWorld * 0.34]} receiveShadow>
+          <boxGeometry args={[widthWorld * 0.95, 0.015, depthWorld * 0.3]} />
           <meshStandardMaterial color="#111827" roughness={0.95} metalness={0.05} />
         </mesh>
 
-        {/* Center WOODEN platform (lifting stage - planked) */}
-        {Array.from({ length: 5 }).map((_, i) => {
-          const zOffset = -0.4 + (i * 0.8) / 4;
+        {/* Rubber texture dots on the drop zones (suggesting tile grain) */}
+        {([
+          [-0.35, 0.34], [-0.2, 0.34], [-0.05, 0.34], [0.1, 0.34], [0.25, 0.34], [0.4, 0.34],
+          [-0.35, -0.34], [-0.2, -0.34], [-0.05, -0.34], [0.1, -0.34], [0.25, -0.34], [0.4, -0.34],
+        ] as const).map(([tx, tz], i) => (
+          <mesh key={`rdot_${i}`} position={[widthWorld * tx, 0.055, depthWorld * tz]}>
+            <cylinderGeometry args={[0.025, 0.025, 0.002, 10]} />
+            <meshStandardMaterial color="#1f2937" roughness={0.9} metalness={0.05} />
+          </mesh>
+        ))}
+
+        {/* Center WOODEN lifting strip (LONG along X, planks run perpendicular) */}
+        {Array.from({ length: 7 }).map((_, i) => {
+          const xOffset = -0.4 + (i * 0.8) / 6;
           return (
             <mesh
               key={`plank_${i}`}
-              position={[0, 0.048, depthWorld * zOffset]}
+              position={[widthWorld * xOffset, 0.048, 0]}
               receiveShadow
             >
-              <boxGeometry args={[widthWorld * 0.32, 0.02, depthWorld * 0.17]} />
+              <boxGeometry args={[widthWorld * 0.12, 0.02, depthWorld * 0.36]} />
               <meshStandardMaterial
                 color={i % 2 === 0 ? "#a16a3f" : "#92582f"}
                 roughness={0.85}
@@ -3689,137 +3714,334 @@ export function DeadliftPlatformModel({
             </mesh>
           );
         })}
-        {/* Center stripe chalk line */}
+        {/* Center chalk stripe (down the wooden stage, marks bar start line) */}
         <mesh position={[0, 0.06, 0]}>
-          <boxGeometry args={[widthWorld * 0.315, 0.002, 0.008]} />
+          <boxGeometry args={[widthWorld * 0.85, 0.002, 0.008]} />
           <meshStandardMaterial color="#f1f5f9" roughness={0.9} metalness={0.02} />
         </mesh>
 
-        {/* Outer silver trim strips dividing the three zones */}
-        <mesh position={[-widthWorld * 0.16, 0.06, 0]}>
-          <boxGeometry args={[0.01, 0.01, depthWorld * 0.88]} />
+        {/* Silver trim strips dividing wood from rubber drop zones (along X) */}
+        <mesh position={[0, 0.06, depthWorld * 0.175]}>
+          <boxGeometry args={[widthWorld * 0.92, 0.01, 0.01]} />
           <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.85} />
         </mesh>
-        <mesh position={[widthWorld * 0.16, 0.06, 0]}>
-          <boxGeometry args={[0.01, 0.01, depthWorld * 0.88]} />
+        <mesh position={[0, 0.06, -depthWorld * 0.175]}>
+          <boxGeometry args={[widthWorld * 0.92, 0.01, 0.01]} />
           <meshStandardMaterial color={CHROME} roughness={0.3} metalness={0.85} />
         </mesh>
 
-        {/* ===== Loaded Olympic barbell (axis along Z, lies on center wood) ===== */}
-        {/* Bar shaft */}
+        {/* ===== Loaded Olympic barbell (axis along X — the platform's LONG axis) ===== */}
+        {/* Bar shaft — spans the full platform length along X */}
         <mesh
           position={[0, 0.26, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
+          rotation={[0, 0, Math.PI / 2]}
           castShadow
         >
-          <cylinderGeometry args={[0.024, 0.024, depthWorld * 1.2, 20]} />
+          <cylinderGeometry args={[0.024, 0.024, widthWorld * 0.96, 22]} />
           <meshStandardMaterial color={CHROME} roughness={0.22} metalness={0.95} />
         </mesh>
-        {/* Knurl bands (2 inner knurls) */}
-        {([-0.1, 0.1] as const).map((kz, i) => (
+        {/* Knurl bands — 2 inner knurls along the shaft */}
+        {([-0.1, 0.1] as const).map((kx, i) => (
           <mesh
             key={`dk_${i}`}
-            position={[0, 0.26, depthWorld * kz]}
-            rotation={[Math.PI / 2, 0, 0]}
+            position={[widthWorld * kx, 0.26, 0]}
+            rotation={[0, 0, Math.PI / 2]}
           >
-            <cylinderGeometry args={[0.026, 0.026, depthWorld * 0.1, 18]} />
+            <cylinderGeometry args={[0.026, 0.026, widthWorld * 0.08, 18]} />
             <meshStandardMaterial color={STEEL} roughness={0.65} metalness={0.7} />
           </mesh>
         ))}
-        {/* Sleeves (thicker, outer) */}
-        {([-0.5, 0.5] as const).map((cz, i) => (
+        {/* Sleeves (thicker ends where plates load) */}
+        {([-0.38, 0.38] as const).map((cx, i) => (
           <mesh
             key={`dsl_${i}`}
-            position={[0, 0.26, depthWorld * cz]}
-            rotation={[Math.PI / 2, 0, 0]}
+            position={[widthWorld * cx, 0.26, 0]}
+            rotation={[0, 0, Math.PI / 2]}
             castShadow
           >
-            <cylinderGeometry args={[0.04, 0.04, depthWorld * 0.2, 18]} />
+            <cylinderGeometry args={[0.04, 0.04, widthWorld * 0.18, 18]} />
             <meshStandardMaterial color={CHROME} roughness={0.26} metalness={0.9} />
           </mesh>
         ))}
-        {/* ===== Plates loaded heavy on each end =====
-            Stack (outer → inner): 25kg red, 25kg red, 20kg blue, 15kg yellow  */}
-        {([-1, 1] as const).map((side, i) => {
-          const baseZ = side * 0.6;
-          return (
-            <group key={`dp_${i}`}>
-              {/* outer 25 red */}
-              <mesh
-                position={[0, 0.26, depthWorld * (baseZ - side * 0.0)]}
-                rotation={[Math.PI / 2, 0, 0]}
-                castShadow
-              >
-                <cylinderGeometry args={[0.24, 0.24, 0.045, 32]} />
-                <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.42} metalness={0.22} />
-              </mesh>
-              {/* second 25 red */}
-              <mesh
-                position={[0, 0.26, depthWorld * (baseZ - side * 0.05)]}
-                rotation={[Math.PI / 2, 0, 0]}
-                castShadow
-              >
-                <cylinderGeometry args={[0.24, 0.24, 0.045, 32]} />
-                <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.42} metalness={0.22} />
-              </mesh>
-              {/* 20 blue */}
-              <mesh
-                position={[0, 0.26, depthWorld * (baseZ - side * 0.1)]}
-                rotation={[Math.PI / 2, 0, 0]}
-                castShadow
-              >
-                <cylinderGeometry args={[0.21, 0.21, 0.04, 30]} />
-                <meshStandardMaterial color={PLATE_COLORS.p20} roughness={0.42} metalness={0.22} />
-              </mesh>
-              {/* 15 yellow */}
-              <mesh
-                position={[0, 0.26, depthWorld * (baseZ - side * 0.14)]}
-                rotation={[Math.PI / 2, 0, 0]}
-                castShadow
-              >
-                <cylinderGeometry args={[0.19, 0.19, 0.036, 30]} />
-                <meshStandardMaterial color={PLATE_COLORS.p15} roughness={0.42} metalness={0.22} />
-              </mesh>
-              {/* Chrome collar (clamp) outboard */}
-              <mesh
-                position={[0, 0.26, depthWorld * (baseZ + side * 0.05)]}
-                rotation={[Math.PI / 2, 0, 0]}
-              >
-                <cylinderGeometry args={[0.055, 0.055, 0.03, 20]} />
-                <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.9} />
-              </mesh>
-            </group>
-          );
-        })}
+        {/* ===== Plates loaded heavy on each END of the bar =====
+            Order from bar CENTER outward (largest → smallest):
+            25kg red (innermost, against sleeve) → 25kg red → 20kg blue → 15kg yellow (outer) */}
+        {([-1, 1] as const).map((side, i) => (
+          <group key={`dp_${i}`}>
+            {/* 25kg red (innermost, against sleeve) */}
+            <mesh
+              position={[widthWorld * side * 0.34, 0.26, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.24, 0.24, 0.045, 32]} />
+              <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* second 25 red */}
+            <mesh
+              position={[widthWorld * side * 0.385, 0.26, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.24, 0.24, 0.045, 32]} />
+              <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* 20 blue */}
+            <mesh
+              position={[widthWorld * side * 0.425, 0.26, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.21, 0.21, 0.04, 30]} />
+              <meshStandardMaterial color={PLATE_COLORS.p20} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* 15 yellow (outermost plate) */}
+            <mesh
+              position={[widthWorld * side * 0.46, 0.26, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.19, 0.19, 0.036, 30]} />
+              <meshStandardMaterial color={PLATE_COLORS.p15} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* Chrome spring collar (outboard of plates) */}
+            <mesh
+              position={[widthWorld * side * 0.49, 0.26, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.055, 0.055, 0.03, 20]} />
+              <meshStandardMaterial color={CHROME} roughness={0.28} metalness={0.9} />
+            </mesh>
+          </group>
+        ))}
 
-        {/* ===== Chalk bowl (off-platform, rear corner) ===== */}
-        <mesh position={[widthWorld * 0.42, 0.12, -depthWorld * 0.42]} castShadow>
-          <cylinderGeometry args={[0.12, 0.09, 0.14, 20]} />
+        {/* ===== Chalk bowl (off-platform, corner of the wood strip) ===== */}
+        <mesh position={[widthWorld * 0.45, 0.12, -depthWorld * 0.06]} castShadow>
+          <cylinderGeometry args={[0.1, 0.075, 0.12, 20]} />
           <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.3} />
         </mesh>
         {/* Chalk inside (white powder) */}
-        <mesh position={[widthWorld * 0.42, 0.19, -depthWorld * 0.42]}>
-          <cylinderGeometry args={[0.1, 0.1, 0.01, 20]} />
+        <mesh position={[widthWorld * 0.45, 0.18, -depthWorld * 0.06]}>
+          <cylinderGeometry args={[0.08, 0.08, 0.01, 20]} />
           <meshStandardMaterial color="#f8fafc" roughness={0.95} metalness={0.02} />
         </mesh>
 
-        {/* Small "DEADLIFT" brand plaque (cyan LED strip) */}
-        <mesh position={[widthWorld * 0.42, 0.065, depthWorld * 0.42]}>
+        {/* Small "DEADLIFT" brand plaque (cyan LED strip) on opposite corner */}
+        <mesh position={[-widthWorld * 0.45, 0.065, depthWorld * 0.06]}>
           <boxGeometry args={[0.12, 0.01, 0.02]} />
           <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.8} toneMapped={false} />
         </mesh>
 
-        {/* Anti-slip chalk dust patches on wood (3 subtle white specks) */}
+        {/* Anti-slip chalk dust patches on wood */}
         {([
-          [-0.08, 0.15],
-          [0.05, -0.18],
-          [0.1, 0.05],
+          [-0.2, 0.05],
+          [0.12, -0.08],
+          [-0.04, 0.09],
         ] as const).map(([px, pz], i) => (
           <mesh key={`chalk_${i}`} position={[widthWorld * px, 0.062, depthWorld * pz]}>
             <circleGeometry args={[0.035, 12]} />
             <meshStandardMaterial color="#f8fafc" opacity={0.3} transparent roughness={0.9} />
           </mesh>
         ))}
+      </group>
+    </group>
+  );
+}
+
+export function PlateRackModel({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlightColor = isSelected
+    ? "#fbbf24"
+    : isHovered && editMode
+      ? "#60a5fa"
+      : "#000000";
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.22 : 0;
+
+  // Compact gym plate tree / rack:
+  // - A steel A-base / triangular footprint
+  // - One vertical post
+  // - 6 horizontal pegs radiating forward, each loaded with IPF-colored plates
+  //   sorted largest→smallest from center outward on each peg
+  // - The pegs pair up in 3 tiers: bottom 25kg pair, middle 20kg pair, top 15kg/10kg/5kg set
+
+  return (
+    <group
+      position={[wx, 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* ===== Triangular steel base (A-frame foot) ===== */}
+        <mesh position={[-widthWorld * 0.3, 0.05, 0]} castShadow>
+          <boxGeometry args={[widthWorld * 0.28, 0.08, depthWorld * 0.9]} />
+          <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Forward bracing feet along Z (two stabilizer bars) */}
+        {([-0.38, 0.38] as const).map((zSide, i) => (
+          <mesh
+            key={`fbase_${i}`}
+            position={[0, 0.05, depthWorld * zSide]}
+            castShadow
+          >
+            <boxGeometry args={[widthWorld * 0.75, 0.08, 0.1]} />
+            <meshStandardMaterial color={GUNMETAL} roughness={0.5} metalness={0.55} />
+          </mesh>
+        ))}
+        {/* Rubber feet caps */}
+        {([
+          [-0.42, -0.42],
+          [-0.42, 0.42],
+          [0.32, -0.42],
+          [0.32, 0.42],
+        ] as const).map(([fx, fz], i) => (
+          <mesh key={`pfoot_${i}`} position={[widthWorld * fx, 0.015, depthWorld * fz]}>
+            <boxGeometry args={[0.08, 0.03, 0.08]} />
+            <meshStandardMaterial color={RUBBER_BLACK} roughness={0.95} metalness={0.03} />
+          </mesh>
+        ))}
+
+        {/* ===== Vertical post (black powder-coated) ===== */}
+        <mesh position={[-widthWorld * 0.32, 0.75, 0]} castShadow>
+          <boxGeometry args={[0.1, 1.4, 0.1]} />
+          <meshStandardMaterial
+            color="#0f172a"
+            roughness={0.55}
+            metalness={0.55}
+            emissive={highlightColor}
+            emissiveIntensity={highlightIntensity}
+          />
+        </mesh>
+
+        {/* ===== 3 tiers of pegs holding plates ===== */}
+        {/* Tier 1 (bottom): 25kg red plates — one peg on each Z side */}
+        {([-0.3, 0.3] as const).map((zSide, i) => (
+          <group key={`tier1_${i}`}>
+            {/* Peg (horizontal, points +X from post) */}
+            <mesh
+              position={[-widthWorld * 0.1, 0.35, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.025, 0.025, widthWorld * 0.5, 16]} />
+              <meshStandardMaterial color={STEEL} roughness={0.45} metalness={0.75} />
+            </mesh>
+            {/* Plates (largest→smallest from inside→outside) */}
+            {[0, 1, 2].map((p) => (
+              <mesh
+                key={`t1_p_${i}_${p}`}
+                position={[widthWorld * (0.05 + p * 0.04), 0.35, depthWorld * zSide]}
+                rotation={[0, 0, Math.PI / 2]}
+                castShadow
+              >
+                <cylinderGeometry args={[0.22 - p * 0.01, 0.22 - p * 0.01, 0.035, 26]} />
+                <meshStandardMaterial color={PLATE_COLORS.p25} roughness={0.42} metalness={0.22} />
+              </mesh>
+            ))}
+          </group>
+        ))}
+
+        {/* Tier 2 (middle): 20kg blue + 15kg yellow */}
+        {([-0.3, 0.3] as const).map((zSide, i) => (
+          <group key={`tier2_${i}`}>
+            <mesh
+              position={[-widthWorld * 0.1, 0.78, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.024, 0.024, widthWorld * 0.5, 16]} />
+              <meshStandardMaterial color={STEEL} roughness={0.45} metalness={0.75} />
+            </mesh>
+            {/* 20kg blue (innermost) */}
+            <mesh
+              position={[widthWorld * 0.05, 0.78, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.2, 0.2, 0.033, 26]} />
+              <meshStandardMaterial color={PLATE_COLORS.p20} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* 15kg yellow (next) */}
+            <mesh
+              position={[widthWorld * 0.1, 0.78, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.18, 0.18, 0.03, 26]} />
+              <meshStandardMaterial color={PLATE_COLORS.p15} roughness={0.42} metalness={0.22} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Tier 3 (top): 10kg green + 5kg white + 2.5kg black */}
+        {([-0.3, 0.3] as const).map((zSide, i) => (
+          <group key={`tier3_${i}`}>
+            <mesh
+              position={[-widthWorld * 0.1, 1.21, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+            >
+              <cylinderGeometry args={[0.022, 0.022, widthWorld * 0.5, 16]} />
+              <meshStandardMaterial color={STEEL} roughness={0.45} metalness={0.75} />
+            </mesh>
+            {/* 10kg green */}
+            <mesh
+              position={[widthWorld * 0.05, 1.21, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.15, 0.15, 0.028, 24]} />
+              <meshStandardMaterial color={PLATE_COLORS.p10} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* 5kg white */}
+            <mesh
+              position={[widthWorld * 0.095, 1.21, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.12, 0.12, 0.02, 24]} />
+              <meshStandardMaterial color={PLATE_COLORS.p5} roughness={0.42} metalness={0.22} />
+            </mesh>
+            {/* 2.5kg black */}
+            <mesh
+              position={[widthWorld * 0.125, 1.21, depthWorld * zSide]}
+              rotation={[0, 0, Math.PI / 2]}
+              castShadow
+            >
+              <cylinderGeometry args={[0.09, 0.09, 0.015, 20]} />
+              <meshStandardMaterial color={PLATE_COLORS.p2} roughness={0.42} metalness={0.22} />
+            </mesh>
+          </group>
+        ))}
+
+        {/* Brand LED badge on top of post */}
+        <mesh position={[-widthWorld * 0.26, 1.45, 0]}>
+          <boxGeometry args={[0.005, 0.08, 0.2]} />
+          <meshStandardMaterial color={LED_CYAN} emissive={LED_CYAN} emissiveIntensity={0.85} toneMapped={false} />
+        </mesh>
       </group>
     </group>
   );

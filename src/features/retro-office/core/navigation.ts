@@ -743,8 +743,8 @@ export const getGymWorkoutLocations = (
         };
       }
       if (item.type === "squat_rack") {
-        const x = item.x + 30;
-        const y = item.y + 45;
+        const x = item.x + 36;
+        const y = item.y + 24;
         return {
           x,
           y,

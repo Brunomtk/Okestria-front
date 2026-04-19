@@ -196,6 +196,7 @@ import {
   SpeakerModel as InteractiveSpeakerModel,
   SquatRackModel as InteractiveSquatRackModel,
   DeadliftPlatformModel as InteractiveDeadliftPlatformModel,
+  PlateRackModel as InteractivePlateRackModel,
   TestBenchModel as InteractiveTestBenchModel,
   TreadmillModel as InteractiveTreadmillModel,
   WeightBenchModel as InteractiveWeightBenchModel,
@@ -1126,6 +1127,17 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           />
         ) : item.type === "deadlift_platform" ? (
           <InteractiveDeadliftPlatformModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "plate_rack" ? (
+          <InteractivePlateRackModel
             key={item._uid}
             item={item}
             isSelected={false}
@@ -4836,6 +4848,18 @@ export function RetroOffice3D({
                   />
                 ) : item.type === "deadlift_platform" ? (
                   <InteractiveDeadliftPlatformModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "plate_rack" ? (
+                  <InteractivePlateRackModel
                     key={item._uid}
                     item={item}
                     isSelected={item._uid === selectedUid}
