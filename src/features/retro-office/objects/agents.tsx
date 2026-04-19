@@ -125,6 +125,14 @@ export const AgentModel = memo(function AgentModel({
     nextChange: 180,
   });
   const headTiltRef = useRef({ x: 0, y: 0 });
+  // Smoothed rotation targets — the raw per-frame keyframes are written here
+  // each tick, and the actual bone rotations lerp toward them exponentially.
+  // This prevents the "snap / break" effect when a rep finishes or the agent
+  // transitions between poses (e.g. yoga pose 2 → 3) across a wide arc.
+  const leftArmTargetRef = useRef({ x: 0, y: 0, z: 0 });
+  const rightArmTargetRef = useRef({ x: 0, y: 0, z: 0 });
+  const leftLegTargetRef = useRef(0);
+  const rightLegTargetRef = useRef(0);
   // v41 perf: track if opacity was last set so we avoid re-running the
   // whole-subtree traverse() every frame. Also used to throttle idle-agent
   // animation math to 30fps (imperceptible at rest).
@@ -220,6 +228,24 @@ export const AgentModel = memo(function AgentModel({
     const isWorkout = agent.state === "working_out";
     const isDancing = agent.state === "dancing";
     const isJanitor = "role" in agent && agent.role === "janitor";
+    // QA lab — agent is "standing" at a station with lingerMs, working on
+    // hardware / typing / diagnosing. Mirrors the workout state machine but
+    // keyed on interactionTarget + qaLabStage so the lab feels alive.
+    const isQaWorking =
+      agent.state === "standing" &&
+      agent.interactionTarget === "qa_lab" &&
+      agent.qaLabStage === "station";
+    const qaStationType = agent.qaLabStationType ?? "console";
+    // Per-station cadence — typing is fast/nervous, bench soldering is
+    // slower/steadier, rack diagnosis is a relaxed reach-and-inspect loop.
+    const qaCadenceByStation: Record<string, number> = {
+      console: 0.32, // fast finger taps
+      device_rack: 0.10, // slow reach + inspect
+      bench: 0.18, // moderate tool work
+    };
+    const qaCadence = qaCadenceByStation[qaStationType] ?? 0.18;
+    const qaPhase = Math.sin(motionFrame * qaCadence);
+    const qaPhase2 = Math.sin(motionFrame * qaCadence + Math.PI / 2);
     const janitorTool = isJanitor
       ? (agent as RenderAgent & JanitorActor).janitorTool
       : undefined;
@@ -386,6 +412,20 @@ export const AgentModel = memo(function AgentModel({
           ? -0.28 // deeper recline on couch/beanbag
           : -0.1 // desk chair — more upright, slight backward
         : 0;
+    // QA stations: slight forward-lean + micro-bob per station type.
+    let qaBodyRotX = 0;
+    if (isQaWorking) {
+      if (qaStationType === "console") {
+        // Typing — gentle forward lean + shoulder micro-bob on key press
+        qaBodyRotX = 0.14 + Math.abs(qaPhase) * 0.015;
+      } else if (qaStationType === "device_rack") {
+        // Inspecting rack — upright, slow sway
+        qaBodyRotX = 0.04 + Math.sin(motionFrame * 0.03) * 0.02;
+      } else if (qaStationType === "bench") {
+        // Bench work — deeper forward lean (soldering/probe)
+        qaBodyRotX = 0.22 + Math.abs(qaPhase) * 0.02;
+      }
+    }
     groupRef.current.rotation.x =
       agent.state === "sitting"
         ? sittingBodyRotX
@@ -393,9 +433,11 @@ export const AgentModel = memo(function AgentModel({
           ? Math.sin(agent.frame * 0.18 + (agent.phaseOffset ?? 0)) * 0.06
           : isWorkout
             ? workoutBodyRotX
-            : agent.pingPongUntil
-              ? 0.08
-              : idleBodyRotX;
+            : isQaWorking
+              ? qaBodyRotX
+              : agent.pingPongUntil
+                ? 0.08
+                : idleBodyRotX;
     
     // Apply idle body Y rotation (looking around)
     if (isIdle && idleAnim.type === 1) {
@@ -513,38 +555,33 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.06;
           groupRef.current.rotation.z = 0.05;
         } else if (workoutStyle === "stretch") {
-          // Yoga flow: 4 poses blended via yogaPoseIndex + yogaPoseProgress.
-          // 0: mountain → forward fold  (arms sweep down from overhead)
-          // 1: warrior II                (left arm out to side, horizontal)
-          // 2: upward reach              (both arms straight up)
-          // 3: tree pose                 (arms at prayer, slight lift)
-          const blend = yogaBlend;
-          let armX = -0.08;
-          let armZ = -0.08;
-          let armY = 0;
-          if (yogaPoseIndex === 0) {
-            // Mountain (arms down) → forward fold (arms down-front)
-            armX = -0.05 - yogaPoseProgress * 0.25;
-            armZ = -0.05 - yogaPoseProgress * 0.08;
-          } else if (yogaPoseIndex === 1) {
-            // Warrior II — left arm extended out to side, horizontal
-            armX = -1.55;
-            armZ = -1.35;
-            armY = -0.05;
-          } else if (yogaPoseIndex === 2) {
-            // Upward salute — both arms reach straight up overhead
-            armX = -2.85;
-            armZ = -0.18;
-            armY = -0.05;
-          } else {
-            // Tree / prayer — hands come together at chest level
-            armX = -1.25;
-            armZ = -0.55;
-            armY = -0.25;
-          }
-          leftArmRef.current.rotation.x = armX * blend + (-0.08) * (1 - blend);
-          leftArmRef.current.rotation.z = armZ * blend + (-0.05) * (1 - blend);
-          leftArmRef.current.rotation.y = armY * blend;
+          // Yoga flow — 4 poses held for ~7s each and *directly* lerped
+          // pose N → pose N+1 (no dipping through a neutral rest), so the
+          // shoulder never "breaks" through the torso shoulder cap.
+          // LEFT arm keyframes per pose.
+          const LEFT_YOGA_POSES = [
+            // 0: Mountain → forward fold — arms hang by the sides
+            { x: -0.22, z: -0.13, y: 0.0 },
+            // 1: Warrior II — left arm extended out to the side
+            { x: -1.55, z: -1.35, y: -0.05 },
+            // 2: Upward salute — both arms reach straight up overhead
+            { x: -2.75, z: -0.22, y: -0.05 },
+            // 3: Tree / prayer — hands together at chest
+            { x: -1.25, z: -0.55, y: -0.25 },
+          ];
+          const curr = LEFT_YOGA_POSES[yogaPoseIndex]!;
+          const next = LEFT_YOGA_POSES[(yogaPoseIndex + 1) % 4]!;
+          // Hold for first 65% of pose, ease through the final 35%.
+          const holdCutoff = 0.65;
+          const blendT =
+            yogaPoseProgress < holdCutoff
+              ? 0
+              : (yogaPoseProgress - holdCutoff) / (1 - holdCutoff);
+          // Smoothstep ease so transitions feel organic.
+          const t = blendT * blendT * (3 - 2 * blendT);
+          leftArmRef.current.rotation.x = curr.x + (next.x - curr.x) * t;
+          leftArmRef.current.rotation.z = curr.z + (next.z - curr.z) * t;
+          leftArmRef.current.rotation.y = curr.y + (next.y - curr.y) * t;
         } else if (workoutStyle === "squat") {
           // Both hands up holding a bar across the shoulders — elbows up
           leftArmRef.current.rotation.x = -2.1;
@@ -592,6 +629,24 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.pingPongUntil) {
         leftArmRef.current.rotation.x =
           0.2 + Math.sin(agent.frame * 0.08) * 0.28;
+      } else if (isQaWorking) {
+        // QA-lab station poses — left arm per station type.
+        if (qaStationType === "console") {
+          // Both hands at keyboard height, micro-tapping fingers.
+          leftArmRef.current.rotation.x = -1.25 + qaPhase * 0.05;
+          leftArmRef.current.rotation.z = -0.28;
+          leftArmRef.current.rotation.y = -0.06;
+        } else if (qaStationType === "device_rack") {
+          // Left hand steady at waist holding a notes tablet.
+          leftArmRef.current.rotation.x = -0.85;
+          leftArmRef.current.rotation.z = -0.42;
+          leftArmRef.current.rotation.y = 0.08;
+        } else {
+          // Bench work — left hand holds part, steady at chest level.
+          leftArmRef.current.rotation.x = -1.0 + Math.sin(motionFrame * 0.04) * 0.04;
+          leftArmRef.current.rotation.z = -0.38;
+          leftArmRef.current.rotation.y = -0.12;
+        }
       } else if (agent.state === "sitting") {
         // Lounge vs desk: relaxed hands-on-lap for couch/beanbag,
         // forward-reaching typing pose for desk.
@@ -689,33 +744,25 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.06;
           groupRef.current.rotation.z = -0.05;
         } else if (workoutStyle === "stretch") {
-          // Yoga flow — mirror of left arm.
-          const blend = yogaBlend;
-          let armX = -0.08;
-          let armZ = 0.08;
-          let armY = 0;
-          if (yogaPoseIndex === 0) {
-            armX = -0.05 - yogaPoseProgress * 0.25;
-            armZ = 0.05 + yogaPoseProgress * 0.08;
-          } else if (yogaPoseIndex === 1) {
+          // Yoga flow — mirror of left arm, pose-to-pose lerp.
+          const RIGHT_YOGA_POSES = [
+            { x: -0.22, z: 0.13, y: 0.0 },
             // Warrior II — right arm extended back (opposite of left)
-            armX = -1.55;
-            armZ = 1.35;
-            armY = 0.05;
-          } else if (yogaPoseIndex === 2) {
-            // Upward salute
-            armX = -2.85;
-            armZ = 0.18;
-            armY = 0.05;
-          } else {
-            // Prayer position
-            armX = -1.25;
-            armZ = 0.55;
-            armY = 0.25;
-          }
-          rightArmRef.current.rotation.x = armX * blend + (-0.08) * (1 - blend);
-          rightArmRef.current.rotation.z = armZ * blend + (0.05) * (1 - blend);
-          rightArmRef.current.rotation.y = armY * blend;
+            { x: -1.55, z: 1.35, y: 0.05 },
+            { x: -2.75, z: 0.22, y: 0.05 },
+            { x: -1.25, z: 0.55, y: 0.25 },
+          ];
+          const curr = RIGHT_YOGA_POSES[yogaPoseIndex]!;
+          const next = RIGHT_YOGA_POSES[(yogaPoseIndex + 1) % 4]!;
+          const holdCutoff = 0.65;
+          const blendT =
+            yogaPoseProgress < holdCutoff
+              ? 0
+              : (yogaPoseProgress - holdCutoff) / (1 - holdCutoff);
+          const t = blendT * blendT * (3 - 2 * blendT);
+          rightArmRef.current.rotation.x = curr.x + (next.x - curr.x) * t;
+          rightArmRef.current.rotation.z = curr.z + (next.z - curr.z) * t;
+          rightArmRef.current.rotation.y = curr.y + (next.y - curr.y) * t;
         } else if (workoutStyle === "squat") {
           // Mirror of left arm — hands gripping bar across shoulders
           rightArmRef.current.rotation.x = -2.1;
@@ -756,6 +803,29 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.pingPongUntil) {
         rightArmRef.current.rotation.x =
           0.08 - Math.sin(agent.frame * 0.08) * 0.16;
+      } else if (isQaWorking) {
+        // QA-lab station poses — right arm per station type.
+        if (qaStationType === "console") {
+          // Right hand at keyboard, offset-phase micro-tapping.
+          rightArmRef.current.rotation.x = -1.25 + qaPhase2 * 0.05;
+          rightArmRef.current.rotation.z = 0.28;
+          rightArmRef.current.rotation.y = 0.06;
+        } else if (qaStationType === "device_rack") {
+          // Right hand reaches forward/up to probe racks on alternating
+          // beats — that's the "action" hand for this station.
+          const reach = 0.45 + Math.max(0, qaPhase) * 0.45;
+          rightArmRef.current.rotation.x = -(1.05 + reach);
+          rightArmRef.current.rotation.z = 0.22;
+          rightArmRef.current.rotation.y = 0.18;
+        } else {
+          // Bench work — right hand holds tool, makes tight precise
+          // little movements (soldering-like).
+          rightArmRef.current.rotation.x =
+            -1.15 + Math.sin(motionFrame * 0.22) * 0.08;
+          rightArmRef.current.rotation.z =
+            0.3 + Math.sin(motionFrame * 0.22 + Math.PI / 2) * 0.04;
+          rightArmRef.current.rotation.y = 0.08;
+        }
       } else if (agent.state === "sitting") {
         const isLoungeSit = agent.interactionTarget === "lounge";
         if (isLoungeSit) {
@@ -823,11 +893,17 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") leftLegX = workoutPhase * 0.82;
         else if (workoutStyle === "row") leftLegX = 0.14 + Math.max(0, workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") {
-          // Yoga leg poses per yogaPoseIndex
-          if (yogaPoseIndex === 0) leftLegX = yogaPoseProgress * 0.18;
-          else if (yogaPoseIndex === 1) leftLegX = 0.55; // warrior front knee bend
-          else if (yogaPoseIndex === 2) leftLegX = 0.0; // upward stretch - straight
-          else leftLegX = 0.08; // tree - slight bend
+          // Yoga left-leg keyframes, lerped pose → next pose.
+          const LEFT_YOGA_LEG = [0.12, 0.55, 0.0, 0.08];
+          const curr = LEFT_YOGA_LEG[yogaPoseIndex]!;
+          const next = LEFT_YOGA_LEG[(yogaPoseIndex + 1) % 4]!;
+          const holdCutoff = 0.65;
+          const blendT =
+            yogaPoseProgress < holdCutoff
+              ? 0
+              : (yogaPoseProgress - holdCutoff) / (1 - holdCutoff);
+          const t = blendT * blendT * (3 - 2 * blendT);
+          leftLegX = curr + (next - curr) * t;
         }
         else if (workoutStyle === "box" || workoutStyle === "punch")
           leftLegX = 0.06 + workoutPhase * 0.14;
@@ -850,6 +926,9 @@ export const AgentModel = memo(function AgentModel({
           // Split stance, subtle shift
           leftLegX = 0.1 + Math.abs(workoutPhase) * 0.06;
         } else leftLegX = workoutPhase * 0.18;
+      } else if (isQaWorking) {
+        // Gentle standing sway at the station — no rep motion needed.
+        leftLegX = 0.02 + Math.sin(motionFrame * 0.05) * 0.015;
       } else if (agent.state === "sitting") {
         // Sitting: thighs horizontal (hip flex ~90°). Lounge a bit more reclined.
         const isLoungeSit = agent.interactionTarget === "lounge";
@@ -874,11 +953,17 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") rightLegX = -workoutPhase * 0.82;
         else if (workoutStyle === "row") rightLegX = 0.14 + Math.max(0, -workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") {
-          // Right leg mirrors/differs in warrior pose (back leg straight)
-          if (yogaPoseIndex === 0) rightLegX = yogaPoseProgress * 0.18;
-          else if (yogaPoseIndex === 1) rightLegX = -0.12; // warrior back leg
-          else if (yogaPoseIndex === 2) rightLegX = 0.0;
-          else rightLegX = -0.65; // tree - right leg lifted and bent to knee of left
+          // Yoga right-leg keyframes, lerped pose → next pose.
+          const RIGHT_YOGA_LEG = [0.12, -0.12, 0.0, -0.55];
+          const curr = RIGHT_YOGA_LEG[yogaPoseIndex]!;
+          const next = RIGHT_YOGA_LEG[(yogaPoseIndex + 1) % 4]!;
+          const holdCutoff = 0.65;
+          const blendT =
+            yogaPoseProgress < holdCutoff
+              ? 0
+              : (yogaPoseProgress - holdCutoff) / (1 - holdCutoff);
+          const t = blendT * blendT * (3 - 2 * blendT);
+          rightLegX = curr + (next - curr) * t;
         }
         else if (workoutStyle === "box" || workoutStyle === "punch")
           rightLegX = 0.06 - workoutPhase * 0.14;
@@ -897,6 +982,9 @@ export const AgentModel = memo(function AgentModel({
           // Split stance opposite leg — slightly back
           rightLegX = -0.12 + Math.abs(workoutPhase) * 0.04;
         } else rightLegX = -workoutPhase * 0.18;
+      } else if (isQaWorking) {
+        // Counter-phase sway opposite the left leg.
+        rightLegX = 0.02 + Math.sin(motionFrame * 0.05 + Math.PI) * 0.015;
       } else if (agent.state === "sitting") {
         const isLoungeSit = agent.interactionTarget === "lounge";
         rightLegX = isLoungeSit ? 0.72 : 0.85;
@@ -905,6 +993,50 @@ export const AgentModel = memo(function AgentModel({
         rightLegX = -Math.sin(idleProgress * Math.PI) * 0.05 * idleSmooth;
       }
       rightLegRef.current.rotation.x = rightLegX;
+    }
+
+    // ──────────────────────────────────────────────────────────────
+    // Bone-rotation smoothing — exponential lerp from last frame's
+    // value toward this frame's computed target. This prevents the
+    // "snap/break" effect users saw at pose transitions (walk →
+    // workout, yoga pose 2 → 3, bike → run, etc.). The smoothing
+    // factor is high enough (~0.45) that rep-rate sin motion tracks
+    // closely, but low enough to absorb large-arc discontinuities
+    // across ~3 frames so the shoulder cap never visibly separates
+    // from the upper-arm cylinder mid-transition.
+    // ──────────────────────────────────────────────────────────────
+    const SMOOTH = 0.45;
+    if (leftArmRef.current) {
+      const rot = leftArmRef.current.rotation;
+      const prev = leftArmTargetRef.current;
+      rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
+      rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
+      rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
+      prev.x = rot.x;
+      prev.y = rot.y;
+      prev.z = rot.z;
+    }
+    if (rightArmRef.current) {
+      const rot = rightArmRef.current.rotation;
+      const prev = rightArmTargetRef.current;
+      rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
+      rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
+      rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
+      prev.x = rot.x;
+      prev.y = rot.y;
+      prev.z = rot.z;
+    }
+    if (leftLegRef.current) {
+      const rot = leftLegRef.current.rotation;
+      const prev = leftLegTargetRef.current;
+      rot.x = prev + (rot.x - prev) * SMOOTH;
+      leftLegTargetRef.current = rot.x;
+    }
+    if (rightLegRef.current) {
+      const rot = rightLegRef.current.rotation;
+      const prev = rightLegTargetRef.current;
+      rot.x = prev + (rot.x - prev) * SMOOTH;
+      rightLegTargetRef.current = rot.x;
     }
 
     const working =

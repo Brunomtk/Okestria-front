@@ -100,18 +100,20 @@ const OfficeFigure = ({
     }
     if (!groupRef.current) return;
     const t = state.clock.elapsedTime;
-    // Gentle showcase sway.
-    groupRef.current.rotation.y = Math.sin(t * 0.45) * 0.3 + 0.15;
+    // Showcase sway — wider arc so the rounded shoulders, ears and chin
+    // catch the side light and read clearly at small sizes.
+    groupRef.current.rotation.y = Math.sin(t * 0.55) * 0.65 + 0.2;
     // Subtle breathing on torso scale via micro-position.
     groupRef.current.position.y = -0.78 + Math.sin(t * 0.9) * 0.006;
-    // Idle arm breathing.
+    // Idle arm breathing — keep arms slightly away from torso so the
+    // shoulder sphere cap is visible (not hidden behind sleeve).
     if (leftArmRef.current) {
-      leftArmRef.current.rotation.x = -0.08 + Math.sin(t * 0.9) * 0.05;
-      leftArmRef.current.rotation.z = -0.04;
+      leftArmRef.current.rotation.x = -0.05 + Math.sin(t * 0.9) * 0.05;
+      leftArmRef.current.rotation.z = -0.14;
     }
     if (rightArmRef.current) {
-      rightArmRef.current.rotation.x = -0.08 + Math.sin(t * 0.9 + Math.PI) * 0.05;
-      rightArmRef.current.rotation.z = 0.04;
+      rightArmRef.current.rotation.x = -0.05 + Math.sin(t * 0.9 + Math.PI) * 0.05;
+      rightArmRef.current.rotation.z = 0.14;
     }
   });
 
@@ -851,14 +853,22 @@ export const AgentOfficeFigure3D = ({
       ) : null}
       <Canvas
         key={profileKey}
-        camera={{ position: [0, 0.25, 1.9], fov: 32 }}
+        /* Pull the camera back + tilt down a touch so we get a 3/4 view
+           that reveals rounded shoulders, ears, and chin silhouette. */
+        camera={{ position: [0.35, 0.35, 2.15], fov: 30 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
       >
         <color attach="background" args={["#0a0f1d"]} />
-        <ambientLight intensity={1.25} />
-        <directionalLight position={[3, 4, 5]} intensity={2.1} />
-        <directionalLight position={[-4, 2, 3]} intensity={0.8} color="#89a6ff" />
+        {/* Softer ambient so the rim light can actually define form. */}
+        <ambientLight intensity={0.85} />
+        {/* Key light — strong, from front-right, catches shoulder caps. */}
+        <directionalLight position={[3, 4, 5]} intensity={1.7} />
+        {/* Fill — cool blue from the left, gives the round parts a wraparound. */}
+        <directionalLight position={[-4, 2, 3]} intensity={0.9} color="#89a6ff" />
+        {/* Rim — behind-above, makes ears, shoulder spheres and hand
+            spheres pop off the dark background. */}
+        <directionalLight position={[0, 4, -5]} intensity={1.1} color="#f0d9b5" />
         <OfficeFigure
           profile={resolvedProfile}
           onReady={() => setReadyProfileKey(profileKey)}

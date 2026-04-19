@@ -147,7 +147,7 @@ export const FleetSidebar = ({
                   <AgentOfficeFigure3D
                     profile={agent.avatarProfile ?? null}
                     seed={avatarSeed}
-                    size={42}
+                    size={56}
                   />
                   {/* Legacy fallback avatar kept for typecheck tree-shake */}
                   {false && (

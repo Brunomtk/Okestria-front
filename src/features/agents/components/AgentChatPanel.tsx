@@ -1795,7 +1795,7 @@ export const AgentChatPanel = ({
               <AgentOfficeFigure3D
                 profile={agent.avatarProfile ?? null}
                 seed={avatarSeed}
-                size={52}
+                size={68}
               />
               {false && (
                 <AgentAvatar
