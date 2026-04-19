@@ -6310,23 +6310,62 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget && focusedSquadChatState ? (
-                    <RemoteAgentChatPanel
-                      agentName={focusedSquadChatTarget.name}
-                      canSend={remoteMessagingAvailable}
-                      sending={focusedSquadChatState.sending}
-                      draft={focusedSquadChatState.draft}
-                      error={focusedSquadChatState.error}
-                      messages={focusedSquadChatState.messages}
-                      disabledReason={remoteMessagingDisabledReason}
-                      onDraftChange={(value) => {
+                    <SquadChatPanel
+                      squadName={focusedSquadChatTarget.name}
+                      leaderName={focusedSquadSessionAgent?.name ?? focusedSquadChatTarget.name}
+                      entries={
+                        activeFocusedSquadTask
+                          ? (squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.messages ?? []).map((message, index) => ({
+                              id: `${activeFocusedSquadTask.id}-${index}-${message.createdAt ?? "entry"}`,
+                              role: message.role,
+                              content: message.content,
+                              createdAt: message.createdAt,
+                            }))
+                          : []
+                      }
+                      pending={Boolean(activeFocusedSquadTask && squadTaskSessionByTaskId[activeFocusedSquadTask.id]?.loading)}
+                      inputValue={focusedSquadChatState?.draft ?? ""}
+                      onInputChange={(value) => {
                         updateRemoteChatSession(focusedSquadChatTarget.id, (session) => ({
                           ...session,
                           draft: value,
                           error: null,
                         }));
                       }}
-                      onSend={(message) => {
-                        void handleChatSend(focusedSquadChatTarget.id, "", { text: message });
+                      onSend={() => {}}
+                      onOpenSquadOps={() => {
+                        setSquadOpsSquadId(focusedSquadChatTarget.id);
+                        setSquadOpsModalOpen(true);
+                      }}
+                      onClearChat={() => {
+                        if (!activeFocusedSquadTask) return;
+                        setSquadTaskSessionByTaskId((current) => ({
+                          ...current,
+                          [activeFocusedSquadTask.id]: {
+                            sessionKey: current[activeFocusedSquadTask.id]?.sessionKey ?? "",
+                            loading: false,
+                            error: null,
+                            messages: [],
+                            outputLines: [],
+                          },
+                        }));
+                      }}
+                      onHideChat={() => setChatOpen(false)}
+                      canSend={false}
+                      modelLabel={selectedModelId || "Default model"}
+                      thinkingLabel={selectedThinkingLevel || "Default"}
+                      tasks={focusedSquadWorkspaceTasks.map((task) => ({
+                        id: task.id,
+                        title: task.title,
+                        status: task.status,
+                        runCount: typeof task.runCount === "number" ? task.runCount : null,
+                      }))}
+                      activeTaskId={activeFocusedSquadTask?.id ?? null}
+                      onSelectTask={(taskId) => {
+                        setActiveSquadChatTaskBySquadId((current) => ({
+                          ...current,
+                          [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]: taskId,
+                        }));
                       }}
                     />
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
