@@ -1,5 +1,7 @@
-import SquadChatPanel from "../components/SquadChatPanel";
 "use client";
+
+import SquadChatPanel from "../components/SquadChatPanel";
+
 
 import {
   type ReactNode,
