@@ -23,6 +23,7 @@ const ITEM_COLOR_BY_TYPE: Record<string, string> = {
   beanbag: "#4db6ac",
   pingpong: "#90caf9",
   table_rect: "#8d6e63",
+  conference_table: "#6d4c41",
   coffee_machine: "#37474f",
   fridge: "#b0bec5",
   water_cooler: "#4fc3f7",

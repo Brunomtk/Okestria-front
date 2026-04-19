@@ -1387,8 +1387,8 @@ export function QaTerminalModel({
           ))}
         </group>
 
-        {/* === OPERATOR CHAIR (gaming chair, behind desk at +Z) === */}
-        <group position={[0, 0, depthWorld * 0.82]}>
+        {/* === OPERATOR CHAIR (gaming chair, behind desk at +Z, facing monitors at -Z) === */}
+        <group position={[0, 0, depthWorld * 0.82]} rotation={[0, Math.PI, 0]}>
           {/* 5-point base */}
           {[0, 72, 144, 216, 288].map((deg, i) => {
             const rad = (deg * Math.PI) / 180;
@@ -2147,7 +2147,7 @@ export function TestBenchModel({
           <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={1.3} />
         </mesh>
 
-        {/* === BENCH TOP (ESD anti-static rubber mat) === */}
+        {/* === BENCH TOP (steel body with baked-in ESD rubber mat on top) === */}
         <mesh position={[0, 0.46, 0]} castShadow receiveShadow>
           <boxGeometry args={[widthWorld * 0.98, 0.04, depthWorld * 0.92]} />
           <meshStandardMaterial
@@ -2158,10 +2158,10 @@ export function TestBenchModel({
             emissiveIntensity={highlightIntensity}
           />
         </mesh>
-        {/* ESD-green surface layer */}
-        <mesh position={[0, 0.481, 0]}>
-          <planeGeometry args={[widthWorld * 0.96, depthWorld * 0.9]} />
-          <meshStandardMaterial color="#065f46" roughness={0.88} metalness={0.05} />
+        {/* ESD-green surface layer — thin inset box (no z-fighting) */}
+        <mesh position={[0, 0.483, 0]} receiveShadow>
+          <boxGeometry args={[widthWorld * 0.94, 0.006, depthWorld * 0.86]} />
+          <meshStandardMaterial color="#065f46" roughness={0.92} metalness={0.02} />
         </mesh>
         {/* Chrome edge strips */}
         <mesh position={[0, 0.462, depthWorld * 0.46]}>

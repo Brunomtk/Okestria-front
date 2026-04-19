@@ -210,6 +210,7 @@ import {
   KeyboardModel as PrimitiveKeyboardModel,
   MouseModel as PrimitiveMouseModel,
   MugModel as PrimitiveMugModel,
+  ConferenceTableModel as PrimitiveConferenceTableModel,
   RoundTableModel as PrimitiveRoundTableModel,
   TrashCanModel as PrimitiveTrashCanModel,
   WallSegmentModel as PrimitiveWallSegmentModel,
@@ -871,6 +872,17 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
           />
         ) : item.type === "round_table" ? (
           <PrimitiveRoundTableModel
+            key={item._uid}
+            item={item}
+            isSelected={false}
+            isHovered={false}
+            editMode={false}
+            onPointerDown={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOver={NOOP_FURNITURE_UID_HANDLER}
+            onPointerOut={NOOP_FURNITURE_HANDLER}
+          />
+        ) : item.type === "conference_table" ? (
+          <PrimitiveConferenceTableModel
             key={item._uid}
             item={item}
             isSelected={false}
@@ -4569,6 +4581,18 @@ export function RetroOffice3D({
                   />
                 ) : item.type === "round_table" ? (
                   <PrimitiveRoundTableModel
+                    key={item._uid}
+                    item={item}
+                    isSelected={item._uid === selectedUid}
+                    isHovered={item._uid === hoverUid}
+                    editMode={editMode}
+                    onPointerDown={handleFurniturePointerDown}
+                    onPointerOver={handleFurniturePointerOver}
+                    onPointerOut={handleFurniturePointerOut}
+                    onClick={handleDeskClick}
+                  />
+                ) : item.type === "conference_table" ? (
+                  <PrimitiveConferenceTableModel
                     key={item._uid}
                     item={item}
                     isSelected={item._uid === selectedUid}

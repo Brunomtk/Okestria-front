@@ -29,8 +29,8 @@ import type {
 
 const DEFAULT_PINGPONG_TABLE: FurnitureSeed = {
   type: "pingpong",
-  x: 872,
-  y: 598,
+  x: 40,
+  y: 50,
   w: 108,
   h: 60,
 };
@@ -372,12 +372,13 @@ const DEFAULT_QA_LAB_ITEMS: FurnitureSeed[] = [
 
 
 const DEFAULT_FURNITURE: FurnitureSeed[] = [
-  { type: "round_table", x: 50, y: 40, r: 68 },
-  { type: "chair", x: 110, y: 40, facing: 0, elevation: 0 },
-  { type: "chair", x: 160, y: 90, facing: 270, elevation: 0 },
-  { type: "chair", x: 100, y: 150, facing: 180, elevation: 0 },
-  { type: "chair", x: 50, y: 100, facing: 90, elevation: 0 },
+  // === PING PONG (top-left — replaced the old welcome round table) ===
+  { type: "pingpong", x: 40, y: 50, w: 108, h: 60 },
+
+  // === TOP-CENTER: ATM ===
   { type: "atm", x: 330, y: 10, facing: 0 },
+
+  // === KITCHEN COUNTER (top-right) ===
   { type: "vending", x: 790, y: 12 },
   { type: "trash", x: 828, y: 26 },
   { type: "cabinet", x: 836, y: 28, w: 80, h: 40, elevation: 0 },
@@ -390,70 +391,97 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "fridge", x: 1052, y: 18, w: 40, h: 80 },
   { type: "wall_cabinet", x: 878, y: 10, w: 80, h: 20, elevation: 0.9 },
   { type: "wall_cabinet", x: 960, y: 10, w: 80, h: 20, elevation: 0.9 },
+
+  // === KITCHEN DINING TABLE (round, below the kitchen counter) ===
   { type: "round_table", x: 830, y: 140, r: 52 },
   { type: "chair", x: 875, y: 96, facing: 0 },
   { type: "chair", x: 875, y: 240, facing: 180 },
   { type: "chair", x: 803, y: 168, facing: 90 },
   { type: "chair", x: 947, y: 168, facing: 270 },
-  { type: "desk_cubicle", x: 110, y: 310, id: "desk_0" },
-  { type: "chair", x: 132, y: 298, facing: 180 },
-  { type: "computer", x: 132, y: 295 },
-  { type: "keyboard", x: 144, y: 302 },
-  { type: "mouse", x: 165, y: 302 },
-  { type: "trash", x: 184, y: 298 },
-  { type: "desk_cubicle", x: 306, y: 310, id: "desk_1" },
-  { type: "chair", x: 328, y: 298, facing: 180 },
-  { type: "computer", x: 328, y: 295 },
-  { type: "keyboard", x: 340, y: 302 },
-  { type: "mouse", x: 361, y: 302 },
-  { type: "trash", x: 380, y: 298 },
-  { type: "desk_cubicle", x: 502, y: 310, id: "desk_2" },
-  { type: "chair", x: 524, y: 298, facing: 180 },
-  { type: "computer", x: 524, y: 295 },
-  { type: "keyboard", x: 536, y: 302 },
-  { type: "mouse", x: 557, y: 302 },
-  { type: "trash", x: 576, y: 298 },
-  { type: "desk_cubicle", x: 698, y: 310, id: "desk_3" },
-  { type: "chair", x: 720, y: 298, facing: 180 },
-  { type: "computer", x: 720, y: 295 },
-  { type: "keyboard", x: 732, y: 302 },
-  { type: "mouse", x: 753, y: 302 },
-  { type: "trash", x: 772, y: 298 },
-  { type: "desk_cubicle", x: 110, y: 500, id: "desk_4" },
-  { type: "chair", x: 132, y: 488, facing: 180 },
-  { type: "computer", x: 132, y: 485 },
-  { type: "keyboard", x: 144, y: 492 },
-  { type: "mouse", x: 165, y: 492 },
-  { type: "trash", x: 184, y: 488 },
-  { type: "desk_cubicle", x: 306, y: 500, id: "desk_5" },
-  { type: "chair", x: 328, y: 488, facing: 180 },
-  { type: "computer", x: 328, y: 485 },
-  { type: "keyboard", x: 340, y: 492 },
-  { type: "mouse", x: 361, y: 492 },
-  { type: "trash", x: 380, y: 488 },
-  { type: "desk_cubicle", x: 502, y: 500, id: "desk_6" },
-  { type: "chair", x: 524, y: 488, facing: 180 },
-  { type: "computer", x: 524, y: 485 },
-  { type: "keyboard", x: 536, y: 492 },
-  { type: "mouse", x: 557, y: 492 },
-  { type: "trash", x: 576, y: 488 },
-  { type: "desk_cubicle", x: 698, y: 500, id: "desk_7" },
-  { type: "chair", x: 720, y: 488, facing: 180 },
-  { type: "computer", x: 720, y: 485 },
-  { type: "keyboard", x: 732, y: 492 },
-  { type: "mouse", x: 753, y: 492 },
-  { type: "trash", x: 772, y: 488 },
+
+  // === OPEN-OFFICE DESKS — Row 1 (4 desks at y=290) ===
+  { type: "desk_cubicle", x: 60, y: 290, id: "desk_0" },
+  { type: "chair", x: 82, y: 278, facing: 180 },
+  { type: "computer", x: 82, y: 275 },
+  { type: "keyboard", x: 94, y: 282 },
+  { type: "mouse", x: 115, y: 282 },
+  { type: "trash", x: 134, y: 278 },
+  { type: "desk_cubicle", x: 220, y: 290, id: "desk_1" },
+  { type: "chair", x: 242, y: 278, facing: 180 },
+  { type: "computer", x: 242, y: 275 },
+  { type: "keyboard", x: 254, y: 282 },
+  { type: "mouse", x: 275, y: 282 },
+  { type: "trash", x: 294, y: 278 },
+  { type: "desk_cubicle", x: 380, y: 290, id: "desk_2" },
+  { type: "chair", x: 402, y: 278, facing: 180 },
+  { type: "computer", x: 402, y: 275 },
+  { type: "keyboard", x: 414, y: 282 },
+  { type: "mouse", x: 435, y: 282 },
+  { type: "trash", x: 454, y: 278 },
+  { type: "desk_cubicle", x: 540, y: 290, id: "desk_3" },
+  { type: "chair", x: 562, y: 278, facing: 180 },
+  { type: "computer", x: 562, y: 275 },
+  { type: "keyboard", x: 574, y: 282 },
+  { type: "mouse", x: 595, y: 282 },
+  { type: "trash", x: 614, y: 278 },
+
+  // === OPEN-OFFICE DESKS — Row 2 (3 desks at y=440) ===
+  { type: "desk_cubicle", x: 140, y: 440, id: "desk_4" },
+  { type: "chair", x: 162, y: 428, facing: 180 },
+  { type: "computer", x: 162, y: 425 },
+  { type: "keyboard", x: 174, y: 432 },
+  { type: "mouse", x: 195, y: 432 },
+  { type: "trash", x: 214, y: 428 },
+  { type: "desk_cubicle", x: 300, y: 440, id: "desk_5" },
+  { type: "chair", x: 322, y: 428, facing: 180 },
+  { type: "computer", x: 322, y: 425 },
+  { type: "keyboard", x: 334, y: 432 },
+  { type: "mouse", x: 355, y: 432 },
+  { type: "trash", x: 374, y: 428 },
+  { type: "desk_cubicle", x: 460, y: 440, id: "desk_6" },
+  { type: "chair", x: 482, y: 428, facing: 180 },
+  { type: "computer", x: 482, y: 425 },
+  { type: "keyboard", x: 494, y: 432 },
+  { type: "mouse", x: 515, y: 432 },
+  { type: "trash", x: 534, y: 428 },
+
+  // === SERVER ROOM (bottom-left, x=0..228 · y=560..720) ===
   { type: "wall", x: 0, y: 560, w: 230, h: 8 },
   { type: "wall", x: 220, y: 560, w: 8, h: 60 },
   { type: "door", x: 210, y: 630, w: 40, h: 8, facing: 90 },
   { type: "wall", x: 220, y: 660, w: 8, h: 60 },
   { type: "server_rack", x: 42, y: 590, facing: 0 },
   { type: "server_rack", x: 102, y: 590, facing: 0 },
-  { type: "pingpong", x: 872, y: 598, w: 108, h: 60 },
+
+  // === MEETING ROOM (bottom, x=228..1075 · y=560..720) ===
+  // Top wall spans from server-room east wall to east-wing entrance wall, with a centered door.
+  { type: "wall", x: 228, y: 560, w: 402, h: 8 },
+  { type: "door", x: 630, y: 560, w: 40, h: 8, facing: 0 },
+  { type: "wall", x: 670, y: 560, w: 405, h: 8 },
+  // Large rectangular conference table — centered on the door (x=650, y=642)
+  { type: "conference_table", x: 530, y: 592, w: 240, h: 100 },
+  // 10 executive chairs — 4 north, 4 south, 1 east, 1 west
+  { type: "chair", x: 548, y: 568, facing: 180 },
+  { type: "chair", x: 608, y: 568, facing: 180 },
+  { type: "chair", x: 668, y: 568, facing: 180 },
+  { type: "chair", x: 728, y: 568, facing: 180 },
+  { type: "chair", x: 548, y: 694, facing: 0 },
+  { type: "chair", x: 608, y: 694, facing: 0 },
+  { type: "chair", x: 668, y: 694, facing: 0 },
+  { type: "chair", x: 728, y: 694, facing: 0 },
+  { type: "chair", x: 502, y: 630, facing: 90 },
+  { type: "chair", x: 774, y: 630, facing: 270 },
+
+  // === EAST-WING ENTRANCE WALLS (preserved) ===
   { type: "wall", x: 1075, y: 0, w: 8, h: 150 },
   { type: "door", x: 1059, y: 166, w: 40, h: 8, facing: 90 },
   { type: "wall", x: 1075, y: 190, w: 8, h: 170 },
   { type: "wall", x: 1075, y: 352, w: 720, h: 8 },
+  { type: "wall", x: 1075, y: 360, w: 8, h: 140 },
+  { type: "door", x: 1059, y: 516, w: 40, h: 8, facing: 90 },
+  { type: "wall", x: 1075, y: 540, w: 8, h: 180 },
+
+  // === GYM + QA LAB legacy seeds (overridden by ensureOfficeGymRoom / ensureOfficeQaLab) ===
   { type: "treadmill", x: 1120, y: 30, facing: 180 },
   { type: "treadmill", x: 1220, y: 30, facing: 0 },
   { type: "weight_bench", x: 1325, y: 44, facing: 90 },
@@ -468,9 +496,6 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "dumbbell_rack", x: 1600, y: 300, facing: 180 },
   { type: "punching_bag", x: 1690, y: 110, facing: 0 },
   { type: "punching_bag", x: 1690, y: 242, facing: 0 },
-  { type: "wall", x: 1075, y: 360, w: 8, h: 140 },
-  { type: "door", x: 1059, y: 516, w: 40, h: 8, facing: 90 },
-  { type: "wall", x: 1075, y: 540, w: 8, h: 180 },
   { type: "device_rack", x: 1588, y: 418, facing: 180 },
   { type: "device_rack", x: 1676, y: 418, facing: 180 },
   { type: "qa_terminal", x: 1580, y: 528, facing: 90 },
@@ -701,8 +726,8 @@ export const ensureOfficeAtm = (items: FurnitureItem[]): FurnitureItem[] => {
 };
 
 export const ensureOfficeJukebox = (items: FurnitureItem[]): FurnitureItem[] => {
-  if (items.some((item) => item.type === "jukebox")) return items;
-  return [...items, { ...DEFAULT_JUKEBOX, _uid: nextUid() }];
+  // Jukebox removed from the default office layout — strip any legacy instances
+  return items.filter((item) => item.type !== "jukebox");
 };
 
 export const ensureOfficePhoneBooth = (

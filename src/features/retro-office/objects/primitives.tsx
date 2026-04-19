@@ -9,7 +9,11 @@ import {
   SCALE,
   WALL_THICKNESS,
 } from "@/features/retro-office/core/constants";
-import { getItemRotationRadians, toWorld } from "@/features/retro-office/core/geometry";
+import {
+  getItemBaseSize,
+  getItemRotationRadians,
+  toWorld,
+} from "@/features/retro-office/core/geometry";
 import type { FurnitureItem, RenderAgent } from "@/features/retro-office/core/types";
 import type {
   BasicFurnitureModelProps,
@@ -124,6 +128,200 @@ export function RoundTableModel({
         <mesh position={[0, 0.02, 0]}>
           <cylinderGeometry args={[radius * 0.4, radius * 0.45, 0.04, 32]} />
           <meshStandardMaterial color="#5c3520" roughness={0.8} />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+export function ConferenceTableModel({
+  item,
+  isSelected,
+  isHovered,
+  editMode,
+  onPointerDown,
+  onPointerOver,
+  onPointerOut,
+  onClick,
+}: InteractiveFurnitureModelProps) {
+  const [wx, , wz] = toWorld(item.x, item.y);
+  const { width, height } = getItemBaseSize(item);
+  const widthWorld = width * SCALE;
+  const depthWorld = height * SCALE;
+  const rotY = getItemRotationRadians(item);
+  const highlightColor = isSelected
+    ? "#fbbf24"
+    : isHovered && editMode
+      ? "#c084fc"
+      : "#000000";
+  const highlightIntensity = isSelected ? 0.34 : isHovered && editMode ? 0.22 : 0;
+
+  return (
+    <group
+      position={[wx, item.elevation ?? 0, wz]}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPointerDown(item._uid);
+      }}
+      onPointerOver={(event) => {
+        event.stopPropagation();
+        onPointerOver(item._uid);
+      }}
+      onPointerOut={(event) => {
+        event.stopPropagation();
+        onPointerOut();
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick?.(item._uid);
+      }}
+    >
+      <group position={[widthWorld / 2, 0, depthWorld / 2]} rotation={[0, rotY, 0]}>
+        {/* 4 chunky wooden legs at corners (dark oak) */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`leg_${sx}_${sz}`}
+              position={[widthWorld * 0.42 * sx, 0.22, depthWorld * 0.38 * sz]}
+              castShadow
+            >
+              <boxGeometry args={[0.06, 0.44, 0.06]} />
+              <meshStandardMaterial color="#3a2410" roughness={0.65} metalness={0.08} />
+            </mesh>
+          )),
+        )}
+        {/* Chrome foot caps */}
+        {([-1, 1] as const).map((sx) =>
+          ([-1, 1] as const).map((sz) => (
+            <mesh
+              key={`foot_${sx}_${sz}`}
+              position={[widthWorld * 0.42 * sx, 0.012, depthWorld * 0.38 * sz]}
+            >
+              <boxGeometry args={[0.07, 0.024, 0.07]} />
+              <meshStandardMaterial color="#d1d5db" roughness={0.3} metalness={0.88} />
+            </mesh>
+          )),
+        )}
+        {/* Long cross-beam under table (side supports) */}
+        <mesh position={[0, 0.34, -depthWorld * 0.36]} castShadow>
+          <boxGeometry args={[widthWorld * 0.84, 0.05, 0.04]} />
+          <meshStandardMaterial color="#2b180a" roughness={0.7} metalness={0.1} />
+        </mesh>
+        <mesh position={[0, 0.34, depthWorld * 0.36]} castShadow>
+          <boxGeometry args={[widthWorld * 0.84, 0.05, 0.04]} />
+          <meshStandardMaterial color="#2b180a" roughness={0.7} metalness={0.1} />
+        </mesh>
+
+        {/* TABLE TOP — walnut slab, thick and solid */}
+        <mesh position={[0, 0.46, 0]} receiveShadow castShadow>
+          <boxGeometry args={[widthWorld * 0.98, 0.055, depthWorld * 0.94]} />
+          <meshStandardMaterial
+            color="#7a4a28"
+            roughness={0.55}
+            metalness={0.12}
+            emissive={highlightColor}
+            emissiveIntensity={highlightIntensity}
+          />
+        </mesh>
+        {/* Darker beveled edge (runs around the slab) */}
+        <mesh position={[0, 0.45, 0]}>
+          <boxGeometry args={[widthWorld * 1.0, 0.022, depthWorld * 0.96]} />
+          <meshStandardMaterial color="#4a2b16" roughness={0.75} metalness={0.08} />
+        </mesh>
+        {/* Subtle glossy wood-grain highlight stripe along length */}
+        <mesh position={[0, 0.489, 0]}>
+          <boxGeometry args={[widthWorld * 0.86, 0.002, depthWorld * 0.02]} />
+          <meshStandardMaterial color="#b78a5c" roughness={0.3} metalness={0.3} />
+        </mesh>
+
+        {/* Center runner — felt strip */}
+        <mesh position={[0, 0.49, 0]}>
+          <boxGeometry args={[widthWorld * 0.9, 0.002, depthWorld * 0.16]} />
+          <meshStandardMaterial color="#1e3a8a" roughness={0.9} metalness={0.02} />
+        </mesh>
+
+        {/* Speaker-phone puck in the middle */}
+        <group position={[0, 0.495, 0]}>
+          <mesh>
+            <cylinderGeometry args={[0.06, 0.07, 0.018, 28]} />
+            <meshStandardMaterial color="#111827" roughness={0.4} metalness={0.5} />
+          </mesh>
+          <mesh position={[0, 0.011, 0]}>
+            <cylinderGeometry args={[0.028, 0.028, 0.006, 22]} />
+            <meshStandardMaterial
+              color="#22d3ee"
+              emissive="#22d3ee"
+              emissiveIntensity={0.9}
+            />
+          </mesh>
+          {[0, 60, 120, 180, 240, 300].map((deg, i) => {
+            const rad = (deg * Math.PI) / 180;
+            return (
+              <mesh
+                key={`sp-btn-${i}`}
+                position={[Math.cos(rad) * 0.045, 0.011, Math.sin(rad) * 0.045]}
+              >
+                <cylinderGeometry args={[0.008, 0.008, 0.004, 12]} />
+                <meshStandardMaterial color="#e5e7eb" roughness={0.3} metalness={0.55} />
+              </mesh>
+            );
+          })}
+        </group>
+
+        {/* Laptop pairs along the long sides — decorative placeholders */}
+        {[-0.32, 0.32].map((dz, iz) =>
+          [-0.3, -0.1, 0.1, 0.3].map((dx, ix) => (
+            <group
+              key={`laptop-${iz}-${ix}`}
+              position={[widthWorld * dx, 0.491, depthWorld * dz]}
+              rotation={[0, dz < 0 ? 0 : Math.PI, 0]}
+            >
+              {/* Base */}
+              <mesh>
+                <boxGeometry args={[0.1, 0.008, 0.068]} />
+                <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.5} />
+              </mesh>
+              {/* Lid */}
+              <mesh position={[0, 0.028, -0.032]} rotation={[-0.2, 0, 0]}>
+                <boxGeometry args={[0.1, 0.058, 0.006]} />
+                <meshStandardMaterial color="#111827" roughness={0.45} metalness={0.5} />
+              </mesh>
+              {/* Screen glow */}
+              <mesh position={[0, 0.028, -0.028]} rotation={[-0.2, 0, 0]}>
+                <boxGeometry args={[0.088, 0.05, 0.0015]} />
+                <meshStandardMaterial
+                  color="#7c3aed"
+                  emissive="#7c3aed"
+                  emissiveIntensity={0.65}
+                />
+              </mesh>
+            </group>
+          )),
+        )}
+
+        {/* Coasters + mugs at every other seat */}
+        {[-0.3, 0.1].map((dx, ix) =>
+          [-0.4, 0.4].map((dz, iz) => (
+            <group
+              key={`mug-${ix}-${iz}`}
+              position={[widthWorld * dx, 0.495, depthWorld * dz]}
+            >
+              <mesh>
+                <cylinderGeometry args={[0.014, 0.014, 0.003, 16]} />
+                <meshStandardMaterial color="#4b5563" roughness={0.5} metalness={0.3} />
+              </mesh>
+              <mesh position={[0, 0.017, 0]}>
+                <cylinderGeometry args={[0.012, 0.012, 0.028, 16]} />
+                <meshStandardMaterial color="#f8fafc" roughness={0.3} metalness={0.1} />
+              </mesh>
+            </group>
+          )),
+        )}
+
+        {/* Front brand plate */}
+        <mesh position={[0, 0.48, depthWorld * 0.458]}>
+          <boxGeometry args={[widthWorld * 0.26, 0.02, 0.004]} />
+          <meshStandardMaterial color="#0f172a" roughness={0.4} metalness={0.55} />
         </mesh>
       </group>
     </group>

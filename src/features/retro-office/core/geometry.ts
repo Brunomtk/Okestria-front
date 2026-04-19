@@ -48,6 +48,7 @@ export const ITEM_FOOTPRINT: Record<string, [number, number]> = {
   beanbag: [40, 40],
   pingpong: [100, 60],
   table_rect: [80, 40],
+  conference_table: [260, 110],
   coffee_machine: [32, 34],
   fridge: [40, 80],
   water_cooler: [20, 54],
@@ -146,6 +147,7 @@ export const ITEM_METADATA: Record<string, { blocksNavigation: boolean }> = {
   // ── tables ────────────────────────────────────────────────────────────────
   round_table:     { blocksNavigation: true  },
   table_rect:      { blocksNavigation: true  },
+  conference_table:{ blocksNavigation: true  },
   pingpong:        { blocksNavigation: true  },
   // ── storage / shelving ────────────────────────────────────────────────────
   bookshelf:       { blocksNavigation: true  },
