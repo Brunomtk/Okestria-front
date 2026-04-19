@@ -311,15 +311,38 @@ const buildLoungePoints = (items: FurnitureItem[]): LoungePoint[] =>
       const height = item.h ?? 60;
       const centerX = item.x + width / 2;
       const centerY = item.y + height / 2;
-      const points = item.type === "couch_v"
+      // v49: sit points live ON the lounge furniture (not beside it), and the
+      // agent's facing is derived from the item's OWN rotation so they sit
+      // squarely on the cushion. We use an inner offset so agents can land at
+      // 2-3 different spots on a couch without visually overlapping.
+      //
+      // Facing convention across every lounge item: forward = rotate(+z, rot)
+      // (i.e. the occupant faces the furniture's +z local direction after the
+      // rotation is applied). For couch/beanbag, FURNITURE_ROTATION doesn't
+      // add any offset, so the raw `facing` field (in degrees) already maps
+      // directly to the agent's sit direction.
+      const rot = ((item.facing ?? 0) * Math.PI) / 180;
+      const forwardX = Math.sin(rot);
+      const forwardY = Math.cos(rot);
+      // Perpendicular vector along the backrest — used to distribute 3 seats
+      // along a sofa without them stacking on top of each other.
+      const sideX = Math.cos(rot);
+      const sideY = -Math.sin(rot);
+      // Pull sit point from the seat's back edge toward the cushion front so
+      // the agent's back lands against the backrest rather than through it.
+      // 1 world-unit ≈ SCALE canvas-units; we use ~8 canvas-units of depth.
+      const depthPull = 6;
+      const seatX = centerX - forwardX * depthPull;
+      const seatY = centerY - forwardY * depthPull;
+      const points = item.type === "couch_v" || item.type === "couch"
         ? [
-            { x: item.x + width + 24, y: centerY, facing: angleFrom(item.x + width + 24, centerY, centerX, centerY) },
-            { x: item.x + width + 24, y: centerY - 20, facing: angleFrom(item.x + width + 24, centerY - 20, centerX, centerY) },
+            { x: seatX, y: seatY, facing: rot },
+            { x: seatX + sideX * 26, y: seatY + sideY * 26, facing: rot },
+            { x: seatX - sideX * 26, y: seatY - sideY * 26, facing: rot },
           ]
         : [
-            { x: centerX, y: item.y + height + 18, facing: angleFrom(centerX, item.y + height + 18, centerX, centerY) },
-            { x: centerX - 26, y: item.y + height + 20, facing: angleFrom(centerX - 26, item.y + height + 20, centerX, centerY) },
-            { x: centerX + 26, y: item.y + height + 20, facing: angleFrom(centerX + 26, item.y + height + 20, centerX, centerY) },
+            // beanbag / ottoman — single seat at the cushion center.
+            { x: seatX, y: seatY, facing: rot },
           ];
       return points.filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
     });

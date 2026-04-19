@@ -41,14 +41,17 @@ export const AgentAvatarPreview3D = ({
       ) : null}
       <Canvas
         key={profileKey}
-        /* Pulled back + aimed lower so the FULL body (head → feet)
-           fits comfortably in the large editor preview. The figure
-           lives centered around y=0.4 world, head at y≈0.65, feet at
-           y≈0, so we frame on y=0.35 with plenty of headroom. */
-        camera={{ position: [0.55, 0.55, 4.6], fov: 22 }}
+        /* v49: wider FOV + longer distance + target aimed at the figure's
+           true mid-body so the WHOLE boneco fits — head to shoes — with
+           comfortable margin top and bottom. OfficeFigure is rendered at
+           position y=-0.78 with scale 2.6×2.86×2.6, so feet land at y≈-0.78
+           world and head tops out around y≈1.08. Framing on y=0.1 centers
+           this vertical span; fov 28 + distance 6.2 leaves enough canvas
+           on both ends that the shoes never get cropped at the bottom. */
+        camera={{ position: [0.7, 0.95, 6.2], fov: 28 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.35, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.1, 0)}
       >
         <color attach="background" args={["#070b16"]} />
         <ambientLight intensity={0.95} />
@@ -63,7 +66,7 @@ export const AgentAvatarPreview3D = ({
         <OrbitControls
           enablePan={false}
           enableZoom={false}
-          target={[0, 0.35, 0]}
+          target={[0, 0.1, 0]}
           maxPolarAngle={1.8}
           minPolarAngle={1.1}
         />

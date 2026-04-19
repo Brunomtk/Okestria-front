@@ -137,9 +137,13 @@ export const ITEM_METADATA: Record<string, { blocksNavigation: boolean }> = {
   door:            { blocksNavigation: false }, // passable
   // ── seating / lounge ──────────────────────────────────────────────────────
   chair:           { blocksNavigation: false }, // passable / agents sit on them
-  couch:           { blocksNavigation: true  },
-  couch_v:         { blocksNavigation: true  },
-  beanbag:         { blocksNavigation: true  }, // large floor seat (issue #4)
+  // v49: lounge seats are passable so agents can TARGET the cushion
+  // directly (pathfinder rejects blocked target cells and snaps to the
+  // nearest free cell, which is why agents kept landing outside the couch
+  // in v48). They're low-profile, so pass-through doesn't read as weird.
+  couch:           { blocksNavigation: false },
+  couch_v:         { blocksNavigation: false },
+  beanbag:         { blocksNavigation: false },
   // ── desks / workstations ──────────────────────────────────────────────────
   desk_cubicle:    { blocksNavigation: false }, // agents stand at these; collision handled separately
   executive_desk:  { blocksNavigation: true  },
