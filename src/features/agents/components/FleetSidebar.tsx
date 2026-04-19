@@ -140,12 +140,17 @@ export const FleetSidebar = ({
                     aria-hidden="true"
                     className={`ui-card-select-indicator ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-35"}`}
                   />
-                  {agent.avatarProfile ? (
-                    <AgentOfficeFigure3D
-                      profile={agent.avatarProfile}
-                      size={42}
-                    />
-                  ) : (
+                  {/* Always render the full-body office figure — the preview
+                      must match the office scene 1:1. If avatarProfile isn't
+                      hydrated yet, AgentOfficeFigure3D falls back to a seed
+                      derived profile so the user still sees the v42 model. */}
+                  <AgentOfficeFigure3D
+                    profile={agent.avatarProfile ?? null}
+                    seed={avatarSeed}
+                    size={42}
+                  />
+                  {/* Legacy fallback avatar kept for typecheck tree-shake */}
+                  {false && (
                     <AgentAvatar
                       seed={avatarSeed}
                       name={agent.name}

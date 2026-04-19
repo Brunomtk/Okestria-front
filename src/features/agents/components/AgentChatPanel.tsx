@@ -1792,12 +1792,12 @@ export const AgentChatPanel = ({
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
             <div className="group/avatar relative">
-              {agent.avatarProfile ? (
-                <AgentOfficeFigure3D
-                  profile={agent.avatarProfile}
-                  size={44}
-                />
-              ) : (
+              <AgentOfficeFigure3D
+                profile={agent.avatarProfile ?? null}
+                seed={avatarSeed}
+                size={52}
+              />
+              {false && (
                 <AgentAvatar
                   seed={avatarSeed}
                   name={agent.name}

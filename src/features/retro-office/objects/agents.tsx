@@ -227,8 +227,34 @@ export const AgentModel = memo(function AgentModel({
     const motionFrame = motionTimeRef.current + (agent.phaseOffset ?? 0);
     const frameValue = motionFrame + (agent.phaseOffset ?? 0) / WALK_ANIM_SPEED;
     const walkPhase = Math.sin(frameValue * WALK_ANIM_SPEED);
-    const workoutPhase = Math.sin(motionFrame * 0.18);
-    const workoutPushPhase = Math.sin(motionFrame * 0.18 + Math.PI / 2);
+    // Per-style cadence (Hz-ish). Lowered globally so reps read as natural
+    // human effort rather than anxious twitching. Heavy lifts (squat,
+    // deadlift, bench) are slow and controlled; bike/run cycles faster.
+    const cadenceByStyle: Partial<Record<string, number>> = {
+      run: 0.11,
+      bike: 0.10,
+      row: 0.07,
+      punch: 0.14,
+      box: 0.14,
+      stretch: 0.035, // slow yoga flow
+      squat: 0.055,
+      bench_press: 0.06,
+      deadlift: 0.05,
+      curl: 0.075,
+      kettlebell: 0.075,
+      cable: 0.07,
+      lift: 0.07,
+    };
+    const workoutCadence = cadenceByStyle[workoutStyle] ?? 0.08;
+    const workoutPhase = Math.sin(motionFrame * workoutCadence);
+    const workoutPushPhase = Math.sin(motionFrame * workoutCadence + Math.PI / 2);
+    // Secondary phase for yoga — advances through 4 poses per ~24s cycle.
+    // Each pose holds for ~6 seconds with a smooth blend between poses.
+    const yogaCycle = motionFrame * 0.022; // slow
+    const yogaPoseIndex = Math.floor(yogaCycle) % 4; // 0..3
+    const yogaPoseProgress = yogaCycle - Math.floor(yogaCycle); // 0..1
+    // Smooth in/out window so poses blend instead of snap.
+    const yogaBlend = Math.min(1, yogaPoseProgress * 3.5, (1 - yogaPoseProgress) * 3.5);
     groupRef.current.rotation.z = 0;
     
     // Idle animation system - select and manage idle behaviors
@@ -306,8 +332,17 @@ export const AgentModel = memo(function AgentModel({
           workoutBodyRotX = -0.12 + Math.max(0, workoutPhase) * 0.22;
           break;
         case "stretch":
-          // Forward fold alternating with upright — classic yoga flow
-          workoutBodyRotX = -0.05 + Math.max(0, workoutPhase) * 0.55;
+          // Yoga body lean per pose: forward fold on pose 0's tail end,
+          // upright for warrior / mountain / tree, slight back-bend on upward salute
+          if (yogaPoseIndex === 0) {
+            workoutBodyRotX = yogaPoseProgress > 0.5 ? (yogaPoseProgress - 0.5) * 1.6 : 0;
+          } else if (yogaPoseIndex === 1) {
+            workoutBodyRotX = 0.08; // slight hip-hinge
+          } else if (yogaPoseIndex === 2) {
+            workoutBodyRotX = -0.14; // slight back-bend
+          } else {
+            workoutBodyRotX = 0.02;
+          }
           break;
         case "run":
           workoutBodyRotX = 0.1;
@@ -374,7 +409,8 @@ export const AgentModel = memo(function AgentModel({
     if (isWorkout) {
       switch (workoutStyle) {
         case "stretch":
-          workoutBounce = 0.012 + Math.abs(workoutPhase) * 0.018;
+          // Very gentle rise/fall during yoga flow
+          workoutBounce = 0.008 + Math.abs(workoutPhase) * 0.006;
           break;
         case "row":
           workoutBounce = 0.015 + Math.abs(workoutPhase) * 0.028;
@@ -477,9 +513,38 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.06;
           groupRef.current.rotation.z = 0.05;
         } else if (workoutStyle === "stretch") {
-          leftArmRef.current.rotation.x = -1.58;
-          leftArmRef.current.rotation.z = -0.42;
-          leftArmRef.current.rotation.y = -0.08;
+          // Yoga flow: 4 poses blended via yogaPoseIndex + yogaPoseProgress.
+          // 0: mountain → forward fold  (arms sweep down from overhead)
+          // 1: warrior II                (left arm out to side, horizontal)
+          // 2: upward reach              (both arms straight up)
+          // 3: tree pose                 (arms at prayer, slight lift)
+          const blend = yogaBlend;
+          let armX = -0.08;
+          let armZ = -0.08;
+          let armY = 0;
+          if (yogaPoseIndex === 0) {
+            // Mountain (arms down) → forward fold (arms down-front)
+            armX = -0.05 - yogaPoseProgress * 0.25;
+            armZ = -0.05 - yogaPoseProgress * 0.08;
+          } else if (yogaPoseIndex === 1) {
+            // Warrior II — left arm extended out to side, horizontal
+            armX = -1.55;
+            armZ = -1.35;
+            armY = -0.05;
+          } else if (yogaPoseIndex === 2) {
+            // Upward salute — both arms reach straight up overhead
+            armX = -2.85;
+            armZ = -0.18;
+            armY = -0.05;
+          } else {
+            // Tree / prayer — hands come together at chest level
+            armX = -1.25;
+            armZ = -0.55;
+            armY = -0.25;
+          }
+          leftArmRef.current.rotation.x = armX * blend + (-0.08) * (1 - blend);
+          leftArmRef.current.rotation.z = armZ * blend + (-0.05) * (1 - blend);
+          leftArmRef.current.rotation.y = armY * blend;
         } else if (workoutStyle === "squat") {
           // Both hands up holding a bar across the shoulders — elbows up
           leftArmRef.current.rotation.x = -2.1;
@@ -624,9 +689,33 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.06;
           groupRef.current.rotation.z = -0.05;
         } else if (workoutStyle === "stretch") {
-          rightArmRef.current.rotation.x = -1.58;
-          rightArmRef.current.rotation.z = 0.42;
-          rightArmRef.current.rotation.y = 0.08;
+          // Yoga flow — mirror of left arm.
+          const blend = yogaBlend;
+          let armX = -0.08;
+          let armZ = 0.08;
+          let armY = 0;
+          if (yogaPoseIndex === 0) {
+            armX = -0.05 - yogaPoseProgress * 0.25;
+            armZ = 0.05 + yogaPoseProgress * 0.08;
+          } else if (yogaPoseIndex === 1) {
+            // Warrior II — right arm extended back (opposite of left)
+            armX = -1.55;
+            armZ = 1.35;
+            armY = 0.05;
+          } else if (yogaPoseIndex === 2) {
+            // Upward salute
+            armX = -2.85;
+            armZ = 0.18;
+            armY = 0.05;
+          } else {
+            // Prayer position
+            armX = -1.25;
+            armZ = 0.55;
+            armY = 0.25;
+          }
+          rightArmRef.current.rotation.x = armX * blend + (-0.08) * (1 - blend);
+          rightArmRef.current.rotation.z = armZ * blend + (0.05) * (1 - blend);
+          rightArmRef.current.rotation.y = armY * blend;
         } else if (workoutStyle === "squat") {
           // Mirror of left arm — hands gripping bar across shoulders
           rightArmRef.current.rotation.x = -2.1;
@@ -733,7 +822,13 @@ export const AgentModel = memo(function AgentModel({
         if (workoutStyle === "run") leftLegX = workoutPhase * 0.7;
         else if (workoutStyle === "bike") leftLegX = workoutPhase * 0.82;
         else if (workoutStyle === "row") leftLegX = 0.14 + Math.max(0, workoutPhase) * 0.42;
-        else if (workoutStyle === "stretch") leftLegX = -0.2 + Math.abs(workoutPhase) * 0.08;
+        else if (workoutStyle === "stretch") {
+          // Yoga leg poses per yogaPoseIndex
+          if (yogaPoseIndex === 0) leftLegX = yogaPoseProgress * 0.18;
+          else if (yogaPoseIndex === 1) leftLegX = 0.55; // warrior front knee bend
+          else if (yogaPoseIndex === 2) leftLegX = 0.0; // upward stretch - straight
+          else leftLegX = 0.08; // tree - slight bend
+        }
         else if (workoutStyle === "box" || workoutStyle === "punch")
           leftLegX = 0.06 + workoutPhase * 0.14;
         else if (workoutStyle === "squat") {
@@ -778,7 +873,13 @@ export const AgentModel = memo(function AgentModel({
         if (workoutStyle === "run") rightLegX = -workoutPhase * 0.7;
         else if (workoutStyle === "bike") rightLegX = -workoutPhase * 0.82;
         else if (workoutStyle === "row") rightLegX = 0.14 + Math.max(0, -workoutPhase) * 0.42;
-        else if (workoutStyle === "stretch") rightLegX = -0.12 + Math.abs(workoutPhase) * 0.08;
+        else if (workoutStyle === "stretch") {
+          // Right leg mirrors/differs in warrior pose (back leg straight)
+          if (yogaPoseIndex === 0) rightLegX = yogaPoseProgress * 0.18;
+          else if (yogaPoseIndex === 1) rightLegX = -0.12; // warrior back leg
+          else if (yogaPoseIndex === 2) rightLegX = 0.0;
+          else rightLegX = -0.65; // tree - right leg lifted and bent to knee of left
+        }
         else if (workoutStyle === "box" || workoutStyle === "punch")
           rightLegX = 0.06 - workoutPhase * 0.14;
         else if (workoutStyle === "squat") {

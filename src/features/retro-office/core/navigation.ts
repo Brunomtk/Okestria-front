@@ -16,6 +16,7 @@ import {
 } from "@/features/retro-office/core/constants";
 import {
   getItemBounds,
+  getItemRotationRadians,
   ITEM_FOOTPRINT,
   ITEM_METADATA,
   snap,
@@ -703,15 +704,32 @@ export const getGymWorkoutLocations = (
       const bounds = getItemBounds(item);
       const equipmentCenterX = bounds.x + bounds.w / 2;
       const equipmentCenterY = bounds.y + bounds.h / 2;
+      // rot = how the equipment is rotated around world +Y (intrinsic + facing).
+      // `forward` is the editor-grid direction the equipment's local +X axis
+      // points after rotation — that's where the business end (console of
+      // a treadmill, head of a bench, rack uprights, etc.) lives.
+      const rot = getItemRotationRadians(item);
+      const forwardDx = Math.cos(rot);
+      const forwardDy = -Math.sin(rot);
+      // Perpendicular (right side of equipment when looking forward).
+      const rightDx = -Math.sin(rot);
+      const rightDy = -Math.cos(rot);
+      // Classic "look at" facing (agent turns toward equipment center).
       const facingTowardEquipment = (targetX: number, targetY: number) =>
         Math.atan2(equipmentCenterX - targetX, equipmentCenterY - targetY);
+      // Facing the same way the equipment is oriented (for treadmill run,
+      // cable pulldown, etc. where the agent faces forward WITH the gear).
+      const facingWithEquipment = Math.atan2(forwardDx, forwardDy);
       if (item.type === "treadmill") {
-        const x = item.x + 35;
-        const y = item.y + 65;
+        // Agent stands ON the belt, slightly back from the console so they
+        // are visibly running on the treadmill (not jammed in the display).
+        const backOffset = 6;
+        const x = equipmentCenterX - forwardDx * backOffset;
+        const y = equipmentCenterY - forwardDy * backOffset;
         return {
           x,
           y,
-          facing: facingTowardEquipment(x, y),
+          facing: facingWithEquipment,
           workoutStyle: "run",
         };
       }
@@ -746,12 +764,12 @@ export const getGymWorkoutLocations = (
         };
       }
       if (item.type === "exercise_bike") {
-        const x = item.x + 18;
-        const y = item.y + 28;
+        // Agent sits on the seat — slightly back from the handlebars, facing forward.
+        const backOffset = 4;
         return {
-          x,
-          y,
-          facing: facingTowardEquipment(x, y),
+          x: equipmentCenterX - forwardDx * backOffset,
+          y: equipmentCenterY - forwardDy * backOffset,
+          facing: facingWithEquipment,
           workoutStyle: "bike",
         };
       }
@@ -786,22 +804,22 @@ export const getGymWorkoutLocations = (
         };
       }
       if (item.type === "rowing_machine") {
-        const x = item.x + 28;
-        const y = item.y + 16;
+        // Agent sits on the slider — slightly behind the handle/flywheel,
+        // facing the flywheel (same direction as machine forward).
+        const backOffset = 8;
         return {
-          x,
-          y,
-          facing: facingTowardEquipment(x, y),
+          x: equipmentCenterX - forwardDx * backOffset,
+          y: equipmentCenterY - forwardDy * backOffset,
+          facing: facingWithEquipment,
           workoutStyle: "row",
         };
       }
       if (item.type === "yoga_mat") {
-        const x = item.x + 35;
-        const y = item.y + 15;
+        // Stand in the CENTER of the mat, facing along its long axis.
         return {
-          x,
-          y,
-          facing: facingTowardEquipment(x, y),
+          x: equipmentCenterX,
+          y: equipmentCenterY,
+          facing: facingWithEquipment,
           workoutStyle: "stretch",
         };
       }

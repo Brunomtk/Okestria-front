@@ -819,16 +819,18 @@ type AgentOfficeFigure3DProps = {
   profile: AgentAvatarProfile | null | undefined;
   size: number;
   className?: string;
+  seed?: string;
 };
 
 export const AgentOfficeFigure3D = ({
   profile,
   size,
   className = "",
+  seed,
 }: AgentOfficeFigure3DProps) => {
   const resolvedProfile = useMemo(
-    () => profile ?? createDefaultAgentAvatarProfile("preview"),
-    [profile],
+    () => profile ?? createDefaultAgentAvatarProfile(seed ?? "preview"),
+    [profile, seed],
   );
   const profileKey = useMemo(
     () => JSON.stringify(resolvedProfile),
