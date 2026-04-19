@@ -6349,7 +6349,7 @@ export function OfficeScreen({
                             type="button"
                             onClick={() => {
                               setSquadOpsSquadId(focusedSquadChatTarget.id);
-                              setSquadOpsOpen(true);
+                              setSquadOpsModalOpen(true);
                             }}
                             className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-500/18"
                           >
