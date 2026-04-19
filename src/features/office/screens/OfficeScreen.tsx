@@ -4868,30 +4868,18 @@ export function OfficeScreen({
     return focusedSquadChatTasks.map((task) => ({
       id: task.id,
       squadId: task.squadId,
+      squadName: focusedSquadChatTarget?.name ?? "Squad",
       title: task.title,
-      status: task.status,
-      createdDate: task.createdDate,
-      createdByUserId: task.createdByUserId,
-      preferredModel: task.preferredModel,
       executionMode: task.executionMode,
+      preferredModel: task.preferredModel,
+      status: task.status,
+      runCount: task.runs.length,
       startedAtUtc: task.startedAtUtc,
       finishedAtUtc: task.finishedAtUtc,
-      runCount: task.runs.length,
-      completedRunCount: task.runs.filter((run) => (run.status ?? "").trim().toLowerCase() === "completed").length,
-      failedRunCount: task.runs.filter((run) => {
-        const status = (run.status ?? "").trim().toLowerCase();
-        return status === "failed" || status === "error" || status === "cancelled";
-      }).length,
-      latestRunStartedAtUtc: task.runs
-        .map((run) => run.startedAtUtc)
-        .filter((value): value is string => Boolean(value))
-        .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null,
-      latestRunFinishedAtUtc: task.runs
-        .map((run) => run.finishedAtUtc)
-        .filter((value): value is string => Boolean(value))
-        .sort((left, right) => new Date(right).getTime() - new Date(left).getTime())[0] ?? null,
+      createdDate: task.createdDate,
+      updatedDate: task.updatedDate,
     }));
-  }, [focusedSquadChatTasks]);
+  }, [focusedSquadChatTarget?.name, focusedSquadChatTasks]);
 
   useEffect(() => {
     if (!focusedSquadChatTarget) return;
