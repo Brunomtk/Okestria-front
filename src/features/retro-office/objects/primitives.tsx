@@ -944,18 +944,21 @@ export function WallSegmentModel({
       }}
     >
       <group position={[width / 2, 0, depth / 2]} rotation={[0, rotY, 0]}>
+        {/* v36: interior partitions are matte black for sharp contrast with the cream perimeter + graphite floor */}
         <mesh position={[0, 0.5, 0]} receiveShadow>
           <boxGeometry args={[width, 1, depth]} />
           <meshStandardMaterial
-            color="#787878"
+            color="#0d0d11"
             emissive={highlightColor}
-            emissiveIntensity={0.4 + highlightIntensity}
-            roughness={0.92}
+            emissiveIntensity={0.25 + highlightIntensity}
+            roughness={0.9}
+            metalness={0.08}
           />
         </mesh>
+        {/* Floor trim — slightly lighter charcoal so it reads as a baseboard detail against pure black */}
         <mesh position={[0, 0.03, 0]}>
           <boxGeometry args={[width + 0.02, 0.06, Math.max(depth, 0.06)]} />
-          <meshStandardMaterial color="#0c0c10" roughness={0.8} />
+          <meshStandardMaterial color="#1a1a20" roughness={0.8} />
         </mesh>
       </group>
     </group>

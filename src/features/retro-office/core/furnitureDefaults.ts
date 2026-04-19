@@ -96,29 +96,28 @@ const PREVIOUS_SERVER_ROOM_ITEMS_TOP_RIGHT: FurnitureSeed[] = [
 // empty preserves the legacy server-room migration path without re-adding it.
 const DEFAULT_DINING_ITEMS: FurnitureSeed[] = [];
 
-// SERVER ROOM v35 — compact, walkable, only 2 racks (cx=0..215 · cy=560..720).
-// North wall runs the full width, east wall broken by door between cy=620..660.
-// 2 server racks stand side-by-side against the north wall, leaving a clear
-// south walkway for the agent to reach the server_terminal.
+// SERVER ROOM v36 — east wall ALIGNED with the meeting room east wall (cx=315 · cy=560..720).
+// Still only 2 server racks (kept compact), but the east wall now continues in the same
+// vertical line as the meeting room's east wall for a clean, unified partition.
 const DEFAULT_SERVER_ROOM_ITEMS: FurnitureSeed[] = [
-  // North wall (full width of the compact server room)
-  { type: "wall", x: 0, y: 560, w: 223, h: WALL_THICKNESS },
-  // East wall (top half + bottom half with door gap between)
-  { type: "wall", x: 215, y: 560, w: WALL_THICKNESS, h: 60 },
+  // North wall (full width of the server room, reaching the east wall at cx=315)
+  { type: "wall", x: 0, y: 560, w: 323, h: WALL_THICKNESS },
+  // East wall (top half + bottom half with door gap between) — aligned with meeting room
+  { type: "wall", x: 315, y: 560, w: WALL_THICKNESS, h: 60 },
   {
     type: "door",
-    x: 199,
+    x: 299,
     y: 630,
     w: DOOR_LENGTH,
     h: DOOR_THICKNESS,
     facing: 90,
   },
-  { type: "wall", x: 215, y: 660, w: WALL_THICKNESS, h: 60 },
-  // 2 server racks tight to the north wall, centered with even spacing
-  { type: "server_rack", x: 40, y: 580, facing: 0 },
-  { type: "server_rack", x: 130, y: 580, facing: 0 },
+  { type: "wall", x: 315, y: 660, w: WALL_THICKNESS, h: 60 },
+  // 2 server racks tight to the north wall, spaced further apart now that the room is wider
+  { type: "server_rack", x: 80, y: 580, facing: 0 },
+  { type: "server_rack", x: 200, y: 580, facing: 0 },
   // Single admin terminal along the south wall (walkable aisle)
-  { type: "server_terminal", x: 96, y: 685, facing: 0 },
+  { type: "server_terminal", x: 140, y: 685, facing: 0 },
 ];
 
 const LEGACY_GYM_ROOM_ITEMS: FurnitureSeed[] = [
@@ -402,9 +401,10 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   // Rectangular conference table — shortened so the two end chairs at y=60 and y=430 (user-specified) fit cleanly.
   // Table footprint: cx=77..237 (w=160) · cy=100..418 (h=318); 16px clearance from each end chair.
   { type: "conference_table", x: 77, y: 100, w: 160, h: 318 },
-  // 2 end chairs at user-specified exact positions: (150, 60 • 0°) and (150, 430 • 180°)
-  { type: "chair", x: 150, y: 60,  facing: 0 },
-  { type: "chair", x: 150, y: 430, facing: 180 },
+  // 2 end chairs — flipped so they face INTO the table (was facing away before).
+  // North end chair faces south (180°) into the table; south end chair faces north (0°).
+  { type: "chair", x: 150, y: 60,  facing: 180 },
+  { type: "chair", x: 150, y: 430, facing: 0 },
   // 10 side chairs — 5 west facing east, 5 east facing west — centered along the shorter table.
   // Table center y = 259. Chair centers offset ±0, ±60, ±120 → top-left y = 127, 187, 247, 307, 367.
   { type: "chair", x: 53,  y: 127, facing: 90 },
@@ -497,16 +497,16 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   { type: "mouse", x: 909, y: 523 },
   { type: "trash", x: 886, y: 517 },
 
-  // === SERVER ROOM v35 (compact, walkable — cx=0..215 · cy=560..720) ===
-  // Smaller room with only 2 server racks against the north wall and a single
-  // admin terminal along the south walkway. Door on east wall for easy entry.
-  { type: "wall", x: 0, y: 560, w: 223, h: 8 },
-  { type: "wall", x: 215, y: 560, w: 8, h: 60 },
-  { type: "door", x: 199, y: 630, w: 40, h: 8, facing: 90 },
-  { type: "wall", x: 215, y: 660, w: 8, h: 60 },
-  { type: "server_rack", x: 40, y: 580, facing: 0 },
-  { type: "server_rack", x: 130, y: 580, facing: 0 },
-  { type: "server_terminal", x: 96, y: 685, facing: 0 },
+  // === SERVER ROOM v36 (aligned with meeting room east wall — cx=0..315 · cy=560..720) ===
+  // East wall runs in the same vertical line as the meeting room east wall (cx=315).
+  // Still only 2 server racks (compact) + 1 admin terminal, plenty of walking room.
+  { type: "wall", x: 0, y: 560, w: 323, h: 8 },
+  { type: "wall", x: 315, y: 560, w: 8, h: 60 },
+  { type: "door", x: 299, y: 630, w: 40, h: 8, facing: 90 },
+  { type: "wall", x: 315, y: 660, w: 8, h: 60 },
+  { type: "server_rack", x: 80, y: 580, facing: 0 },
+  { type: "server_rack", x: 200, y: 580, facing: 0 },
+  { type: "server_terminal", x: 140, y: 685, facing: 0 },
 
   // === EAST-WING ENTRANCE WALLS (preserved) ===
   { type: "wall", x: 1075, y: 0, w: 8, h: 150 },

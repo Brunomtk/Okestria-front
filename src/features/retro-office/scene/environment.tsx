@@ -252,7 +252,7 @@ export const FloorAndWalls = memo(function FloorAndWalls({
         receiveShadow
       >
         <planeGeometry args={[localOfficeWidth, localOfficeHeight, 22, 14]} />
-        <meshLambertMaterial color="#c8a97e" />
+        <meshLambertMaterial color="#3a3d42" />
       </mesh>
 
       {showRemoteOffice ? (
@@ -263,7 +263,7 @@ export const FloorAndWalls = memo(function FloorAndWalls({
             receiveShadow
           >
             <planeGeometry args={[localOfficeWidth, localOfficeHeight, 22, 14]} />
-            <meshLambertMaterial color="#c8a97e" />
+            <meshLambertMaterial color="#3a3d42" />
           </mesh>
 
           <mesh
@@ -575,8 +575,9 @@ export const FloorAndWalls = memo(function FloorAndWalls({
       })}
 
       {(() => {
-        const wallColor = "#8d6e63";
-        const wallEmissive = "#4e342e";
+        // v36: canvas perimeter walls are cream white for a bright, modern office feel
+        const wallColor = "#f5ebd5";
+        const wallEmissive = "#d8c9a3";
 
         return (
           <>
