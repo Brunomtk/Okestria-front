@@ -1,6 +1,20 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 
+import type { AgentIntent } from "@/features/retro-office/core/agentIntents";
+import {
+  type AgentRoutine,
+  type RoutineAvailability,
+  type RoutineContext,
+  type RoutineCooldownMap,
+  advanceRoutine,
+  cooldownExpiryFor,
+  currentStep,
+  instantiateRoutine,
+  isRoutineComplete,
+  pickRoutineContext,
+  pushRecentContext,
+} from "@/features/retro-office/core/agentRoutines";
 import {
   CANVAS_W,
   DESK_STICKY_MS,
@@ -57,19 +71,14 @@ const DECISION_JITTER_MS = 500;
 const MOTION_ZONE_PADDING = 28;
 
 type AgentMode = "forced" | "autonomous" | "error";
-type AgentIntent =
-  | "desk"
-  | "meeting_room"
-  | "gym"
-  | "qa_lab"
-  | "server_room"
-  | "sms_booth"
-  | "phone_booth"
-  | "lounge"
-  | "kitchen"
-  | "jukebox"
-  | "roam"
-  | "roam_remote";
+
+// AgentIntent is shared with agentRoutines so routines can reference the
+// same intent names without duplicating the enum.
+export type { AgentIntent };
+
+// Soft floor on time between routine step transitions so agents don't
+// hop between sub-actions faster than the animation can sell.
+const ROUTINE_STEP_MIN_SPACING_MS = 600;
 
 type AgentBrain = {
   mode: AgentMode;
@@ -84,6 +93,16 @@ type AgentBrain = {
   progressX: number;
   progressY: number;
   progressSince: number;
+  // --- Routine system state ---
+  // Active routine the agent is committed to (null = ready to pick a new one).
+  routine: AgentRoutine | null;
+  // Soft expiry timestamp for the current routine step (forces progression
+  // past the step's minStageMs even if the arrived plan had a short linger).
+  routineStepEndsAt: number;
+  // Per-context cooldowns to avoid immediate repetition of the same routine.
+  cooldownByContext: RoutineCooldownMap;
+  // Last few routine contexts this agent engaged in (most recent first).
+  recentRoutineContexts: RoutineContext[];
 };
 
 type RoutePlan = {
@@ -188,6 +207,12 @@ const DEFAULT_BRAIN = (x: number, y: number, now: number): AgentBrain => ({
   progressX: x,
   progressY: y,
   progressSince: now,
+  // Routines start empty — the first decision tick picks one based on
+  // availability + weights.
+  routine: null,
+  routineStepEndsAt: 0,
+  cooldownByContext: {},
+  recentRoutineContexts: [],
 });
 
 const markPlanOnBrain = (
@@ -218,33 +243,6 @@ const resetBrainProgress = (brain: AgentBrain, x: number, y: number, now: number
   brain.progressX = x;
   brain.progressY = y;
   brain.progressSince = now;
-};
-
-const scoreCandidate = (
-  actionKey: string,
-  currentX: number,
-  currentY: number,
-  targetX: number,
-  targetY: number,
-  recentActions: string[],
-  baseWeight: number,
-) => {
-  const distance = Math.hypot(targetX - currentX, targetY - currentY);
-  const distanceFactor = Math.min(1.35, Math.max(0.7, distance / 260));
-  const repeatPenalty = recentActions.includes(actionKey) ? 0.58 : 1;
-  return baseWeight * distanceFactor * repeatPenalty * (0.88 + Math.random() * 0.24);
-};
-
-const chooseWeighted = <T extends { score: number }>(candidates: T[]): T | null => {
-  const eligible = candidates.filter((candidate) => Number.isFinite(candidate.score) && candidate.score > 0);
-  if (eligible.length === 0) return null;
-  const total = eligible.reduce((sum, candidate) => sum + candidate.score, 0);
-  let cursor = Math.random() * total;
-  for (const candidate of eligible) {
-    cursor -= candidate.score;
-    if (cursor <= 0) return candidate;
-  }
-  return eligible[eligible.length - 1] ?? null;
 };
 
 const isPointBusy = (
@@ -818,119 +816,290 @@ export function useRebuiltAgentTick(
     ],
   );
 
-  const buildAutonomousPlan = useCallback(
-    (agent: RenderAgent, others: RenderAgent[], brain: AgentBrain): RoutePlan => {
+  // Build a "stay put" plan used by routine pause steps (breather between
+  // gym sets, short posture shift on the couch, quiet observation moment).
+  // Keeps the agent's current visual state so a working_out breather still
+  // looks like the agent is in the middle of a workout session, not
+  // suddenly idle-standing in the gym.
+  const buildPauseRoutinePlan = useCallback(
+    (agent: RenderAgent, actionKey: string, pauseMs: number): RoutePlan => {
+      const restState: RenderAgent["state"] =
+        agent.state === "walking" ? "standing" : agent.state;
+      return {
+        actionKey,
+        mode: "autonomous",
+        lingerMs: Math.max(pauseMs, ROUTINE_STEP_MIN_SPACING_MS),
+        targetX: agent.x,
+        targetY: agent.y,
+        facing: agent.facing,
+        path: [],
+        state: restState,
+        interactionTarget: agent.interactionTarget,
+        smsBoothStage: agent.smsBoothStage,
+        phoneBoothStage: agent.phoneBoothStage,
+        serverRoomStage: agent.serverRoomStage,
+        gymStage: agent.gymStage,
+        qaLabStage: agent.qaLabStage,
+        qaLabStationType: agent.qaLabStationType,
+        workoutStyle: agent.workoutStyle,
+      };
+    },
+    [],
+  );
+
+  const buildRoamFallbackPlan = useCallback(
+    (agent: RenderAgent, others: RenderAgent[]): RoutePlan => {
       if (isRemoteOfficeAgentId(agent.id)) {
-        const point = pickAvailablePoint(agent.id, REMOTE_ROAM_POINTS, others, agent.x, agent.y, 100)
-          ?? chooseRandom(REMOTE_ROAM_POINTS, REMOTE_ROAM_POINTS[0] ?? { x: agent.x, y: agent.y });
+        const remotePoint = pickAvailablePoint(
+          agent.id,
+          REMOTE_ROAM_POINTS,
+          others,
+          agent.x,
+          agent.y,
+          100,
+        ) ?? chooseRandom(REMOTE_ROAM_POINTS, REMOTE_ROAM_POINTS[0] ?? { x: agent.x, y: agent.y });
         return buildIntentPlan(agent, "roam_remote", "autonomous", others, {
+          x: remotePoint.x,
+          y: remotePoint.y,
+          facing: angleFrom(agent.x, agent.y, remotePoint.x, remotePoint.y),
+        });
+      }
+      const roamPool = ROAM_POINTS.map((point) => ({
+        x: point.x,
+        y: point.y,
+        facing: angleFrom(agent.x, agent.y, point.x, point.y),
+      }));
+      const fallback = pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 80)
+        ?? {
+          x: agent.x + 60,
+          y: agent.y + 20,
+          facing: angleFrom(agent.x, agent.y, agent.x + 60, agent.y + 20),
+        };
+      return buildIntentPlan(agent, "roam", "autonomous", others, fallback);
+    },
+    [buildIntentPlan],
+  );
+
+  // Snapshot of what activities are actually available in the current scene.
+  // This is recomputed per call since furniture is mutable, but it's cheap.
+  const getRoutineAvailability = useCallback(
+    (agent: RenderAgent): RoutineAvailability => {
+      const furniture = furnitureRef.current ?? [];
+      const hasLounge = furniture.some((item) =>
+        ["couch", "couch_v", "beanbag", "ottoman"].includes(item.type),
+      );
+      const hasKitchen = furniture.some((item) =>
+        ["coffee_machine", "water_cooler", "fridge", "vending", "sink", "cabinet"].includes(
+          item.type,
+        ),
+      );
+      const hasJukebox = furniture.some((item) =>
+        ["jukebox", "arcade", "foosball", "air_hockey"].includes(item.type),
+      );
+      const hasSmsBooth = furniture.some((item) => item.type === "sms_booth");
+      const hasPhoneBooth = furniture.some((item) => item.type === "phone_booth");
+      return {
+        hasGym: gymWorkoutLocations.length > 0,
+        hasQaLab: qaLabStations.length > 0,
+        hasServerRoom: true,
+        hasLounge,
+        hasKitchen,
+        hasJukebox,
+        hasDesks: deskLocations.length > 0,
+        hasSmsBooth,
+        hasPhoneBooth,
+        isRemote: isRemoteOfficeAgentId(agent.id),
+      };
+    },
+    [deskLocations.length, furnitureRef, gymWorkoutLocations.length, qaLabStations.length],
+  );
+
+  // Finalize a routine that just finished: record cooldown + push to recent
+  // context list. Keeps the repeat-prevention data fresh.
+  const finalizeRoutine = useCallback((brain: AgentBrain, now: number) => {
+    if (!brain.routine) return;
+    const context = brain.routine.context;
+    brain.cooldownByContext = {
+      ...brain.cooldownByContext,
+      [context]: cooldownExpiryFor(context, now),
+    };
+    brain.recentRoutineContexts = pushRecentContext(brain.recentRoutineContexts, context);
+    brain.routine = null;
+  }, []);
+
+  // Resolve a furniture-aware preferred point for routine steps whose intent
+  // defaults to "stay at current position" when no preferred point is given.
+  // Without this, the first "lounge" step of a rest routine would make the
+  // agent sit wherever they currently stand instead of walking to a couch.
+  //
+  // For gym / qa_lab / server_room / booths / desk we return null because
+  // their dedicated intent handlers already pick targets from room-specific
+  // pools (chooseGymTarget, chooseQaTarget, resolveServerRoomRoute, etc.).
+  const resolveRoutinePreferredPoint = useCallback(
+    (
+      agent: RenderAgent,
+      intent: AgentIntent,
+      others: RenderAgent[],
+    ): { x: number; y: number; facing: number } | null => {
+      const furniture = furnitureRef.current ?? [];
+      if (intent === "lounge") {
+        const points = buildLoungePoints(furniture);
+        if (points.length === 0) return null;
+        // Minimum distance 0 so subsequent lounge beats can pick the nearby
+        // couch point the agent is already at (natural stay-on-couch
+        // behaviour) instead of forcing a jump to a far couch.
+        return pickAvailablePoint(agent.id, points, others, agent.x, agent.y, 0);
+      }
+      if (intent === "kitchen") {
+        const points = [
+          ...buildKitchenPoints(furniture),
+          ...buildPantryAnchorPoints(furniture),
+        ];
+        if (points.length === 0) return null;
+        return pickAvailablePoint(agent.id, points, others, agent.x, agent.y, 0);
+      }
+      if (intent === "jukebox") {
+        const points = buildFunPoints(furniture);
+        if (points.length === 0) return null;
+        return pickAvailablePoint(agent.id, points, others, agent.x, agent.y, 0);
+      }
+      if (intent === "roam") {
+        // Observe routines use the existing roam pool so the agent visits
+        // diverse parts of the office rather than hovering in place.
+        const pool = ROAM_POINTS.map((point) => ({
           x: point.x,
           y: point.y,
           facing: angleFrom(agent.x, agent.y, point.x, point.y),
-        });
+        }));
+        return (
+          pickAvailablePoint(agent.id, pool, others, agent.x, agent.y, 80) ?? null
+        );
+      }
+      if (intent === "roam_remote") {
+        const pool = REMOTE_ROAM_POINTS.map((point) => ({
+          x: point.x,
+          y: point.y,
+          facing: angleFrom(agent.x, agent.y, point.x, point.y),
+        }));
+        return (
+          pickAvailablePoint(agent.id, pool, others, agent.x, agent.y, 80) ?? null
+        );
+      }
+      return null;
+    },
+    [furnitureRef],
+  );
+
+  /**
+   * Produce the next idle plan for an agent, driven by contextual routines.
+   *
+   * Flow:
+   *   1. If the agent has no routine (or the previous one finished), a new
+   *      context is picked via `pickRoutineContext` using weights +
+   *      cooldowns + recency penalties.
+   *   2. The current step of the routine is dispatched:
+   *        - `pauseMs > 0` steps become in-place linger plans (breather,
+   *          posture shift, observation beat).
+   *        - Active steps delegate to `buildIntentPlan` which handles the
+   *          existing multi-stage approach logic (gym door_outer ->
+   *          door_inner -> workout, etc.).
+   *   3. The routine index is advanced after dispatch so the next call
+   *      naturally picks up the next step.
+   */
+  const buildAutonomousPlan = useCallback(
+    (
+      agent: RenderAgent,
+      others: RenderAgent[],
+      brain: AgentBrain,
+      now: number,
+    ): RoutePlan => {
+      // Remote agents live in a separate zone and should just drift between
+      // remote roam points. No routine machinery needed.
+      if (isRemoteOfficeAgentId(agent.id)) {
+        brain.routine = null;
+        return buildRoamFallbackPlan(agent, others);
       }
 
-      const furniture = furnitureRef.current ?? [];
-      const kitchenPoints = [...buildKitchenPoints(furniture), ...buildPantryAnchorPoints(furniture)];
-      const loungePoints = buildLoungePoints(furniture);
-      const funPoints = buildFunPoints(furniture);
+      // If we were running a routine and it's now done, finalize it so the
+      // cooldown map + recent context list reflect the completed routine.
+      if (brain.routine && isRoutineComplete(brain.routine)) {
+        finalizeRoutine(brain, now);
+      }
 
-      const routeModel = ROAM_ROUTE_MODELS[brain.roamModel] ?? ROAM_ROUTE_MODELS.loop;
-      const roamRoutePoints = routeModel.map((point) => ({
-        x: point.x,
-        y: point.y,
-        facing: point.facing ?? angleFrom(agent.x, agent.y, point.x, point.y),
-      }));
-      const roamPool = [...roamRoutePoints, ...ROAM_POINTS.map((point) => ({ x: point.x, y: point.y, facing: angleFrom(agent.x, agent.y, point.x, point.y) }))];
-
-      const candidates: Array<{ score: number; plan: RoutePlan }> = [];
-      const pushCandidate = (
-        actionKey: string,
-        weight: number,
-        build: () => RoutePlan | null,
-      ) => {
-        const plan = build();
-        if (!plan) return;
-        candidates.push({
-          score: scoreCandidate(
-            actionKey,
-            agent.x,
-            agent.y,
-            plan.targetX,
-            plan.targetY,
-            brain.recentActions,
-            weight,
-          ),
-          plan,
+      // Pick a fresh routine if we don't currently have one.
+      if (!brain.routine) {
+        const availability = getRoutineAvailability(agent);
+        const context = pickRoutineContext({
+          now,
+          cooldowns: brain.cooldownByContext,
+          recentContexts: brain.recentRoutineContexts,
+          availability,
         });
-      };
-
-      pushCandidate("roam", 1.5, () => {
-        const routePoint = roamRoutePoints[brain.roamIndex % Math.max(1, roamRoutePoints.length)]
-          ?? pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 100);
-        if (!routePoint || isPointBusy(agent.id, routePoint.x, routePoint.y, others)) return null;
-        return buildIntentPlan(agent, "roam", "autonomous", others, routePoint);
-      });
-
-      pushCandidate("roam_wide", 1.3, () => {
-        const point = pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 120);
-        if (!point) return null;
-        return buildIntentPlan(agent, "roam", "autonomous", others, point);
-      });
-
-      pushCandidate("kitchen", 1.1, () => {
-        const point = pickAvailablePoint(agent.id, kitchenPoints, others, agent.x, agent.y, 90);
-        if (!point) return null;
-        return buildIntentPlan(agent, "kitchen", "autonomous", others, point);
-      });
-
-      pushCandidate("lounge", 0.95, () => {
-        const point = pickAvailablePoint(agent.id, loungePoints, others, agent.x, agent.y, 80);
-        if (!point) return null;
-        return buildIntentPlan(agent, "lounge", "autonomous", others, point);
-      });
-
-      pushCandidate("desk", 0.9, () =>
-        deskLocations.length > 0 ? buildIntentPlan(agent, "desk", "autonomous", others) : null,
-      );
-
-      pushCandidate("jukebox", danceUntilByAgentId[agent.id] && danceUntilByAgentId[agent.id] > Date.now() ? 1.15 : 0.55, () => {
-        const point = pickAvailablePoint(agent.id, funPoints, others, agent.x, agent.y, 90);
-        if (!point) return null;
-        return buildIntentPlan(agent, "jukebox", "autonomous", others, point);
-      });
-
-      pushCandidate("gym", 0.32, () =>
-        gymWorkoutLocations.length > 0 ? buildIntentPlan(agent, "gym", "autonomous", others) : null,
-      );
-
-      pushCandidate("qa_lab", 0.26, () =>
-        qaLabStations.length > 0 ? buildIntentPlan(agent, "qa_lab", "autonomous", others) : null,
-      );
-
-      pushCandidate("server_room", 0.2, () => buildIntentPlan(agent, "server_room", "autonomous", others));
-
-      const winner = chooseWeighted(candidates)?.plan;
-      if (winner) {
-        brain.roamIndex += 1;
-        if (brain.roamIndex % 4 === 0) {
-          const currentIndex = ROAM_MODEL_ORDER.indexOf(brain.roamModel);
-          brain.roamModel = ROAM_MODEL_ORDER[(currentIndex + 1) % ROAM_MODEL_ORDER.length] ?? brain.roamModel;
+        if (context) {
+          brain.routine = instantiateRoutine(context, now);
         }
-        return winner;
       }
 
-      const fallback = pickAvailablePoint(agent.id, roamPool, others, agent.x, agent.y, 80)
-        ?? { x: agent.x + 60, y: agent.y + 20, facing: angleFrom(agent.x, agent.y, agent.x + 60, agent.y + 20) };
-      return buildIntentPlan(agent, "roam", "autonomous", others, fallback);
+      // Nothing to run — gracefully degrade to a roam hop.
+      if (!brain.routine) {
+        return buildRoamFallbackPlan(agent, others);
+      }
+
+      const step = currentStep(brain.routine);
+      if (!step) {
+        // Empty routine (shouldn't normally happen). Clear and fall back.
+        finalizeRoutine(brain, now);
+        return buildRoamFallbackPlan(agent, others);
+      }
+
+      // Build the plan for this step. Pause steps keep the agent in place;
+      // active steps go through the existing intent planner.
+      let plan: RoutePlan;
+      if (step.pauseMs > 0) {
+        plan = buildPauseRoutinePlan(agent, step.label, step.pauseMs);
+      } else {
+        // Some intents (lounge, kitchen, jukebox, roam) fall back to the
+        // agent's CURRENT position if no preferredPoint is supplied. That
+        // would make the agent "sit" or "drink coffee" in the middle of
+        // the office. We resolve a furniture-aware preferred point here so
+        // the agent actually walks to the right station.
+        const preferred = resolveRoutinePreferredPoint(agent, step.intent, others);
+        const basePlan = buildIntentPlan(
+          agent,
+          step.intent,
+          "autonomous",
+          others,
+          preferred ?? undefined,
+        );
+        // Floor the linger by the step's minStageMs so short-linger intents
+        // (e.g. roam hops at ~1s) still produce meaningful observation beats.
+        const lingerMs =
+          step.minStageMs > basePlan.lingerMs ? step.minStageMs : basePlan.lingerMs;
+        plan = lingerMs === basePlan.lingerMs ? basePlan : { ...basePlan, lingerMs };
+      }
+
+      // Mark this step as dispatched by advancing the routine index.
+      brain.routine = advanceRoutine(brain.routine);
+      brain.routineStepEndsAt = now + plan.lingerMs;
+
+      // Also nudge the legacy roam cursor so if we ever fall back to pure
+      // roam the motion layer has fresh variety.
+      brain.roamIndex += 1;
+      if (brain.roamIndex % 4 === 0) {
+        const currentIndex = ROAM_MODEL_ORDER.indexOf(brain.roamModel);
+        brain.roamModel =
+          ROAM_MODEL_ORDER[(currentIndex + 1) % ROAM_MODEL_ORDER.length] ?? brain.roamModel;
+      }
+
+      return plan;
     },
     [
       buildIntentPlan,
-      danceUntilByAgentId,
-      deskLocations.length,
-      furnitureRef,
-      gymWorkoutLocations.length,
-      qaLabStations.length,
+      buildPauseRoutinePlan,
+      buildRoamFallbackPlan,
+      finalizeRoutine,
+      getRoutineAvailability,
+      resolveRoutinePreferredPoint,
     ],
   );
 
@@ -1182,6 +1351,11 @@ export function useRebuiltAgentTick(
         (agent.path.length > 0 && now - brain.progressSince > STALL_RESET_MS);
 
       if (explicitIntent && (agent.interactionTarget !== explicitIntent || agent.path.length === 0)) {
+        // Forced intents (standup meetings, desk holds, gym/QA/booth holds,
+        // github reviews, etc.) take absolute priority over idle routines.
+        // Clear any in-flight routine so when the hold releases we pick a
+        // fresh contextual routine from a clean slate.
+        if (brain.routine) brain.routine = null;
         const forcedPlan = buildIntentPlan(agent, explicitIntent, "forced", peers);
         markPlanOnBrain(brain, forcedPlan, now, forcedPlan.path.length === 0);
         working = applyPlanToAgent(agent, forcedPlan);
@@ -1190,6 +1364,10 @@ export function useRebuiltAgentTick(
         markPlanOnBrain(brain, continuedPlan, now, continuedPlan.path.length === 0);
         working = applyPlanToAgent(agent, continuedPlan);
       } else if (needsRecovery) {
+        // Stalled / looping on the same target — abandon whatever routine
+        // we were in so the next decision cycle picks a fresh context
+        // rather than re-triggering the broken path.
+        if (brain.routine) brain.routine = null;
         const recoveryPlan = buildRecoveryPlan(agent, peers, brain);
         markPlanOnBrain(brain, recoveryPlan, now, recoveryPlan.path.length === 0);
         working = applyPlanToAgent(agent, recoveryPlan);
@@ -1197,7 +1375,7 @@ export function useRebuiltAgentTick(
       } else if (working.path.length === 0 && now >= brain.nextDecisionAt) {
         const autonomousPlan = explicitIntent
           ? buildIntentPlan(agent, explicitIntent, "forced", peers)
-          : buildAutonomousPlan(agent, peers, brain);
+          : buildAutonomousPlan(agent, peers, brain, now);
         markPlanOnBrain(brain, autonomousPlan, now, autonomousPlan.path.length === 0);
         working = applyPlanToAgent(agent, autonomousPlan);
       }
