@@ -244,13 +244,13 @@ export const AgentModel = memo(function AgentModel({
       bench: 0.18, // moderate tool work
     };
     const qaCadence = qaCadenceByStation[qaStationType] ?? 0.18;
-    const qaPhase = Math.sin(motionFrame * qaCadence);
-    const qaPhase2 = Math.sin(motionFrame * qaCadence + Math.PI / 2);
     const janitorTool = isJanitor
       ? (agent as RenderAgent & JanitorActor).janitorTool
       : undefined;
     const workoutStyle = agent.workoutStyle ?? "lift";
     const motionFrame = motionTimeRef.current + (agent.phaseOffset ?? 0);
+    const qaPhase = Math.sin(motionFrame * qaCadence);
+    const qaPhase2 = Math.sin(motionFrame * qaCadence + Math.PI / 2);
     const frameValue = motionFrame + (agent.phaseOffset ?? 0) / WALK_ANIM_SPEED;
     const walkPhase = Math.sin(frameValue * WALK_ANIM_SPEED);
     // Per-style cadence (Hz-ish). Lowered globally so reps read as natural
