@@ -21,7 +21,7 @@ import { normalizeAssistantDisplayText } from "@/lib/text/assistantText";
 import { isNearBottom } from "@/lib/dom";
 import { useVoiceRecorder, type VoiceRecorderState, type VoiceSendPayload } from "@/hooks/useVoiceRecorder";
 import { AgentAvatar } from "./AgentAvatar";
-import { AgentAvatarFace3D } from "./AgentAvatarFace3D";
+import { AgentOfficeFigure3D } from "./AgentOfficeFigure3D";
 import type { ChatSendAttachment, ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import type {
   ExecApprovalDecision,
@@ -1793,7 +1793,7 @@ export const AgentChatPanel = ({
           <div className="flex min-w-0 items-start gap-3">
             <div className="group/avatar relative">
               {agent.avatarProfile ? (
-                <AgentAvatarFace3D
+                <AgentOfficeFigure3D
                   profile={agent.avatarProfile}
                   size={44}
                 />

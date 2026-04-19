@@ -1,7 +1,7 @@
 import type { AgentState, FocusFilter } from "@/features/agents/state/store";
 import { useLayoutEffect, useMemo, useRef } from "react";
 import { AgentAvatar } from "./AgentAvatar";
-import { AgentAvatarFace3D } from "./AgentAvatarFace3D";
+import { AgentOfficeFigure3D } from "./AgentOfficeFigure3D";
 import {
   NEEDS_APPROVAL_BADGE_CLASS,
   resolveAgentStatusBadgeClass,
@@ -141,7 +141,7 @@ export const FleetSidebar = ({
                     className={`ui-card-select-indicator ${selected ? "opacity-100" : "opacity-0 group-hover:opacity-35"}`}
                   />
                   {agent.avatarProfile ? (
-                    <AgentAvatarFace3D
+                    <AgentOfficeFigure3D
                       profile={agent.avatarProfile}
                       size={42}
                     />

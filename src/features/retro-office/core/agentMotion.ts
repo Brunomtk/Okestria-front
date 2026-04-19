@@ -93,6 +93,11 @@ type AgentBrain = {
   progressX: number;
   progressY: number;
   progressSince: number;
+  // Target arrival state captured from the plan. While the agent is walking
+  // `agent.state === "walking"`, but once the path is consumed we want to
+  // snap to this authored state (e.g. "working_out" at a gym station).
+  plannedState: RenderAgent["state"];
+  plannedWorkoutStyle: RenderAgent["workoutStyle"] | undefined;
   // --- Routine system state ---
   // Active routine the agent is committed to (null = ready to pick a new one).
   routine: AgentRoutine | null;
@@ -207,6 +212,8 @@ const DEFAULT_BRAIN = (x: number, y: number, now: number): AgentBrain => ({
   progressX: x,
   progressY: y,
   progressSince: now,
+  plannedState: "standing",
+  plannedWorkoutStyle: undefined,
   // Routines start empty — the first decision tick picks one based on
   // availability + weights.
   routine: null,
@@ -231,6 +238,8 @@ const markPlanOnBrain = (
   brain.mode = plan.mode;
   brain.currentActionKey = plan.actionKey;
   brain.lingerMs = plan.lingerMs;
+  brain.plannedState = plan.state;
+  brain.plannedWorkoutStyle = plan.workoutStyle;
   brain.nextDecisionAt = arrived ? now + plan.lingerMs : Number.POSITIVE_INFINITY;
   brain.recentActions = [
     plan.actionKey,
@@ -1396,6 +1405,14 @@ export function useRebuiltAgentTick(
         const arrivedX = waypoint.x;
         const arrivedY = waypoint.y;
         if (nextPath.length === 0) {
+          // Critical: when the agent arrives, we want the *authored* target
+          // state (e.g. "working_out" at a gym station, "sitting" at a
+          // desk), NOT the transient "walking" state that applyPlanToAgent
+          // forced while a path was pending. brain.plannedState captures
+          // that, so the workout / desk / lounge animation kicks in.
+          const plannedArrivalState = brain.plannedState ?? working.state;
+          const arrivedWorkoutStyle =
+            brain.plannedWorkoutStyle ?? working.workoutStyle;
           const arrived = {
             ...working,
             x: arrivedX,
@@ -1403,16 +1420,8 @@ export function useRebuiltAgentTick(
             path: [],
             targetX: arrivedX,
             targetY: arrivedY,
-            state: inferArrivalState({
-              actionKey: brain.currentActionKey,
-              mode: brain.mode,
-              lingerMs: brain.lingerMs,
-              targetX: arrivedX,
-              targetY: arrivedY,
-              facing: working.facing,
-              path: [],
-              state: working.state,
-            }),
+            state: plannedArrivalState,
+            workoutStyle: arrivedWorkoutStyle,
             facing: working.facing,
             frame: working.frame + delta,
           } as RenderAgent;
