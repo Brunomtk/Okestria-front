@@ -422,12 +422,7 @@ export function useRebuiltAgentTick(
   agents: SceneActor[],
   deskLocations: { x: number; y: number }[],
   assignedDeskIndexByAgentId: Record<string, number> = {},
-  gymWorkoutLocations: {
-    x: number;
-    y: number;
-    facing: number;
-    workoutStyle: "run" | "lift" | "bike" | "box" | "row" | "stretch";
-  }[],
+  gymWorkoutLocations: GymWorkoutLocation[],
   qaLabStations: QaLabStationLocation[],
   meetingSeatLocations: { x: number; y: number; facing: number }[],
   furnitureRef: RefObject<FurnitureItem[]>,

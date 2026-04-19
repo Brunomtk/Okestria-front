@@ -1,12 +1,12 @@
 export const DESK_STICKY_MS = 10_000;
 export const SNAP_GRID = 10;
-export const STORAGE_KEY = "openclaw-office-furniture-v26";
+export const STORAGE_KEY = "openclaw-office-furniture-v27";
 export const ATM_MIGRATION_KEY = "openclaw-office-atm-migration-v2";
 export const ART_ROOM_REMOVAL_MIGRATION_KEY =
   "openclaw-office-art-room-removal-migration-v1";
 export const SERVER_ROOM_MIGRATION_KEY =
   "openclaw-office-server-room-migration-v7";
-export const GYM_ROOM_MIGRATION_KEY = "openclaw-office-gym-room-migration-v23";
+export const GYM_ROOM_MIGRATION_KEY = "openclaw-office-gym-room-migration-v24";
 export const QA_LAB_MIGRATION_KEY = "openclaw-office-qa-lab-migration-v15";
 export const PHONE_BOOTH_MIGRATION_KEY_V2 = "openclaw-office-phone-booth-migration-v3";
 export const PHONE_BOOTH_MIGRATION_KEY = "openclaw-office-phone-booth-migration-v1";

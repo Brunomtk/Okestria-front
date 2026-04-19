@@ -76,6 +76,7 @@ import {
   WALL_THICKNESS,
   WORKING_WALK_SPEED_MULTIPLIER,
 } from "@/features/retro-office/core/constants";
+import { PerfLod } from "@/features/retro-office/core/perfLod";
 import {
   ensureOfficeArtRoomRemoved,
   ensureOfficeAtm,
@@ -152,6 +153,7 @@ import {
 } from "@/features/retro-office/core/persistence";
 import type {
   FurnitureItem,
+  GymWorkoutLocation,
   JanitorActor,
   OfficeAgent,
   QaLabStationLocation,
@@ -1324,12 +1326,13 @@ const ReadOnlyFurnitureClone = memo(function ReadOnlyFurnitureClone({
 });
 
 function AdaptiveDprController() {
-  const { gl, setDpr } = useThree();
+  const { gl, camera, setDpr } = useThree();
   const currentDprRef = useRef(1);
   const frameCounterRef = useRef(0);
   const avgDeltaRef = useRef(1 / 60);
   const lastInteractionRef = useRef(0);
   const interactingDprRef = useRef(false);
+  const zoomLevelRef = useRef<"in" | "mid" | "out">("mid");
 
   useEffect(() => {
     // v40: ceiling dropped 0.95 → 0.85 for baseline perf.
@@ -1370,31 +1373,70 @@ function AdaptiveDprController() {
     if (document.visibilityState !== "visible") return;
     avgDeltaRef.current = avgDeltaRef.current * 0.92 + delta * 0.08;
 
+    // v45 perf: update shared LOD state from camera zoom every frame.
+    // This is cheap (a few compares), and lets dozens of agents/models skip
+    // expensive work in a single shared decision.
+    const cameraZoom = (camera as THREE.OrthographicCamera).zoom ?? 80;
+    PerfLod.zoom = cameraZoom;
+    PerfLod.zoomedOut = cameraZoom < 55;
+    PerfLod.farZoomedOut = cameraZoom < 38;
+
     // v41: aggressive DPR drop while user is actively interacting. Restores
     // to normal ~220ms after last pointer/wheel event.
     const now = performance.now();
     const isInteracting = now - lastInteractionRef.current < 220;
     if (isInteracting && !interactingDprRef.current) {
       interactingDprRef.current = true;
-      const interactionDpr = 0.55;
+      // v45: when zoomed out during interaction, push DPR even lower (fewer
+      // pixels to shade while many objects are onscreen).
+      const interactionDpr = PerfLod.farZoomedOut ? 0.42 : PerfLod.zoomedOut ? 0.48 : 0.55;
       currentDprRef.current = interactionDpr;
       setDpr(interactionDpr);
       gl.info.reset();
     } else if (!isInteracting && interactingDprRef.current) {
       interactingDprRef.current = false;
-      const restoredDpr = Math.min(window.devicePixelRatio || 1, 0.85);
+      const restoredDpr = Math.min(
+        window.devicePixelRatio || 1,
+        // v45: ceiling DPR scales with zoom — less fidelity when zoomed out.
+        PerfLod.farZoomedOut ? 0.65 : PerfLod.zoomedOut ? 0.75 : 0.85,
+      );
       currentDprRef.current = restoredDpr;
       setDpr(restoredDpr);
       gl.info.reset();
     }
     if (isInteracting) return; // Skip the measurement pass during interaction.
 
+    // v45: when the user crosses a zoom-level boundary (zoomed-in → mid →
+    // out), retune DPR ceiling in a single step so the adaptive loop doesn't
+    // have to creep it there over 24-frame cycles.
+    const nextZoomLevel: "in" | "mid" | "out" = PerfLod.farZoomedOut
+      ? "out"
+      : PerfLod.zoomedOut
+      ? "mid"
+      : "in";
+    if (nextZoomLevel !== zoomLevelRef.current) {
+      zoomLevelRef.current = nextZoomLevel;
+      const zoomedCeiling =
+        nextZoomLevel === "out" ? 0.65 : nextZoomLevel === "mid" ? 0.75 : 0.85;
+      const snappedDpr = Math.min(window.devicePixelRatio || 1, zoomedCeiling);
+      if (Math.abs(snappedDpr - currentDprRef.current) > 0.05) {
+        currentDprRef.current = snappedDpr;
+        setDpr(snappedDpr);
+        gl.info.reset();
+      }
+    }
+
     frameCounterRef.current += 1;
     if (frameCounterRef.current < 24) return;
     frameCounterRef.current = 0;
 
-    const maxDpr = Math.min(window.devicePixelRatio || 1, 0.85);
-    const minDpr = 0.5;
+    // v45: DPR ceiling is zoom-aware. Fewer pixels to shade when zoomed out
+    // means we can afford a higher DPR when zoomed in without stuttering.
+    const maxDpr = Math.min(
+      window.devicePixelRatio || 1,
+      PerfLod.farZoomedOut ? 0.65 : PerfLod.zoomedOut ? 0.75 : 0.85,
+    );
+    const minDpr = PerfLod.farZoomedOut ? 0.4 : 0.5;
     let nextDpr = currentDprRef.current;
     if (avgDeltaRef.current > 1 / 50) {
       nextDpr = Math.max(minDpr, currentDprRef.current - 0.1);
@@ -1420,12 +1462,7 @@ function useAgentTick(
   agents: SceneActor[],
   deskLocations: { x: number; y: number }[],
   assignedDeskIndexByAgentId: Record<string, number> = {},
-  gymWorkoutLocations: {
-    x: number;
-    y: number;
-    facing: number;
-    workoutStyle: "run" | "lift" | "bike" | "box" | "row" | "stretch";
-  }[],
+  gymWorkoutLocations: GymWorkoutLocation[],
   qaLabStations: QaLabStationLocation[],
   meetingSeatLocations: { x: number; y: number; facing: number }[],
   furnitureRef: RefObject<FurnitureItem[]>,

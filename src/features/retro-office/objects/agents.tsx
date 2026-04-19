@@ -28,6 +28,7 @@ import {
   AGENT_SCALE,
   WALK_ANIM_SPEED,
 } from "@/features/retro-office/core/constants";
+import { PerfLod } from "@/features/retro-office/core/perfLod";
 import { toWorld } from "@/features/retro-office/core/geometry";
 import type {
   JanitorActor,
@@ -165,13 +166,37 @@ export const AgentModel = memo(function AgentModel({
     // Walking, workout, dancing, janitor, and ping-pong agents always run at
     // full rate. Everyone else alternates frames (30fps pose math, still 60fps
     // rendering) — imperceptible for subtle idle micro-motion.
+    //
+    // v45 perf: when the user is zoomed OUT, the screen fills with many more
+    // agents and furniture at once — that's when the stutter showed up most.
+    // So we extend the throttle:
+    //   • zoomedOut (zoom < 55): even walking/workout agents run at half-rate.
+    //   • farZoomedOut (zoom < 38): all non-janitor work runs at 1/3 rate.
+    // Dancing and janitors still animate every frame so the overall scene
+    // still reads as "alive" from a high-altitude view.
     const lightweight =
       agent.state !== "walking" &&
       agent.state !== "working_out" &&
       agent.state !== "dancing" &&
       !agent.pingPongUntil &&
       !("role" in agent && agent.role === "janitor");
-    if (lightweight && (frameTickRef.current & 1) === 0) {
+    const isDancingOrJanitor =
+      agent.state === "dancing" ||
+      ("role" in agent && agent.role === "janitor");
+    const zoomThrottle = PerfLod.farZoomedOut
+      ? 2 // 1 in 3 frames
+      : PerfLod.zoomedOut
+      ? 1 // 1 in 2 frames
+      : 0;
+    // Skip this frame entirely?
+    //  - lightweight agents always use half-rate (the v41 behavior)
+    //  - when zoomed out, extend to walking/workout too
+    const skipFullAnim =
+      (lightweight && (frameTickRef.current & 1) === 0) ||
+      (!isDancingOrJanitor &&
+        zoomThrottle > 0 &&
+        frameTickRef.current % (zoomThrottle + 1) !== 0);
+    if (skipFullAnim) {
       // Still lerp position/rotation for smooth camera pans; skip the rest.
       const positionLerp = 1 - Math.exp(-Math.min(0.05, delta) * 12);
       groupRef.current.position.lerp(pos.current, positionLerp);
@@ -267,26 +292,75 @@ export const AgentModel = memo(function AgentModel({
       }
     }
     
+    // --- Per-workout body lean/rotation map ---
+    // Each workout style tilts the torso differently so that the agent looks
+    // like they are actually engaging with the equipment (bent over at a
+    // deadlift, seated forward on a bike, leaning into a cable pull, etc.).
+    let workoutBodyRotX = 0.02;
+    if (isWorkout) {
+      switch (workoutStyle) {
+        case "bike":
+          workoutBodyRotX = 0.22;
+          break;
+        case "row":
+          workoutBodyRotX = -0.12 + Math.max(0, workoutPhase) * 0.22;
+          break;
+        case "stretch":
+          // Forward fold alternating with upright — classic yoga flow
+          workoutBodyRotX = -0.05 + Math.max(0, workoutPhase) * 0.55;
+          break;
+        case "run":
+          workoutBodyRotX = 0.1;
+          break;
+        case "box":
+        case "punch":
+          // Small forward lean + jabbing bob
+          workoutBodyRotX = 0.06 + Math.abs(workoutPushPhase) * 0.04;
+          break;
+        case "squat":
+          // Upright torso, slight hip-hinge on descent
+          workoutBodyRotX = 0.04 + Math.max(0, -workoutPhase) * 0.1;
+          break;
+        case "bench_press":
+          // Agent stays standing but leans back to simulate being on the bench
+          workoutBodyRotX = -0.1;
+          break;
+        case "deadlift":
+          // Hip-hinge: bent over on the bottom, tall on the top
+          workoutBodyRotX = 0.08 + Math.max(0, -workoutPhase) * 0.55;
+          break;
+        case "curl":
+          workoutBodyRotX = 0.02;
+          break;
+        case "kettlebell":
+          // Big hip-hinge swing
+          workoutBodyRotX = 0.05 + Math.max(0, -workoutPhase) * 0.45;
+          break;
+        case "cable":
+          // Slight forward lean into the stack
+          workoutBodyRotX = 0.12;
+          break;
+        default:
+          workoutBodyRotX = 0.02;
+      }
+    }
+
+    const sittingBodyRotX =
+      agent.state === "sitting"
+        ? agent.interactionTarget === "lounge"
+          ? -0.28 // deeper recline on couch/beanbag
+          : -0.1 // desk chair — more upright, slight backward
+        : 0;
     groupRef.current.rotation.x =
       agent.state === "sitting"
-        ? -0.15
+        ? sittingBodyRotX
         : isDancing
           ? Math.sin(agent.frame * 0.18 + (agent.phaseOffset ?? 0)) * 0.06
           : isWorkout
-            ? workoutStyle === "bike"
-              ? 0.18
-              : workoutStyle === "row"
-                ? -0.12 + Math.max(0, workoutPhase) * 0.08
-                : workoutStyle === "stretch"
-                  ? -0.08
-                  : workoutStyle === "run"
-                    ? 0.08
-                    : workoutStyle === "box"
-                      ? 0.04
-                      : 0.02
-          : agent.pingPongUntil
-            ? 0.08
-            : idleBodyRotX;
+            ? workoutBodyRotX
+            : agent.pingPongUntil
+              ? 0.08
+              : idleBodyRotX;
     
     // Apply idle body Y rotation (looking around)
     if (isIdle && idleAnim.type === 1) {
@@ -295,17 +369,56 @@ export const AgentModel = memo(function AgentModel({
     
     // Apply idle body Z rotation (lean/sway)
     groupRef.current.rotation.z = idleBodyRotZ;
+    // Per-workout vertical bounce — some activities are bouncier than others.
+    let workoutBounce = 0.02 + Math.abs(workoutPhase) * 0.04;
+    if (isWorkout) {
+      switch (workoutStyle) {
+        case "stretch":
+          workoutBounce = 0.012 + Math.abs(workoutPhase) * 0.018;
+          break;
+        case "row":
+          workoutBounce = 0.015 + Math.abs(workoutPhase) * 0.028;
+          break;
+        case "squat":
+          // Deep squat — big vertical travel, drops on down phase
+          workoutBounce = -Math.max(0, -workoutPhase) * 0.12;
+          break;
+        case "deadlift":
+          // Stays low on the down phase, rises on the up phase
+          workoutBounce = -Math.max(0, -workoutPhase) * 0.08;
+          break;
+        case "kettlebell":
+          workoutBounce = -Math.max(0, -workoutPhase) * 0.06;
+          break;
+        case "bench_press":
+          // Almost no vertical — agent is "lying" flat
+          workoutBounce = 0.005 + Math.abs(workoutPhase) * 0.006;
+          break;
+        case "curl":
+          workoutBounce = 0.008 + Math.abs(workoutPhase) * 0.01;
+          break;
+        case "cable":
+          workoutBounce = 0.01 + Math.abs(workoutPhase) * 0.012;
+          break;
+        case "punch":
+        case "box":
+          workoutBounce = 0.02 + Math.abs(workoutPushPhase) * 0.035;
+          break;
+        case "run":
+          workoutBounce = 0.02 + Math.abs(workoutPhase) * 0.06;
+          break;
+        case "bike":
+          workoutBounce = 0.008 + Math.abs(workoutPhase) * 0.012;
+          break;
+      }
+    }
     const bounce =
       agent.state === "walking"
         ? Math.sin(frameValue * WALK_ANIM_SPEED) * 0.04
         : isDancing
           ? 0.03 + Math.abs(Math.sin(agent.frame * 0.22 + (agent.phaseOffset ?? 0))) * 0.05
           : isWorkout
-            ? workoutStyle === "stretch"
-              ? 0.012 + Math.abs(workoutPhase) * 0.018
-              : workoutStyle === "row"
-                ? 0.015 + Math.abs(workoutPhase) * 0.028
-                : 0.02 + Math.abs(workoutPhase) * 0.04
+            ? workoutBounce
             : 0;
     
     const idleFloat = isIdle ? Math.sin(frameValue * 0.05) * 0.014 : 0;
@@ -355,7 +468,7 @@ export const AgentModel = memo(function AgentModel({
           );
           leftArmRef.current.rotation.z = -0.16;
           leftArmRef.current.rotation.y = -0.1;
-        } else if (workoutStyle === "box") {
+        } else if (workoutStyle === "box" || workoutStyle === "punch") {
           leftArmRef.current.rotation.x = -(
             0.92 +
             Math.max(0, workoutPushPhase) * 0.45
@@ -367,7 +480,43 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.x = -1.58;
           leftArmRef.current.rotation.z = -0.42;
           leftArmRef.current.rotation.y = -0.08;
+        } else if (workoutStyle === "squat") {
+          // Both hands up holding a bar across the shoulders — elbows up
+          leftArmRef.current.rotation.x = -2.1;
+          leftArmRef.current.rotation.z = -0.85;
+          leftArmRef.current.rotation.y = -0.2;
+        } else if (workoutStyle === "bench_press") {
+          // Press phase: arms pushing straight up from chest
+          const pressExt = -1.45 - Math.max(0, workoutPushPhase) * 0.4;
+          leftArmRef.current.rotation.x = pressExt;
+          leftArmRef.current.rotation.z = -0.3;
+          leftArmRef.current.rotation.y = -0.05;
+        } else if (workoutStyle === "deadlift") {
+          // Arms hanging straight down holding bar; rotates with torso
+          // When torso bends forward (down phase), arms hang in front.
+          leftArmRef.current.rotation.x = -0.05;
+          leftArmRef.current.rotation.z = -0.18;
+          leftArmRef.current.rotation.y = -0.02;
+        } else if (workoutStyle === "curl") {
+          // Bicep curl: elbow hinge up/down
+          const curl = -(0.2 + Math.max(0, workoutPhase) * 1.5);
+          leftArmRef.current.rotation.x = curl;
+          leftArmRef.current.rotation.z = -0.28;
+          leftArmRef.current.rotation.y = -0.02;
+        } else if (workoutStyle === "kettlebell") {
+          // Swing: arm goes from between legs (down) to shoulder height (up)
+          const swing = -0.35 + Math.max(0, workoutPhase) * 1.9;
+          leftArmRef.current.rotation.x = swing;
+          leftArmRef.current.rotation.z = -0.22;
+          leftArmRef.current.rotation.y = -0.04;
+        } else if (workoutStyle === "cable") {
+          // Pulling down from overhead: arm starts high, pulls down
+          const pull = -2.0 + Math.max(0, workoutPhase) * 1.4;
+          leftArmRef.current.rotation.x = pull;
+          leftArmRef.current.rotation.z = -0.45;
+          leftArmRef.current.rotation.y = -0.12;
         } else {
+          // Generic "lift" fallback — shoulder press
           leftArmRef.current.rotation.x = -(
             0.28 +
             Math.abs(workoutPhase) * 0.28
@@ -379,7 +528,20 @@ export const AgentModel = memo(function AgentModel({
         leftArmRef.current.rotation.x =
           0.2 + Math.sin(agent.frame * 0.08) * 0.28;
       } else if (agent.state === "sitting") {
-        leftArmRef.current.rotation.x = 0.3;
+        // Lounge vs desk: relaxed hands-on-lap for couch/beanbag,
+        // forward-reaching typing pose for desk.
+        const isLoungeSit = agent.interactionTarget === "lounge";
+        if (isLoungeSit) {
+          // Arm resting on armrest / lap — slightly back and down
+          leftArmRef.current.rotation.x = 0.45;
+          leftArmRef.current.rotation.z = -0.18;
+          leftArmRef.current.rotation.y = 0.05;
+        } else {
+          // Desk/chair typing pose — arm forward on desk
+          leftArmRef.current.rotation.x = -0.55;
+          leftArmRef.current.rotation.z = -0.12;
+          leftArmRef.current.rotation.y = -0.05;
+        }
       } else if (isIdle) {
         // Enhanced idle animations for left arm
         const baseBreathX = -0.08 + Math.sin(frameValue * 0.05) * 0.08;
@@ -453,7 +615,7 @@ export const AgentModel = memo(function AgentModel({
           );
           rightArmRef.current.rotation.z = 0.16;
           rightArmRef.current.rotation.y = 0.1;
-        } else if (workoutStyle === "box") {
+        } else if (workoutStyle === "box" || workoutStyle === "punch") {
           rightArmRef.current.rotation.x = -(
             0.92 +
             Math.max(0, -workoutPushPhase) * 0.45
@@ -465,6 +627,35 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.x = -1.58;
           rightArmRef.current.rotation.z = 0.42;
           rightArmRef.current.rotation.y = 0.08;
+        } else if (workoutStyle === "squat") {
+          // Mirror of left arm — hands gripping bar across shoulders
+          rightArmRef.current.rotation.x = -2.1;
+          rightArmRef.current.rotation.z = 0.85;
+          rightArmRef.current.rotation.y = 0.2;
+        } else if (workoutStyle === "bench_press") {
+          const pressExt = -1.45 - Math.max(0, workoutPushPhase) * 0.4;
+          rightArmRef.current.rotation.x = pressExt;
+          rightArmRef.current.rotation.z = 0.3;
+          rightArmRef.current.rotation.y = 0.05;
+        } else if (workoutStyle === "deadlift") {
+          rightArmRef.current.rotation.x = -0.05;
+          rightArmRef.current.rotation.z = 0.18;
+          rightArmRef.current.rotation.y = 0.02;
+        } else if (workoutStyle === "curl") {
+          const curl = -(0.2 + Math.max(0, workoutPhase) * 1.5);
+          rightArmRef.current.rotation.x = curl;
+          rightArmRef.current.rotation.z = 0.28;
+          rightArmRef.current.rotation.y = 0.02;
+        } else if (workoutStyle === "kettlebell") {
+          const swing = -0.35 + Math.max(0, workoutPhase) * 1.9;
+          rightArmRef.current.rotation.x = swing;
+          rightArmRef.current.rotation.z = 0.22;
+          rightArmRef.current.rotation.y = 0.04;
+        } else if (workoutStyle === "cable") {
+          const pull = -2.0 + Math.max(0, workoutPhase) * 1.4;
+          rightArmRef.current.rotation.x = pull;
+          rightArmRef.current.rotation.z = 0.45;
+          rightArmRef.current.rotation.y = 0.12;
         } else {
           rightArmRef.current.rotation.x = -(
             0.28 +
@@ -477,7 +668,16 @@ export const AgentModel = memo(function AgentModel({
         rightArmRef.current.rotation.x =
           0.08 - Math.sin(agent.frame * 0.08) * 0.16;
       } else if (agent.state === "sitting") {
-        rightArmRef.current.rotation.x = 0.3;
+        const isLoungeSit = agent.interactionTarget === "lounge";
+        if (isLoungeSit) {
+          rightArmRef.current.rotation.x = 0.45;
+          rightArmRef.current.rotation.z = 0.18;
+          rightArmRef.current.rotation.y = -0.05;
+        } else {
+          rightArmRef.current.rotation.x = -0.55;
+          rightArmRef.current.rotation.z = 0.12;
+          rightArmRef.current.rotation.y = 0.05;
+        }
       } else if (isIdle) {
         // Enhanced idle animations for right arm
         const baseBreathX = 0.08 - Math.sin(frameValue * 0.05) * 0.08;
@@ -534,8 +734,31 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") leftLegX = workoutPhase * 0.82;
         else if (workoutStyle === "row") leftLegX = 0.14 + Math.max(0, workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") leftLegX = -0.2 + Math.abs(workoutPhase) * 0.08;
-        else if (workoutStyle === "box") leftLegX = 0.06 + workoutPhase * 0.14;
-        else leftLegX = workoutPhase * 0.18;
+        else if (workoutStyle === "box" || workoutStyle === "punch")
+          leftLegX = 0.06 + workoutPhase * 0.14;
+        else if (workoutStyle === "squat") {
+          // Deep bend on down phase: both legs flex together
+          leftLegX = 0.1 + Math.max(0, -workoutPhase) * 0.85;
+        } else if (workoutStyle === "bench_press") {
+          // Static planted stance — tiny sway
+          leftLegX = 0.04 + Math.sin(motionFrame * 0.08) * 0.02;
+        } else if (workoutStyle === "deadlift") {
+          // Slight knee bend, deeper on down
+          leftLegX = 0.18 + Math.max(0, -workoutPhase) * 0.35;
+        } else if (workoutStyle === "curl") {
+          // Planted, slight shift
+          leftLegX = 0.02;
+        } else if (workoutStyle === "kettlebell") {
+          // Wide-stance swing squat
+          leftLegX = 0.08 + Math.max(0, -workoutPhase) * 0.55;
+        } else if (workoutStyle === "cable") {
+          // Split stance, subtle shift
+          leftLegX = 0.1 + Math.abs(workoutPhase) * 0.06;
+        } else leftLegX = workoutPhase * 0.18;
+      } else if (agent.state === "sitting") {
+        // Sitting: thighs horizontal (hip flex ~90°). Lounge a bit more reclined.
+        const isLoungeSit = agent.interactionTarget === "lounge";
+        leftLegX = isLoungeSit ? 0.72 : 0.85;
       } else if (isIdle && idleAnim.type === 7) {
         // Tap foot animation - left leg taps
         leftLegX = Math.max(0, Math.sin(frameValue * 0.2)) * 0.12 * idleSmooth;
@@ -556,8 +779,26 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") rightLegX = -workoutPhase * 0.82;
         else if (workoutStyle === "row") rightLegX = 0.14 + Math.max(0, -workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") rightLegX = -0.12 + Math.abs(workoutPhase) * 0.08;
-        else if (workoutStyle === "box") rightLegX = 0.06 - workoutPhase * 0.14;
-        else rightLegX = -workoutPhase * 0.18;
+        else if (workoutStyle === "box" || workoutStyle === "punch")
+          rightLegX = 0.06 - workoutPhase * 0.14;
+        else if (workoutStyle === "squat") {
+          // Both legs flex together in squat
+          rightLegX = 0.1 + Math.max(0, -workoutPhase) * 0.85;
+        } else if (workoutStyle === "bench_press") {
+          rightLegX = 0.04 + Math.sin(motionFrame * 0.08 + Math.PI / 2) * 0.02;
+        } else if (workoutStyle === "deadlift") {
+          rightLegX = 0.18 + Math.max(0, -workoutPhase) * 0.35;
+        } else if (workoutStyle === "curl") {
+          rightLegX = 0.02;
+        } else if (workoutStyle === "kettlebell") {
+          rightLegX = 0.08 + Math.max(0, -workoutPhase) * 0.55;
+        } else if (workoutStyle === "cable") {
+          // Split stance opposite leg — slightly back
+          rightLegX = -0.12 + Math.abs(workoutPhase) * 0.04;
+        } else rightLegX = -workoutPhase * 0.18;
+      } else if (agent.state === "sitting") {
+        const isLoungeSit = agent.interactionTarget === "lounge";
+        rightLegX = isLoungeSit ? 0.72 : 0.85;
       } else if (isIdle && idleAnim.type === 4) {
         // Stretch - slight leg movement
         rightLegX = -Math.sin(idleProgress * Math.PI) * 0.05 * idleSmooth;

@@ -58,7 +58,20 @@ export type RenderAgent = SceneActor & {
   gymStage?: "door_outer" | "door_inner" | "workout";
   qaLabStage?: "door_outer" | "door_inner" | "station";
   qaLabStationType?: QaLabStationType;
-  workoutStyle?: "run" | "lift" | "bike" | "box" | "row" | "stretch";
+  workoutStyle?:
+    | "run"
+    | "lift"
+    | "bike"
+    | "box"
+    | "row"
+    | "stretch"
+    | "squat"
+    | "bench_press"
+    | "deadlift"
+    | "curl"
+    | "kettlebell"
+    | "cable"
+    | "punch";
   janitorRouteIndex?: number;
   janitorPauseUntil?: number;
 };
@@ -91,8 +104,23 @@ export type FacingPoint = CanvasPoint & {
 
 export type QaLabStationType = "console" | "device_rack" | "bench";
 
+export type GymWorkoutStyle =
+  | "run"
+  | "lift"
+  | "bike"
+  | "box"
+  | "row"
+  | "stretch"
+  | "squat"
+  | "bench_press"
+  | "deadlift"
+  | "curl"
+  | "kettlebell"
+  | "cable"
+  | "punch";
+
 export type GymWorkoutLocation = FacingPoint & {
-  workoutStyle: "run" | "lift" | "bike" | "box" | "row" | "stretch";
+  workoutStyle: GymWorkoutStyle;
 };
 
 export type QaLabStationLocation = FacingPoint & {

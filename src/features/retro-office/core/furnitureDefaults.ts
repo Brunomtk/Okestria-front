@@ -275,7 +275,9 @@ const DEFAULT_GYM_ITEMS: FurnitureSeed[] = [
   { type: "treadmill",      x: GYM_ROOM_X + 30,  y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
   { type: "treadmill",      x: GYM_ROOM_X + 90,  y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
   { type: "treadmill",      x: GYM_ROOM_X + 150, y: EAST_WING_ROOM_TOP_Y + 34, facing: 90 },
-  // 1 squat rack (user-specified absolute position: 1380, 20, facing 270°)
+  // 2 squat racks (restored second squat rack per user request — v45)
+  // Both facing 270° with a small gap so two lifters can squat side-by-side.
+  { type: "squat_rack",     x: 1320, y: 20, facing: 270 },
   { type: "squat_rack",     x: 1380, y: 20, facing: 270 },
   // 2 weight benches — replacing the rowing machines (90x45 → flat bench for supino)
   // facing 90 so the bench runs perpendicular (user example: 1530, 20, 90°)
@@ -405,14 +407,11 @@ const DEFAULT_FURNITURE: FurnitureSeed[] = [
   // Symmetric around cx=590:
   //   • Arcade cabinet anchors the west edge (the "video game" corner).
   //   • TV stand centered against the north wall.
-  //   • Side tables bracket the TV as plinths + one coffee table in front.
   //   • Three-seat couch aligned with the TV, facing the screen.
   //   • Two beanbag puffs flanking the couch, both facing the TV as well.
+  //   • Side tables removed per user request (v45) — cleaner lounge, less clutter.
   { type: "arcade",     x: 410, y: 15,  facing: 180 },
   { type: "tv_stand",   x: 550, y: 10,  facing: 180 },
-  { type: "side_table", x: 468, y: 14 },
-  { type: "side_table", x: 708, y: 14 },
-  { type: "side_table", x: 580, y: 52 },
   { type: "couch",      x: 540, y: 100, w: 100, h: 40, facing: 180 },
   { type: "beanbag",    x: 488, y: 100, facing: 180 },
   { type: "beanbag",    x: 650, y: 100, facing: 180 },

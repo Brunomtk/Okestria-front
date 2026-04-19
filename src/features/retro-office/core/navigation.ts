@@ -722,17 +722,27 @@ export const getGymWorkoutLocations = (
           x,
           y,
           facing: facingTowardEquipment(x, y),
-          workoutStyle: "lift",
+          workoutStyle: "bench_press",
         };
       }
-      if (item.type === "dumbbell_rack" || item.type === "kettlebell_rack") {
+      if (item.type === "dumbbell_rack") {
         const x = item.x - 18;
         const y = item.y + 14;
         return {
           x,
           y,
           facing: facingTowardEquipment(x, y),
-          workoutStyle: "lift",
+          workoutStyle: "curl",
+        };
+      }
+      if (item.type === "kettlebell_rack") {
+        const x = item.x - 18;
+        const y = item.y + 14;
+        return {
+          x,
+          y,
+          facing: facingTowardEquipment(x, y),
+          workoutStyle: "kettlebell",
         };
       }
       if (item.type === "exercise_bike") {
@@ -752,7 +762,7 @@ export const getGymWorkoutLocations = (
           x,
           y,
           facing: facingTowardEquipment(x, y),
-          workoutStyle: "lift",
+          workoutStyle: "squat",
         };
       }
       if (item.type === "deadlift_platform") {
@@ -762,7 +772,7 @@ export const getGymWorkoutLocations = (
           x,
           y,
           facing: facingTowardEquipment(x, y),
-          workoutStyle: "lift",
+          workoutStyle: "deadlift",
         };
       }
       if (item.type === "cable_crossover") {
@@ -772,7 +782,7 @@ export const getGymWorkoutLocations = (
           x,
           y,
           facing: facingTowardEquipment(x, y),
-          workoutStyle: "lift",
+          workoutStyle: "cable",
         };
       }
       if (item.type === "rowing_machine") {
@@ -793,6 +803,16 @@ export const getGymWorkoutLocations = (
           y,
           facing: facingTowardEquipment(x, y),
           workoutStyle: "stretch",
+        };
+      }
+      if (item.type === "punching_bag") {
+        const x = item.x - 18;
+        const y = item.y + 14;
+        return {
+          x,
+          y,
+          facing: facingTowardEquipment(x, y),
+          workoutStyle: "punch",
         };
       }
       const x = item.x - 18;
