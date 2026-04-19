@@ -986,10 +986,19 @@ export function DoorModel({
       ? "#4a90d9"
       : "#000000";
   const highlightIntensity = isSelected ? 0.35 : isHovered && editMode ? 0.22 : 0;
-  const handleX = width - 0.09;
-  const handleZ = Math.max(depth * 0.28, 0.035);
   const leafPivotRef = useRef<THREE.Group>(null);
   const openAmountRef = useRef(0);
+
+  // v37 door proportions — nothing extends above wall top (y=1) and all frame
+  // surfaces slightly overlap the wall depth so the opening reads as solid.
+  const jambWidth = 0.05; // each side jamb width
+  const headerHeight = 0.16; // header (top beam) height
+  const leafMaxHeight = 1 - headerHeight - 0.02; // clear height under header
+  const leafWidth = Math.max(width - 2 * jambWidth + 0.002, 0.08);
+  const leafDepth = Math.max(depth * 0.62, 0.05);
+  const frameDepth = depth + 0.03; // +0.03 so frame edges sit flush against wall faces
+  const handleX = leafWidth - 0.08;
+  const handleZ = Math.max(leafDepth * 0.5 + 0.012, 0.03);
 
   useFrame(() => {
     if (!leafPivotRef.current) return;
@@ -1033,39 +1042,128 @@ export function DoorModel({
       }}
     >
       <group position={[width / 2, 0, depth / 2]} rotation={[0, rotY, 0]}>
-        <mesh position={[0, 1.01, 0]}>
-          <boxGeometry args={[width + 0.05, 0.08, depth + 0.04]} />
-          <meshStandardMaterial color="#4a3421" roughness={0.88} />
+        {/* Header (top beam) — stays within wall height (y≤1) so it doesn't stick above */}
+        <mesh position={[0, 1 - headerHeight / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[width + 0.02, headerHeight, frameDepth]} />
+          <meshStandardMaterial color="#2a1d12" roughness={0.82} metalness={0.06} />
         </mesh>
-        <mesh position={[-width / 2 + 0.02, 0.5, 0]}>
-          <boxGeometry args={[0.04, 1, depth + 0.03]} />
-          <meshStandardMaterial color="#4a3421" roughness={0.88} />
+        {/* Header face molding — thin highlight strip along the bottom of the header */}
+        <mesh position={[0, 1 - headerHeight - 0.01, 0]}>
+          <boxGeometry args={[width + 0.01, 0.02, frameDepth + 0.002]} />
+          <meshStandardMaterial color="#5a3f28" roughness={0.7} metalness={0.1} />
         </mesh>
-        <mesh position={[width / 2 - 0.02, 0.5, 0]}>
-          <boxGeometry args={[0.04, 1, depth + 0.03]} />
-          <meshStandardMaterial color="#4a3421" roughness={0.88} />
+        {/* Left jamb — full height, slightly wider than wall depth for flush fit */}
+        <mesh
+          position={[-width / 2 + jambWidth / 2, (1 - headerHeight) / 2, 0]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[jambWidth, 1 - headerHeight, frameDepth]} />
+          <meshStandardMaterial color="#2a1d12" roughness={0.82} metalness={0.06} />
         </mesh>
-        <group ref={leafPivotRef} position={[-width / 2 + 0.025, 0, 0]}>
-          <mesh position={[width / 2 - 0.035, 0.5, 0]} receiveShadow>
-            <boxGeometry args={[Math.max(width - 0.09, 0.08), 0.94, depth * 0.68]} />
+        {/* Right jamb */}
+        <mesh
+          position={[width / 2 - jambWidth / 2, (1 - headerHeight) / 2, 0]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[jambWidth, 1 - headerHeight, frameDepth]} />
+          <meshStandardMaterial color="#2a1d12" roughness={0.82} metalness={0.06} />
+        </mesh>
+        {/* Threshold — metallic sill along the floor across the door width */}
+        <mesh position={[0, 0.012, 0]}>
+          <boxGeometry args={[width - 2 * jambWidth + 0.004, 0.024, frameDepth + 0.004]} />
+          <meshStandardMaterial color="#3a3a42" roughness={0.5} metalness={0.55} />
+        </mesh>
+        {/* Selection / hover tint — painted over both jambs as a faint emissive frame */}
+        <mesh position={[0, (1 - headerHeight) / 2, 0]} visible={highlightIntensity > 0}>
+          <boxGeometry args={[width + 0.015, 1 - headerHeight, frameDepth + 0.004]} />
+          <meshStandardMaterial
+            color="#000000"
+            emissive={highlightColor}
+            emissiveIntensity={highlightIntensity}
+            transparent
+            opacity={0.001}
+          />
+        </mesh>
+        {/* Door LEAF — pivots around the left jamb when an agent approaches */}
+        <group ref={leafPivotRef} position={[-width / 2 + jambWidth, 0, 0]}>
+          {/* Main leaf panel */}
+          <mesh
+            position={[leafWidth / 2, (1 - headerHeight) / 2 + 0.01, 0]}
+            castShadow
+            receiveShadow
+          >
+            <boxGeometry args={[leafWidth, leafMaxHeight, leafDepth]} />
             <meshStandardMaterial
-              color="#7c5330"
+              color="#6b4426"
               emissive={highlightColor}
-              emissiveIntensity={0.28 + highlightIntensity}
-              roughness={0.74}
+              emissiveIntensity={0.18 + highlightIntensity}
+              roughness={0.68}
+              metalness={0.05}
             />
           </mesh>
-          <mesh position={[handleX, 0.52, 0]}>
-            <cylinderGeometry args={[0.008, 0.008, handleZ * 2.1, 10]} />
-            <meshStandardMaterial color="#9f8141" roughness={0.4} metalness={0.45} />
+          {/* Upper panel inlay (front face) */}
+          <mesh
+            position={[leafWidth / 2, leafMaxHeight * 0.62 + 0.01, leafDepth / 2 + 0.001]}
+          >
+            <boxGeometry args={[leafWidth * 0.78, leafMaxHeight * 0.28, 0.008]} />
+            <meshStandardMaterial color="#4f3020" roughness={0.78} metalness={0.04} />
           </mesh>
-          <mesh position={[handleX, 0.52, handleZ]}>
-            <sphereGeometry args={[0.025, 12, 12]} />
-            <meshStandardMaterial color="#d9bf72" roughness={0.36} metalness={0.35} />
+          {/* Lower panel inlay (front face) */}
+          <mesh
+            position={[leafWidth / 2, leafMaxHeight * 0.22 + 0.01, leafDepth / 2 + 0.001]}
+          >
+            <boxGeometry args={[leafWidth * 0.78, leafMaxHeight * 0.32, 0.008]} />
+            <meshStandardMaterial color="#4f3020" roughness={0.78} metalness={0.04} />
           </mesh>
-          <mesh position={[handleX, 0.52, -handleZ]}>
-            <sphereGeometry args={[0.025, 12, 12]} />
-            <meshStandardMaterial color="#d9bf72" roughness={0.36} metalness={0.35} />
+          {/* Upper panel inlay (back face — mirror) */}
+          <mesh
+            position={[leafWidth / 2, leafMaxHeight * 0.62 + 0.01, -leafDepth / 2 - 0.001]}
+          >
+            <boxGeometry args={[leafWidth * 0.78, leafMaxHeight * 0.28, 0.008]} />
+            <meshStandardMaterial color="#4f3020" roughness={0.78} metalness={0.04} />
+          </mesh>
+          <mesh
+            position={[leafWidth / 2, leafMaxHeight * 0.22 + 0.01, -leafDepth / 2 - 0.001]}
+          >
+            <boxGeometry args={[leafWidth * 0.78, leafMaxHeight * 0.32, 0.008]} />
+            <meshStandardMaterial color="#4f3020" roughness={0.78} metalness={0.04} />
+          </mesh>
+          {/* Mid-rail horizontal divider */}
+          <mesh
+            position={[leafWidth / 2, leafMaxHeight * 0.42 + 0.01, leafDepth / 2 + 0.001]}
+          >
+            <boxGeometry args={[leafWidth * 0.82, 0.03, 0.006]} />
+            <meshStandardMaterial color="#8a6140" roughness={0.6} metalness={0.1} />
+          </mesh>
+          {/* Handle backplate (both faces) */}
+          <mesh position={[handleX, 0.5, handleZ + 0.006]}>
+            <boxGeometry args={[0.07, 0.11, 0.012]} />
+            <meshStandardMaterial color="#8a6a28" roughness={0.4} metalness={0.55} />
+          </mesh>
+          <mesh position={[handleX, 0.5, -handleZ - 0.006]}>
+            <boxGeometry args={[0.07, 0.11, 0.012]} />
+            <meshStandardMaterial color="#8a6a28" roughness={0.4} metalness={0.55} />
+          </mesh>
+          {/* Handle lever front */}
+          <mesh position={[handleX - 0.018, 0.5, handleZ + 0.018]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.06, 12]} />
+            <meshStandardMaterial color="#d9bf72" roughness={0.32} metalness={0.68} />
+          </mesh>
+          {/* Handle lever back */}
+          <mesh position={[handleX - 0.018, 0.5, -handleZ - 0.018]} rotation={[0, 0, Math.PI / 2]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.06, 12]} />
+            <meshStandardMaterial color="#d9bf72" roughness={0.32} metalness={0.68} />
+          </mesh>
+          {/* Door hinge pins — visible on the jamb-side edge */}
+          <mesh position={[0.012, 0.18, 0]}>
+            <cylinderGeometry args={[0.008, 0.008, leafDepth * 0.92, 10]} />
+            <meshStandardMaterial color="#8a6a28" roughness={0.36} metalness={0.6} />
+          </mesh>
+          <mesh position={[0.012, 0.82, 0]}>
+            <cylinderGeometry args={[0.008, 0.008, leafDepth * 0.92, 10]} />
+            <meshStandardMaterial color="#8a6a28" roughness={0.36} metalness={0.6} />
           </mesh>
         </group>
       </group>
