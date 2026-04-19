@@ -14,6 +14,8 @@ import {
   Trash2,
   Users,
   X,
+  Loader2,
+  Flame,
 } from "lucide-react";
 import {
   memo,
@@ -5421,7 +5423,7 @@ export function RetroOffice3D({
         </div>
       ) : null}
 
-      {/* Toolbar — top right - Redesigned */}
+      {/* Toolbar — top right - v2 polished */}
       {!readOnly && !immersiveOverlayActive ? (
         <div className={`absolute top-3 right-3 ${editMode && drawerOpen ? "z-10 opacity-35 pointer-events-none" : "z-20"} flex max-w-[calc(100vw-1.5rem)] flex-wrap items-center justify-end gap-2`}>
           {/* Remote Office Badge */}
@@ -5432,10 +5434,14 @@ export function RetroOffice3D({
             <button
               onClick={() => setSettingsModalOpen(true)}
               title={remoteOfficeStatusText}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-[#0a0a0a]/95 px-3 text-[11px] font-medium text-white/70 shadow-xl backdrop-blur-xl transition-all hover:border-cyan-500/30 hover:text-cyan-300"
+              className="group flex h-9 items-center gap-2 rounded-xl border border-emerald-400/15 bg-[#061112]/95 px-3 text-[11px] font-medium text-emerald-100/80 shadow-xl backdrop-blur-xl transition-all hover:border-emerald-400/35 hover:bg-[#081615] hover:text-emerald-50"
+              aria-label={`Remote office · ${remoteOfficeStatusText}`}
             >
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              <span>{remoteOfficeLabel}</span>
+              <span className="relative flex h-2 w-2 items-center justify-center">
+                <span className="absolute h-2 w-2 animate-ping rounded-full bg-emerald-400/45" />
+                <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              </span>
+              <span className="font-mono text-[10px] uppercase tracking-[0.14em]">{remoteOfficeLabel}</span>
             </button>
           )}
 
@@ -5443,73 +5449,99 @@ export function RetroOffice3D({
           {onAddAgent && (
             <button
               onClick={onAddAgent}
-              title="Add agent"
-              className="group flex h-8 items-center gap-2 rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-3.5 text-[11px] font-semibold text-white shadow-lg shadow-cyan-500/25 transition-all hover:from-cyan-500 hover:to-cyan-400 hover:shadow-cyan-500/40 active:scale-[0.98]"
+              title="Add a new agent to your office (A)"
+              aria-label="Add a new agent"
+              className="group relative flex h-9 items-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-cyan-600 via-cyan-500 to-sky-500 px-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-white shadow-lg shadow-cyan-500/30 transition-all hover:from-cyan-500 hover:via-cyan-400 hover:to-sky-400 hover:shadow-cyan-400/50 active:scale-[0.97]"
             >
-              <UserPlus size={14} className="transition-transform group-hover:scale-110" />
-              <span>Add Agent</span>
+              <span className="pointer-events-none absolute -inset-x-6 -top-6 -bottom-6 translate-x-[-140%] bg-gradient-to-r from-transparent via-white/35 to-transparent transition-transform duration-700 group-hover:translate-x-[140%]" />
+              <UserPlus size={15} strokeWidth={2.4} className="relative transition-transform group-hover:scale-110 group-hover:rotate-[-4deg]" />
+              <span className="relative">Add Agent</span>
             </button>
           )}
 
-          {/* Icon Actions Group */}
+          {/* View controls group (camera/insight tools) */}
           <div className="flex items-center gap-0.5 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 p-1 shadow-xl backdrop-blur-xl">
             {onOpenProfile && (
-              <button
-                onClick={onOpenProfile}
-                title="Open profile"
-                className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
-                  profileButtonActive
-                    ? "bg-cyan-500/20 text-cyan-300"
-                    : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
-                }`}
-              >
-                <UserRound size={14} />
-              </button>
+              <>
+                <button
+                  onClick={onOpenProfile}
+                  title="Your profile · company info"
+                  aria-label="Open profile"
+                  className={`group flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                    profileButtonActive
+                      ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/30"
+                      : "text-white/45 hover:bg-white/[0.06] hover:text-white"
+                  }`}
+                >
+                  <UserRound size={14} strokeWidth={profileButtonActive ? 2.4 : 2} />
+                </button>
+                <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/[0.08]" />
+              </>
             )}
             <button
               onClick={() => setHeatmapMode((p) => !p)}
-              title="Toggle heatmap"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+              title={heatmapMode ? "Hide agent heatmap" : "Show agent heatmap"}
+              aria-label="Toggle heatmap"
+              aria-pressed={heatmapMode}
+              className={`group flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
                 heatmapMode
-                  ? "bg-red-500/20 text-red-300 ring-1 ring-red-500/30"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                  ? "bg-rose-500/20 text-rose-300 ring-1 ring-rose-500/30"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
-              <MapIcon size={14} />
+              {heatmapMode ? (
+                <Flame size={14} strokeWidth={2.2} className="animate-[pulse_1.6s_ease-in-out_infinite]" />
+              ) : (
+                <MapIcon size={14} strokeWidth={2} />
+              )}
             </button>
             <button
               onClick={() => {
                 void toggleEdit();
               }}
               disabled={isSavingOfficeLayout}
-              title={editMode ? (isSavingOfficeLayout ? "Saving office layout..." : "Save office layout") : "Edit office"}
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+              title={editMode ? (isSavingOfficeLayout ? "Saving layout…" : "Finish editing & save layout") : "Edit office layout"}
+              aria-label={editMode ? "Save office layout" : "Edit office layout"}
+              aria-pressed={editMode}
+              className={`group flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
                 editMode
-                  ? "bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
-              } ${isSavingOfficeLayout ? "cursor-wait opacity-50" : ""}`}
+                  ? "bg-amber-500/25 text-amber-200 ring-1 ring-amber-400/40 shadow-inner shadow-amber-500/10"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white"
+              } ${isSavingOfficeLayout ? "cursor-wait opacity-60" : ""}`}
             >
-              {editMode ? <Check size={14} strokeWidth={2.5} /> : <Pencil size={14} strokeWidth={2} />}
+              {isSavingOfficeLayout ? (
+                <Loader2 size={14} strokeWidth={2.4} className="animate-spin" />
+              ) : editMode ? (
+                <Check size={14} strokeWidth={2.6} />
+              ) : (
+                <Pencil size={14} strokeWidth={2} />
+              )}
             </button>
             <button
               onClick={() => setSettingsModalOpen(true)}
-              title="Settings"
-              className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+              title="Office settings · connections"
+              aria-label="Open office settings"
+              aria-pressed={settingsModalOpen}
+              className={`group flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
                 settingsModalOpen
-                  ? "bg-amber-500/20 text-amber-300"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white/70"
+                  ? "bg-white/[0.1] text-white ring-1 ring-white/15"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white"
               }`}
             >
-              <Settings2 size={14} />
+              <Settings2 size={14} strokeWidth={settingsModalOpen ? 2.4 : 2} className="transition-transform group-hover:rotate-45" />
             </button>
             {onLogout && (
-              <button
-                onClick={onLogout}
-                title="Logout"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-white/40 transition-all hover:bg-red-500/15 hover:text-red-400"
-              >
-                <LogOut size={14} />
-              </button>
+              <>
+                <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/[0.08]" />
+                <button
+                  onClick={onLogout}
+                  title="Sign out of this workspace"
+                  aria-label="Sign out"
+                  className="group flex h-8 w-8 items-center justify-center rounded-lg text-white/45 transition-all hover:bg-rose-500/15 hover:text-rose-300"
+                >
+                  <LogOut size={14} strokeWidth={2} className="transition-transform group-hover:translate-x-[2px]" />
+                </button>
+              </>
             )}
           </div>
 
