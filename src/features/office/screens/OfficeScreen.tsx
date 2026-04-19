@@ -1,6 +1,6 @@
 "use client";
 
-import { SquadChatPanel } from "../components/SquadChatPanel";
+import { SquadTaskWorkspace } from "../components/SquadTaskWorkspace";
 
 
 import {
@@ -6313,7 +6313,7 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget && focusedSquadChatState ? (
-                    <SquadChatPanel
+                    <SquadTaskWorkspace
                       squadName={focusedSquadChatTarget.name}
                       leaderName={focusedSquadSessionAgent?.name ?? focusedSquadChatTarget.name}
                       entries={
