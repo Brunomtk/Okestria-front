@@ -1,45 +1,41 @@
 "use client";
-// HMR cache buster: 2026-04-05T17:27
-import { useState, useEffect, useRef } from "react";
+// HMR cache buster: 2026-04-20T10:00 — landing v2 with live agent previews
+import { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
   ArrowRight,
   Bot,
   Brain,
+  Calendar,
   Check,
-  ChevronRight,
-  Clock,
-  Globe,
+  ChevronDown,
   LineChart,
-  Lock,
+  Mail,
   MessageSquare,
-  Play,
+  Search,
   Shield,
+  Sparkles,
   Target,
-  Users,
+  TrendingUp,
   Zap,
 } from "lucide-react";
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Animated particles background
+// ─────────────────────────────────────────────────────────────────────────────
 function ParticlesBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     let animationId: number;
     const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      size: number;
-      opacity: number;
+      x: number; y: number; vx: number; vy: number; size: number; opacity: number;
     }> = [];
 
     const resize = () => {
@@ -48,52 +44,46 @@ function ParticlesBackground() {
     };
 
     const createParticles = () => {
-      const count = Math.floor((canvas.width * canvas.height) / 15000);
+      particles.length = 0;
+      const count = Math.floor((canvas.width * canvas.height) / 18000);
       for (let i = 0; i < count; i++) {
         particles.push({
           x: Math.random() * canvas.width,
           y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.3,
-          vy: (Math.random() - 0.5) * 0.3,
-          size: Math.random() * 2 + 0.5,
-          opacity: Math.random() * 0.5 + 0.2,
+          vx: (Math.random() - 0.5) * 0.25,
+          vy: (Math.random() - 0.5) * 0.25,
+          size: Math.random() * 1.6 + 0.4,
+          opacity: Math.random() * 0.45 + 0.15,
         });
       }
     };
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       particles.forEach((p) => {
         p.x += p.vx;
         p.y += p.vy;
-
         if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
         if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(100, 200, 255, ${p.opacity})`;
+        ctx.fillStyle = `rgba(120, 200, 255, ${p.opacity})`;
         ctx.fill();
       });
-
-      // Draw connections
       particles.forEach((p1, i) => {
         particles.slice(i + 1).forEach((p2) => {
           const dx = p1.x - p2.x;
           const dy = p1.y - p2.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (dist < 120) {
+          if (dist < 130) {
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(100, 200, 255, ${0.1 * (1 - dist / 120)})`;
+            ctx.strokeStyle = `rgba(120, 200, 255, ${0.09 * (1 - dist / 130)})`;
             ctx.stroke();
           }
         });
       });
-
       animationId = requestAnimationFrame(animate);
     };
 
@@ -101,10 +91,13 @@ function ParticlesBackground() {
     createParticles();
     animate();
 
-    window.addEventListener("resize", resize);
-
+    const onResize = () => {
+      resize();
+      createParticles();
+    };
+    window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", onResize);
       cancelAnimationFrame(animationId);
     };
   }, []);
@@ -113,13 +106,25 @@ function ParticlesBackground() {
     <canvas
       ref={canvasRef}
       className="pointer-events-none fixed inset-0 z-0"
-      style={{ opacity: 0.6 }}
+      style={{ opacity: 0.55 }}
     />
   );
 }
 
-// Animated counter component
-function AnimatedCounter({ end, duration = 2000, suffix = "" }: { end: number; duration?: number; suffix?: string }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Animated counter
+// ─────────────────────────────────────────────────────────────────────────────
+function AnimatedCounter({
+  end,
+  duration = 2000,
+  suffix = "",
+  decimals = 0,
+}: {
+  end: number;
+  duration?: number;
+  suffix?: string;
+  decimals?: number;
+}) {
   const [count, setCount] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -127,54 +132,773 @@ function AnimatedCounter({ end, duration = 2000, suffix = "" }: { end: number; d
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsVisible(true);
-        }
+        if (entry.isIntersecting) setIsVisible(true);
       },
       { threshold: 0.1 }
     );
-
-    if (ref.current) {
-      observer.observe(ref.current);
-    }
-
+    if (ref.current) observer.observe(ref.current);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
     if (!isVisible) return;
-
     let startTime: number;
     const animate = (timestamp: number) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
-      setCount(Math.floor(progress * end));
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
+      setCount(progress * end);
+      if (progress < 1) requestAnimationFrame(animate);
     };
-
     requestAnimationFrame(animate);
   }, [isVisible, end, duration]);
 
-  return <span ref={ref}>{count}{suffix}</span>;
+  return (
+    <span ref={ref}>
+      {count.toFixed(decimals)}
+      {suffix}
+    </span>
+  );
 }
 
-// Floating animation wrapper
-function FloatingElement({ children, delay = 0 }: { children: React.ReactNode; delay?: number }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Pulsing status dot
+// ─────────────────────────────────────────────────────────────────────────────
+function PulsingDot({ tone = "emerald" }: { tone?: "emerald" | "cyan" | "violet" | "amber" | "pink" }) {
+  const palette: Record<string, { bg: string; shadow: string }> = {
+    emerald: { bg: "bg-emerald-400", shadow: "shadow-[0_0_10px_rgba(74,222,128,0.9)]" },
+    cyan: { bg: "bg-cyan-400", shadow: "shadow-[0_0_10px_rgba(34,211,238,0.9)]" },
+    violet: { bg: "bg-violet-400", shadow: "shadow-[0_0_10px_rgba(167,139,250,0.9)]" },
+    amber: { bg: "bg-amber-400", shadow: "shadow-[0_0_10px_rgba(251,191,36,0.9)]" },
+    pink: { bg: "bg-pink-400", shadow: "shadow-[0_0_10px_rgba(244,114,182,0.9)]" },
+  };
+  const c = palette[tone];
   return (
-    <div
-      className="animate-float"
-      style={{
-        animationDelay: `${delay}ms`,
-      }}
-    >
-      {children}
+    <span className="relative inline-flex h-2 w-2">
+      <span className={`absolute inset-0 rounded-full ${c.bg} opacity-70 animate-ping`} />
+      <span className={`relative inline-flex h-2 w-2 rounded-full ${c.bg} ${c.shadow}`} />
+    </span>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Typewriter text effect
+// ─────────────────────────────────────────────────────────────────────────────
+function TypewriterText({
+  text,
+  speed = 24,
+  restartKey,
+}: {
+  text: string;
+  speed?: number;
+  restartKey?: string | number;
+}) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    setShown("");
+    let i = 0;
+    const id = window.setInterval(() => {
+      i += 1;
+      if (i > text.length) {
+        window.clearInterval(id);
+        return;
+      }
+      setShown(text.slice(0, i));
+    }, speed);
+    return () => window.clearInterval(id);
+  }, [text, speed, restartKey]);
+  return (
+    <>
+      {shown}
+      <span className="inline-block w-[6px] translate-y-[1px] animate-pulse text-white/70">▌</span>
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live Lead Scout panel — leads appearing with scores
+// ─────────────────────────────────────────────────────────────────────────────
+function LeadScoutPanel() {
+  const pool = useMemo(
+    () => [
+      { name: "Cedar Hill Roofing", city: "Austin, TX", score: 92, cat: "Roofing" },
+      { name: "Ocean View Dental", city: "Miami, FL", score: 88, cat: "Dental" },
+      { name: "Blue Ridge Legal", city: "Denver, CO", score: 84, cat: "Legal" },
+      { name: "Atlas Plumbing Pros", city: "Chicago, IL", score: 91, cat: "Plumbing" },
+      { name: "Stride Fitness Co.", city: "Portland, OR", score: 79, cat: "Fitness" },
+      { name: "Pinewood Auto Shop", city: "Phoenix, AZ", score: 86, cat: "Auto" },
+      { name: "Harbor Light Spa", city: "Boston, MA", score: 82, cat: "Beauty" },
+      { name: "Redwood Accounting", city: "Seattle, WA", score: 90, cat: "Finance" },
+    ],
+    []
+  );
+  const [visible, setVisible] = useState<typeof pool>(() => pool.slice(0, 3));
+  const [cursor, setCursor] = useState(3);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setVisible((prev) => [pool[cursor % pool.length], ...prev].slice(0, 4));
+      setCursor((c) => c + 1);
+    }, 1700);
+    return () => window.clearInterval(id);
+  }, [cursor, pool]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <Search className="h-3.5 w-3.5" /> Scanning Google Places · Austin metro
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-400/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+          <PulsingDot tone="cyan" />
+          Live
+        </div>
+      </div>
+      <div className="mt-4 space-y-2">
+        {visible.map((lead, idx) => (
+          <div
+            key={`${lead.name}-${cursor}-${idx}`}
+            className="group flex items-center justify-between rounded-xl border border-white/8 bg-[#0a131f]/80 px-3 py-2.5 animate-[slideIn_0.5s_ease]"
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border border-cyan-400/20">
+                <Target className="h-3.5 w-3.5 text-cyan-300" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-medium text-white">{lead.name}</p>
+                <p className="truncate text-[11px] text-white/40">{lead.cat} · {lead.city}</p>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 border border-emerald-400/25 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+              <TrendingUp className="h-3 w-3" />
+              {lead.score}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-auto pt-4 flex items-center justify-between text-[11px] text-white/45">
+        <span>247 businesses scanned</span>
+        <span className="text-emerald-300">+12 qualified</span>
+      </div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Live Sales Rep panel — typewriter email draft
+// ─────────────────────────────────────────────────────────────────────────────
+function SalesRepPanel() {
+  const drafts = useMemo(
+    () => [
+      {
+        to: "hello@cedarhillroofing.com",
+        subject: "A quick idea for Cedar Hill",
+        body: "Hi Cedar Hill team, I was looking at roofing companies in Austin and your 4.9-star rating across 312 reviews really stood out. Most roofers that busy lose new requests in their inbox within a day. We built an AI flow that responds in under 3 minutes — worth a 10-min look?",
+      },
+      {
+        to: "contact@oceanviewdental.com",
+        subject: "Quick note for Ocean View Dental",
+        body: "Hi Ocean View Dental — I noticed your 300+ patient reviews in Miami. With that kind of volume, appointment requests usually pile up faster than the front desk can handle. Mind if I show you how practices like yours are auto-qualifying new patients?",
+      },
+      {
+        to: "info@blueridgelegal.com",
+        subject: "Case intake idea for Blue Ridge",
+        body: "Hi Blue Ridge Legal, saw your firm highlighted in Denver for personal injury work. Intake is usually where cases win or walk — we help firms qualify and schedule consults automatically so hot leads don't go cold. Open to a quick walkthrough?",
+      },
+    ],
+    []
+  );
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setIdx((p) => (p + 1) % drafts.length), 11000);
+    return () => window.clearInterval(id);
+  }, [drafts.length]);
+  const draft = drafts[idx];
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <Mail className="h-3.5 w-3.5" /> Composing personalized outreach
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-violet-500/10 border border-violet-400/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+          <PulsingDot tone="violet" />
+          Drafting
+        </div>
+      </div>
+      <div className="mt-4 space-y-2 rounded-xl border border-white/8 bg-[#0a131f]/80 p-3.5 text-[12.5px] leading-relaxed">
+        <div className="flex items-center gap-2 text-white/40">
+          <span className="text-[10px] uppercase tracking-wide">To</span>
+          <span className="text-white/70">{draft.to}</span>
+        </div>
+        <div className="flex items-center gap-2 text-white/40 border-b border-white/5 pb-2">
+          <span className="text-[10px] uppercase tracking-wide">Subj</span>
+          <span className="text-white/80 font-medium truncate">{draft.subject}</span>
+        </div>
+        <p className="pt-1 text-white/75 min-h-[120px]">
+          <TypewriterText text={draft.body} restartKey={idx} speed={22} />
+        </p>
+      </div>
+      <div className="mt-auto pt-4 flex items-center justify-between text-[11px] text-white/45">
+        <span>18 emails in queue</span>
+        <span className="text-violet-300">Personalized by Claude</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live Closer panel — meeting calendar lighting up
+// ─────────────────────────────────────────────────────────────────────────────
+function CloserPanel() {
+  const slots = useMemo(
+    () => [
+      { day: "Mon", time: "10:00" },
+      { day: "Mon", time: "2:30" },
+      { day: "Tue", time: "11:00" },
+      { day: "Tue", time: "3:00" },
+      { day: "Wed", time: "9:30" },
+      { day: "Wed", time: "1:00" },
+      { day: "Thu", time: "10:30" },
+      { day: "Thu", time: "4:00" },
+      { day: "Fri", time: "9:00" },
+      { day: "Fri", time: "2:00" },
+    ],
+    []
+  );
+  const [booked, setBooked] = useState<Set<number>>(() => new Set([0, 4, 7]));
+  const [latest, setLatest] = useState(0);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setBooked((prev) => {
+        const next = new Set(prev);
+        let candidate = Math.floor(Math.random() * slots.length);
+        let tries = 0;
+        while (next.has(candidate) && tries < 10) {
+          candidate = Math.floor(Math.random() * slots.length);
+          tries += 1;
+        }
+        next.add(candidate);
+        if (next.size > 6) {
+          const first = next.values().next().value;
+          if (first !== undefined) next.delete(first);
+        }
+        setLatest(candidate);
+        return next;
+      });
+    }, 1900);
+    return () => window.clearInterval(id);
+  }, [slots.length]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <Calendar className="h-3.5 w-3.5" /> Booking demos · This week
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-pink-500/10 border border-pink-400/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pink-300">
+          <PulsingDot tone="pink" />
+          Booking
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-5 gap-2 text-center text-[11px] font-medium">
+        {slots.map((slot, i) => {
+          const isBooked = booked.has(i);
+          const isLatest = latest === i && isBooked;
+          return (
+            <div
+              key={`${slot.day}-${slot.time}`}
+              className={`relative rounded-lg border px-1.5 py-2 transition-all duration-500 ${
+                isBooked
+                  ? "border-pink-400/50 bg-gradient-to-br from-pink-500/20 to-rose-500/10 text-pink-200"
+                  : "border-white/8 bg-[#0a131f]/60 text-white/45"
+              }`}
+            >
+              <div className="text-[9px] uppercase tracking-wide opacity-70">{slot.day}</div>
+              <div className="mt-0.5 text-[12px] font-semibold">{slot.time}</div>
+              {isLatest && (
+                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                  <span className="absolute inset-0 rounded-full bg-pink-400 animate-ping opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-pink-400 shadow-[0_0_10px_rgba(244,114,182,0.9)]" />
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4 rounded-xl border border-white/8 bg-[#0a131f]/80 p-3">
+        <div className="flex items-center gap-2 text-[11px] text-white/50">
+          <Sparkles className="h-3 w-3 text-pink-300" />
+          Latest booking
+        </div>
+        <p className="mt-1 text-[12.5px] text-white/80">
+          {booked.size > 0 ? `${slots[latest].day} ${slots[latest].time} · ` : ""}
+          {booked.size > 0 ? "Cedar Hill Roofing · 30 min demo" : "Awaiting first booking…"}
+        </p>
+      </div>
+      <div className="mt-auto pt-4 flex items-center justify-between text-[11px] text-white/45">
+        <span>{booked.size} demos booked</span>
+        <span className="text-pink-300">This week</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live Analyst panel — sparkline + KPIs
+// ─────────────────────────────────────────────────────────────────────────────
+function AnalystPanel() {
+  const [values, setValues] = useState<number[]>(() =>
+    Array.from({ length: 24 }, (_, i) => 42 + Math.sin(i / 2.5) * 14 + Math.random() * 6)
+  );
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setValues((prev) => {
+        const last = prev[prev.length - 1] ?? 50;
+        const delta = (Math.random() - 0.45) * 12;
+        const next = Math.min(98, Math.max(20, last + delta));
+        return [...prev.slice(1), next];
+      });
+    }, 900);
+    return () => window.clearInterval(id);
+  }, []);
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const points = values
+    .map((v, i) => {
+      const x = (i / (values.length - 1)) * 100;
+      const y = 100 - ((v - min) / (max - min || 1)) * 100;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+  const latest = values[values.length - 1] ?? 50;
+  const trend = latest - (values[values.length - 6] ?? latest);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs text-white/50">
+          <LineChart className="h-3.5 w-3.5" /> Pipeline health · Last 24h
+        </div>
+        <div className="flex items-center gap-1.5 rounded-full bg-amber-500/10 border border-amber-400/30 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+          <PulsingDot tone="amber" />
+          Analyzing
+        </div>
+      </div>
+      <div className="mt-4 rounded-xl border border-white/8 bg-[#0a131f]/80 p-3">
+        <div className="flex items-baseline gap-3">
+          <div className="text-[28px] font-semibold text-white">{latest.toFixed(0)}%</div>
+          <div
+            className={`text-[12px] font-medium ${
+              trend >= 0 ? "text-emerald-300" : "text-rose-300"
+            }`}
+          >
+            {trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(1)}
+          </div>
+          <div className="text-[11px] text-white/45">reply rate</div>
+        </div>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="mt-2 h-[90px] w-full">
+          <defs>
+            <linearGradient id="analystFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(251,191,36,0.35)" />
+              <stop offset="100%" stopColor="rgba(251,191,36,0)" />
+            </linearGradient>
+          </defs>
+          <polyline
+            points={`0,100 ${points} 100,100`}
+            fill="url(#analystFill)"
+            stroke="none"
+          />
+          <polyline
+            points={points}
+            fill="none"
+            stroke="rgba(251,191,36,0.95)"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+        {[
+          { label: "Open rate", value: "62%" },
+          { label: "Reply rate", value: `${latest.toFixed(0)}%` },
+          { label: "Hot leads", value: "24" },
+          { label: "Demos set", value: "7" },
+        ].map((kpi) => (
+          <div
+            key={kpi.label}
+            className="rounded-lg border border-white/8 bg-[#0a131f]/60 px-2.5 py-1.5"
+          >
+            <div className="text-[10px] uppercase tracking-wide text-white/45">{kpi.label}</div>
+            <div className="text-[13px] font-semibold text-white">{kpi.value}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Live activity feed
+// ─────────────────────────────────────────────────────────────────────────────
+type FeedEvent = { agent: string; action: string; tone: "cyan" | "violet" | "pink" | "amber" };
+
+function LiveFeed() {
+  const events = useMemo<FeedEvent[]>(
+    () => [
+      { agent: "Scout", action: "qualified 3 new leads in Austin", tone: "cyan" },
+      { agent: "Rep", action: "drafted personalized email for Ocean View Dental", tone: "violet" },
+      { agent: "Closer", action: "booked Tuesday 3pm with Cedar Hill", tone: "pink" },
+      { agent: "Analyst", action: "flagged 5 hot replies", tone: "amber" },
+      { agent: "Scout", action: "scraped 247 businesses from Google Places", tone: "cyan" },
+      { agent: "Rep", action: "sent batch to 18 recipients", tone: "violet" },
+      { agent: "Closer", action: "scheduled Fri 9am demo", tone: "pink" },
+      { agent: "Analyst", action: "pipeline health up 12% vs last week", tone: "amber" },
+      { agent: "Scout", action: "enriched website emails for 9 leads", tone: "cyan" },
+      { agent: "Rep", action: "re-qualified 4 leads with Claude", tone: "violet" },
+    ],
+    []
+  );
+  const [log, setLog] = useState<Array<FeedEvent & { id: number }>>(() =>
+    events.slice(0, 4).map((e, i) => ({ ...e, id: i }))
+  );
+  useEffect(() => {
+    let id = log.length;
+    const interval = window.setInterval(() => {
+      const next = events[id % events.length];
+      id += 1;
+      setLog((prev) => [{ ...next, id }, ...prev].slice(0, 5));
+    }, 1700);
+    return () => window.clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
+  const toneStyles: Record<FeedEvent["tone"], string> = {
+    cyan: "border-cyan-400/30 bg-cyan-500/10 text-cyan-300",
+    violet: "border-violet-400/30 bg-violet-500/10 text-violet-300",
+    pink: "border-pink-400/30 bg-pink-500/10 text-pink-300",
+    amber: "border-amber-400/30 bg-amber-500/10 text-amber-300",
+  };
+
+  return (
+    <div className="space-y-2">
+      {log.map((event) => (
+        <div
+          key={event.id}
+          className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#0a131f]/70 px-3 py-2 animate-[slideIn_0.5s_ease]"
+        >
+          <PulsingDot tone={event.tone} />
+          <span
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              toneStyles[event.tone]
+            }`}
+          >
+            {event.agent}
+          </span>
+          <span className="truncate text-[12.5px] text-white/75">{event.action}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hero operations console (upgraded right panel)
+// ─────────────────────────────────────────────────────────────────────────────
+function HeroConsole() {
+  const agents = useMemo(
+    () => [
+      {
+        label: "Lead Scout",
+        desc: "Prospecting",
+        icon: Target,
+        tone: "cyan" as const,
+        color: "from-cyan-500 to-blue-500",
+        activities: ["Scanning Austin metro", "Qualifying leads", "Enriching emails"],
+      },
+      {
+        label: "Sales Rep",
+        desc: "Outreach",
+        icon: MessageSquare,
+        tone: "violet" as const,
+        color: "from-violet-500 to-purple-500",
+        activities: ["Drafting email", "Personalizing body", "Queuing batch"],
+      },
+      {
+        label: "Closer",
+        desc: "Scheduling",
+        icon: Brain,
+        tone: "pink" as const,
+        color: "from-pink-500 to-rose-500",
+        activities: ["Reading replies", "Proposing slots", "Booking demo"],
+      },
+      {
+        label: "Analyst",
+        desc: "Reporting",
+        icon: LineChart,
+        tone: "amber" as const,
+        color: "from-amber-500 to-orange-500",
+        activities: ["Tracking pipeline", "Ranking replies", "Flagging hot"],
+      },
+    ],
+    []
+  );
+
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick((t) => t + 1), 2200);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="relative">
+      <div className="absolute inset-x-8 top-6 h-40 rounded-full bg-violet-500/15 blur-3xl" />
+      <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/30 backdrop-blur-2xl md:p-6">
+        <div className="flex items-center justify-between border-b border-white/8 pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">
+              Operations console
+            </p>
+            <h3 className="mt-2 text-2xl font-semibold text-white">Your squad, live right now</h3>
+          </div>
+          <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300 flex items-center gap-2">
+            <PulsingDot tone="emerald" />
+            4 agents online
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          {agents.map((agent, i) => {
+            const activity = agent.activities[tick % agent.activities.length];
+            return (
+              <div
+                key={agent.label}
+                className="group relative rounded-[24px] border border-white/10 bg-[#08111c]/85 p-4 transition-transform hover:-translate-y-1 overflow-hidden"
+              >
+                <div className="absolute -top-12 -right-12 h-24 w-24 rounded-full bg-gradient-to-br opacity-20 blur-2xl"
+                  style={{}}
+                />
+                <div className="flex items-start justify-between gap-3">
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${agent.color}`}
+                  >
+                    <agent.icon className="h-6 w-6 text-white" />
+                  </div>
+                  <span className="flex items-center gap-1.5 rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/60">
+                    <PulsingDot tone={agent.tone} />
+                    Active
+                  </span>
+                </div>
+                <h4 className="mt-4 text-lg font-semibold text-white">{agent.label}</h4>
+                <p className="mt-1 text-sm text-white/50">{agent.desc}</p>
+                <div className="mt-3 flex items-center gap-2 text-[11.5px] text-white/65">
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/60" />
+                  <span key={`${agent.label}-${tick}`} className="animate-[fadeIn_0.4s_ease]">
+                    {activity}
+                  </span>
+                </div>
+                <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-white/5">
+                  <div
+                    className={`h-full bg-gradient-to-r ${agent.color} transition-all duration-[2000ms]`}
+                    style={{ width: `${35 + ((tick + i * 11) % 65)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-center gap-2 mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/50">
+            <PulsingDot tone="emerald" />
+            Live activity
+          </div>
+          <LiveFeed />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agents in action showcase (big section with 4 live panels + feed)
+// ─────────────────────────────────────────────────────────────────────────────
+function AgentsInActionSection() {
+  const panels = [
+    {
+      label: "Lead Scout",
+      role: "Prospecting",
+      icon: Target,
+      tone: "cyan" as const,
+      gradient: "from-cyan-500 to-blue-500",
+      content: <LeadScoutPanel />,
+    },
+    {
+      label: "Sales Rep",
+      role: "Outreach copywriter",
+      icon: MessageSquare,
+      tone: "violet" as const,
+      gradient: "from-violet-500 to-purple-500",
+      content: <SalesRepPanel />,
+    },
+    {
+      label: "Closer",
+      role: "Scheduling demos",
+      icon: Calendar,
+      tone: "pink" as const,
+      gradient: "from-pink-500 to-rose-500",
+      content: <CloserPanel />,
+    },
+    {
+      label: "Analyst",
+      role: "Pipeline analytics",
+      icon: LineChart,
+      tone: "amber" as const,
+      gradient: "from-amber-500 to-orange-500",
+      content: <AnalystPanel />,
+    },
+  ];
+  return (
+    <section id="live" className="relative px-6 py-24">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_80%_at_50%_0%,rgba(139,92,246,0.1),transparent_70%)] pointer-events-none" />
+      <div className="relative mx-auto max-w-7xl">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-1.5 text-xs font-medium uppercase tracking-[0.22em] text-cyan-300/85">
+            <PulsingDot tone="cyan" />
+            Live demo
+          </div>
+          <h2 className="mt-6 text-4xl md:text-5xl font-bold leading-tight text-white">
+            Watch your squad
+            <span className="block bg-gradient-to-r from-cyan-400 via-violet-400 to-pink-400 bg-clip-text text-transparent">
+              work in real time
+            </span>
+          </h2>
+          <p className="mt-4 text-white/55 text-lg">
+            Four agents, four roles, one coordinated operation. Everything below is a real preview of
+            what they do — no static screenshots.
+          </p>
+        </div>
+
+        <div className="mt-14 grid gap-5 md:grid-cols-2">
+          {panels.map((panel) => (
+            <div
+              key={panel.label}
+              className="group relative overflow-hidden rounded-[28px] border border-white/10 bg-gradient-to-b from-white/[0.04] to-white/[0.01] p-6 backdrop-blur-xl transition-all hover:-translate-y-1 hover:border-white/20"
+            >
+              <div
+                className={`absolute -top-24 -right-24 h-56 w-56 rounded-full bg-gradient-to-br ${panel.gradient} opacity-10 blur-3xl`}
+              />
+              <div className="relative flex items-start justify-between gap-3 border-b border-white/5 pb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${panel.gradient}`}
+                  >
+                    <panel.icon className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">{panel.label}</h3>
+                    <p className="text-sm text-white/45">{panel.role}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="relative mt-4 min-h-[260px]">{panel.content}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FAQ section
+// ─────────────────────────────────────────────────────────────────────────────
+function FAQSection() {
+  const items = [
+    {
+      q: "How fast can I get my first squad running?",
+      a: "Most teams launch their first squad within 10 minutes. Create a company, connect your email sender, pick a squad template, and hit go. You can tune each agent's prompt, tools, and memory without leaving the workspace.",
+    },
+    {
+      q: "Which AI models power the agents?",
+      a: "Agents run on Claude (Sonnet and Haiku) by default, with optional fallback to GPT-4 class models. You can set a preferred model per agent or per task — or let Orkestria pick the right one automatically based on the workload.",
+    },
+    {
+      q: "Can I bring my own data and context?",
+      a: "Yes. Upload docs, connect CSV imports, add company context (products, services, tone, boundaries), and the agents automatically read from it. No training, no fine-tuning — context updates take effect instantly.",
+    },
+    {
+      q: "How does lead generation work?",
+      a: "The Scout agent pulls businesses from Google Places (via Apify), enriches emails from their websites, and auto-scores them against your ICP. You can run one-shot jobs or cron jobs that refresh overnight.",
+    },
+    {
+      q: "Is my data secure?",
+      a: "Workspaces are isolated per company, data is encrypted in transit and at rest, and API keys stay on the server. We're aligned with SOC 2 controls and follow least-privilege access on every agent action.",
+    },
+    {
+      q: "Can I try it before paying?",
+      a: "Absolutely. The Starter plan is free forever and lets you test the full workflow with 1 agent and 100 leads per month. No card required — upgrade when your team is ready.",
+    },
+  ];
+  const [open, setOpen] = useState<number | null>(0);
+  return (
+    <section id="faq" className="py-24 px-6 relative">
+      <div className="mx-auto max-w-3xl">
+        <div className="text-center mb-14">
+          <h2 className="text-4xl md:text-5xl font-bold mb-4">
+            Common{" "}
+            <span className="bg-gradient-to-r from-cyan-400 to-violet-400 bg-clip-text text-transparent">
+              questions
+            </span>
+          </h2>
+          <p className="text-white/50 text-lg">Everything you want to know before starting.</p>
+        </div>
+        <div className="space-y-3">
+          {items.map((item, i) => {
+            const isOpen = open === i;
+            return (
+              <div
+                key={i}
+                className={`overflow-hidden rounded-2xl border transition-all ${
+                  isOpen
+                    ? "border-white/20 bg-white/[0.04]"
+                    : "border-white/10 bg-white/[0.02] hover:border-white/15"
+                }`}
+              >
+                <button
+                  onClick={() => setOpen(isOpen ? null : i)}
+                  className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+                >
+                  <span className="text-[15px] font-medium text-white">{item.q}</span>
+                  <ChevronDown
+                    className={`h-5 w-5 shrink-0 text-white/50 transition-transform ${
+                      isOpen ? "rotate-180 text-white/80" : ""
+                    }`}
+                  />
+                </button>
+                <div
+                  className={`grid transition-all duration-300 ${
+                    isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <p className="px-6 pb-5 text-[14px] leading-relaxed text-white/60">{item.a}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main landing page
+// ─────────────────────────────────────────────────────────────────────────────
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   const [activeTestimonial, setActiveTestimonial] = useState(0);
@@ -192,62 +916,73 @@ export default function LandingPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const agentTypes = [
-    { icon: Target, label: "Lead Scout", color: "from-cyan-500 to-blue-500", desc: "Prospecção" },
-    { icon: MessageSquare, label: "Sales Rep", color: "from-violet-500 to-purple-500", desc: "Vendas" },
-    { icon: Brain, label: "Closer", color: "from-pink-500 to-rose-500", desc: "Fechamento" },
-    { icon: LineChart, label: "Analyst", color: "from-amber-500 to-orange-500", desc: "Análise" },
-  ];
-
   const features = [
     {
       icon: Bot,
       title: "AI-Powered Squads",
-      description: "Coordinated agents operate as a synchronized team that scales infinitely to meet demand, 24/7/365.",
+      description:
+        "Coordinated agents operate as a synchronized team that scales infinitely to meet demand, 24/7/365.",
       color: "from-cyan-500/20 to-blue-500/20",
       iconColor: "text-cyan-400",
     },
     {
       icon: Target,
       title: "Smart Lead Scoring",
-      description: "Qualify leads in real-time with ML models tailored to your ICP, with laser-focused precision.",
+      description:
+        "Qualify leads in real-time with ML models tailored to your ICP, with laser-focused precision.",
       color: "from-violet-500/20 to-purple-500/20",
       iconColor: "text-violet-400",
     },
     {
       icon: MessageSquare,
       title: "Intelligent Conversations",
-      description: "Craft multi-faceted agents that understand context, anticipate needs, and connect emotionally.",
+      description:
+        "Craft multi-faceted agents that understand context, anticipate needs, and connect emotionally.",
       color: "from-pink-500/20 to-rose-500/20",
       iconColor: "text-pink-400",
     },
     {
       icon: LineChart,
       title: "Real-time Analytics",
-      description: "Monitor conversion pipeline, engagement metrics, and agent performance with live dashboards.",
+      description:
+        "Monitor conversion pipeline, engagement metrics, and agent performance with live dashboards.",
       color: "from-amber-500/20 to-orange-500/20",
       iconColor: "text-amber-400",
     },
     {
       icon: Zap,
       title: "Instant Automation",
-      description: "Let your agents handle everything from outreach to follow-ups and keep your team money-focused.",
+      description:
+        "Let your agents handle everything from outreach to follow-ups and keep your team money-focused.",
       color: "from-emerald-500/20 to-teal-500/20",
       iconColor: "text-emerald-400",
     },
     {
       icon: Shield,
       title: "Enterprise Security",
-      description: "Secure your agents above industry standards with SOC 2 compliance, encryption, and audit trails.",
+      description:
+        "Secure your agents above industry standards with SOC 2 compliance, encryption, and audit trails.",
       color: "from-slate-500/20 to-gray-500/20",
       iconColor: "text-slate-400",
     },
   ];
 
   const steps = [
-    { num: "01", title: "Shape your squads", desc: "Organize specialized agents by roles, objectives, and workflows so each team has a clear mission." },
-    { num: "02", title: "Bring in your knowledge", desc: "Connect docs and context, train on your messaging, and configure rules so each agent aligns with the core of your brand." },
-    { num: "03", title: "Execute with clarity", desc: "Run tasks, direct agents to your own unique needs for full control over AI in a feedback-fueled system." },
+    {
+      num: "01",
+      title: "Shape your squads",
+      desc: "Organize specialized agents by roles, objectives, and workflows so each team has a clear mission.",
+    },
+    {
+      num: "02",
+      title: "Bring in your knowledge",
+      desc: "Connect docs and context, train on your messaging, and configure rules so each agent aligns with the core of your brand.",
+    },
+    {
+      num: "03",
+      title: "Execute with clarity",
+      desc: "Run tasks, direct agents to your own unique needs for full control over AI in a feedback-fueled system.",
+    },
   ];
 
   const testimonials = [
@@ -286,7 +1021,14 @@ export default function LandingPage() {
       price: "$99",
       period: "/month",
       description: "For growing teams that need more.",
-      features: ["5 AI Agents", "Unlimited leads", "Advanced analytics", "Priority support", "Custom integrations", "A/B testing tools"],
+      features: [
+        "5 AI Agents",
+        "Unlimited leads",
+        "Advanced analytics",
+        "Priority support",
+        "Custom integrations",
+        "A/B testing tools",
+      ],
       cta: "Start Free Trial",
       popular: true,
     },
@@ -295,7 +1037,14 @@ export default function LandingPage() {
       price: "Custom",
       period: "",
       description: "For large organizations.",
-      features: ["Unlimited agents", "Unlimited leads", "Custom integrations", "Dedicated support", "API access", "99.9% uptime SLA"],
+      features: [
+        "Unlimited agents",
+        "Unlimited leads",
+        "Custom integrations",
+        "Dedicated support",
+        "API access",
+        "99.9% uptime SLA",
+      ],
       cta: "Contact Sales",
       popular: false,
     },
@@ -304,7 +1053,7 @@ export default function LandingPage() {
   const stats = [
     { value: 10, suffix: "x", label: "faster lead qualification" },
     { value: 85, suffix: "%", label: "reduction in manual tasks" },
-    { value: 3.2, suffix: "x", label: "higher conversion rates" },
+    { value: 3.2, suffix: "x", label: "higher conversion rates", decimals: 1 },
     { value: 24, suffix: "/7", label: "always-on availability" },
   ];
 
@@ -313,7 +1062,7 @@ export default function LandingPage() {
       {/* Background */}
       <div className="fixed inset-0 bg-[#030810]" style={{ zIndex: -2 }} />
       <ParticlesBackground />
-      
+
       {/* Gradient overlays */}
       <div className="pointer-events-none fixed inset-0" style={{ zIndex: -1 }}>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(139,92,246,0.15),transparent)]" />
@@ -325,7 +1074,9 @@ export default function LandingPage() {
         {/* Navigation */}
         <header
           className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-            scrolled ? "bg-[#030810]/80 backdrop-blur-xl border-b border-white/5 py-3" : "py-5"
+            scrolled
+              ? "bg-[#030810]/80 backdrop-blur-xl border-b border-white/5 py-3"
+              : "py-5"
           }`}
         >
           <nav className="mx-auto max-w-7xl px-6 flex items-center justify-between">
@@ -344,21 +1095,40 @@ export default function LandingPage() {
                 Orkestria
               </span>
             </Link>
-            
+
             <div className="hidden md:flex items-center gap-8">
-              <a href="#features" className="text-sm text-white/60 hover:text-white transition-colors relative group">
+              <a
+                href="#live"
+                className="text-sm text-white/60 hover:text-white transition-colors relative group"
+              >
+                Live demo
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-violet-400 group-hover:w-full transition-all" />
+              </a>
+              <a
+                href="#features"
+                className="text-sm text-white/60 hover:text-white transition-colors relative group"
+              >
                 Features
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-violet-400 group-hover:w-full transition-all" />
               </a>
-              <a href="#how-it-works" className="text-sm text-white/60 hover:text-white transition-colors relative group">
+              <a
+                href="#how-it-works"
+                className="text-sm text-white/60 hover:text-white transition-colors relative group"
+              >
                 How it Works
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-violet-400 group-hover:w-full transition-all" />
               </a>
-              <a href="#pricing" className="text-sm text-white/60 hover:text-white transition-colors relative group">
+              <a
+                href="#pricing"
+                className="text-sm text-white/60 hover:text-white transition-colors relative group"
+              >
                 Pricing
                 <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gradient-to-r from-cyan-400 to-violet-400 group-hover:w-full transition-all" />
               </a>
-              <Link href="/login" className="text-sm text-white/60 hover:text-white transition-colors">
+              <Link
+                href="/login"
+                className="text-sm text-white/60 hover:text-white transition-colors"
+              >
                 Login
               </Link>
               <Link
@@ -397,8 +1167,8 @@ export default function LandingPage() {
               </h1>
 
               <p className="mt-6 max-w-2xl text-lg leading-8 text-white/60 md:text-xl">
-                Build squads for prospecting, outreach, follow-up and execution in one clean workspace.
-                Simple to launch, easy to control, ready to scale.
+                Build squads for prospecting, outreach, follow-up and execution in one clean
+                workspace. Simple to launch, easy to control, ready to scale.
               </p>
 
               <div className="mt-10 flex flex-col gap-4 sm:flex-row">
@@ -409,80 +1179,57 @@ export default function LandingPage() {
                   Start free
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
                 </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-2xl border border-white/15 bg-white/[0.03] px-7 py-4 font-medium text-white/85 transition-colors hover:bg-white/[0.06]"
+                <a
+                  href="#live"
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.03] px-7 py-4 font-medium text-white/85 transition-colors hover:bg-white/[0.06]"
                 >
-                  Open workspace
-                </Link>
+                  <Sparkles className="h-4 w-4 text-cyan-300" />
+                  See agents live
+                </a>
               </div>
 
               <div className="mt-10 flex flex-wrap gap-3 text-sm text-white/55">
-                {['Lead generation', 'Email outreach', 'Agent squads', 'Live workspace'].map((item) => (
-                  <span key={item} className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2">
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            <div className="relative">
-              <div className="absolute inset-x-8 top-6 h-40 rounded-full bg-violet-500/15 blur-3xl" />
-              <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.04] p-5 shadow-2xl shadow-black/30 backdrop-blur-2xl md:p-6">
-                <div className="flex items-center justify-between border-b border-white/8 pb-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/45">Agent lineup</p>
-                    <h3 className="mt-2 text-2xl font-semibold text-white">A cleaner way to orchestrate work</h3>
-                  </div>
-                  <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                    4 agents online
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                  {agentTypes.map((agent, i) => (
-                    <div
-                      key={agent.label}
-                      className="rounded-[24px] border border-white/10 bg-[#08111c]/85 p-4 transition-transform hover:-translate-y-1"
+                {["Lead generation", "Email outreach", "Agent squads", "Live workspace"].map(
+                  (item) => (
+                    <span
+                      key={item}
+                      className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${agent.color}`}>
-                          <agent.icon className="h-6 w-6 text-white" />
-                        </div>
-                        <span className="rounded-full border border-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/45">
-                          Active
-                        </span>
-                      </div>
-                      <h4 className="mt-4 text-lg font-semibold text-white">{agent.label}</h4>
-                      <p className="mt-1 text-sm text-white/50">{agent.desc} with clear prompts, memory and execution rules.</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-5 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-medium text-white">One workspace. Multiple agents. Less noise.</p>
-                      <p className="mt-1 text-sm text-white/45">Launch fast and keep full control over the way each agent operates.</p>
-                    </div>
-                    <div className="flex -space-x-3">
-                      {['LS', 'SR', 'CL', 'AN'].map((initial, index) => (
-                        <div
-                          key={initial}
-                          className={`flex h-10 w-10 items-center justify-center rounded-2xl border border-[#030810] text-xs font-semibold text-white bg-gradient-to-br ${agentTypes[index]?.color ?? 'from-cyan-500 to-blue-500'}`}
-                        >
-                          {initial}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                      {item}
+                    </span>
+                  )
+                )}
               </div>
             </div>
+
+            <HeroConsole />
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#030810] to-transparent" />
         </section>
+
+        {/* Stats band */}
+        <section className="py-16 px-6">
+          <div className="mx-auto max-w-6xl">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 rounded-3xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-xl">
+              {stats.map((stat, i) => (
+                <div key={i} className="text-center">
+                  <div className="text-4xl md:text-5xl font-bold bg-gradient-to-br from-white to-white/50 bg-clip-text text-transparent">
+                    <AnimatedCounter
+                      end={stat.value}
+                      suffix={stat.suffix}
+                      decimals={stat.decimals ?? 0}
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-white/50">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Live agents in action — THE new showcase */}
+        <AgentsInActionSection />
 
         {/* Features Section */}
         <section id="features" className="py-24 px-6">
@@ -507,9 +1254,13 @@ export default function LandingPage() {
                   key={i}
                   className="group relative p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-white/15 transition-all overflow-hidden"
                 >
-                  <div className={`absolute inset-0 bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-100 transition-opacity`} />
+                  <div
+                    className={`absolute inset-0 bg-gradient-to-br ${feature.color} opacity-0 group-hover:opacity-100 transition-opacity`}
+                  />
                   <div className="relative z-10">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                    <div
+                      className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
+                    >
                       <feature.icon className={`h-6 w-6 ${feature.iconColor}`} />
                     </div>
                     <h3 className="text-lg font-semibold mb-2 text-white">{feature.title}</h3>
@@ -654,6 +1405,9 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* FAQ */}
+        <FAQSection />
+
         {/* CTA Section */}
         <section className="py-24 px-6">
           <div className="mx-auto max-w-4xl">
@@ -698,7 +1452,7 @@ export default function LandingPage() {
               <span className="font-semibold text-white/80">Orkestria</span>
             </Link>
             <div className="flex items-center gap-6 text-sm text-white/40">
-              <span>&copy; 2024 Orkestria. All rights reserved.</span>
+              <span>&copy; 2026 Orkestria. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-white/50">
               <a href="#" className="hover:text-white transition-colors">Privacy</a>
@@ -709,60 +1463,29 @@ export default function LandingPage() {
         </footer>
       </div>
 
-      <style jsx>{`
+      <style jsx global>{`
         @keyframes float {
           0%, 100% { transform: translateY(0px); }
           50% { transform: translateY(-10px); }
         }
-        
         @keyframes gradient {
           0%, 100% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
         }
-        
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        
-        @keyframes fade-in-up {
-          from { 
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to { 
-            opacity: 1;
-            transform: translateY(0);
-          }
+        @keyframes slideIn {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        
         .animate-float {
           animation: float 3s ease-in-out infinite;
         }
-        
         .animate-gradient {
           background-size: 200% 200%;
           animation: gradient 3s ease infinite;
-        }
-        
-        .animate-fade-in {
-          animation: fade-in 0.8s ease-out forwards;
-        }
-        
-        .animate-fade-in-up {
-          animation: fade-in-up 0.8s ease-out forwards;
-        }
-        
-        .animation-delay-200 {
-          animation-delay: 200ms;
-        }
-        
-        .animation-delay-400 {
-          animation-delay: 400ms;
-        }
-        
-        .animation-delay-600 {
-          animation-delay: 600ms;
         }
       `}</style>
     </>
