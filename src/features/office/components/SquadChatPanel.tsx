@@ -49,14 +49,64 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
   // want to be a good citizen.
   const ackedMessageIdsRef = useRef<Set<number>>(new Set());
 
-  const loadTasks = async () => {
+  // ---------------------------------------------------------------
+  // v58 perf: the old poll loop fired every 3s and fanned out into
+  // N + 1 GETs (list + up to 20 /SquadExecutions/{id} details).
+  // That hammered the backend at ~7 requests/second per mounted panel
+  // and turned the office scene into a slideshow. We now:
+  //   • poll every 15s instead of 3s
+  //   • pause the polling entirely while the tab is hidden
+  //   • only re-fetch detail for tasks whose summary status/updated
+  //     date actually changed since the last poll (delta-fetch)
+  //   • keep a manual refresh path so the user can still force refresh
+  // ---------------------------------------------------------------
+  const POLL_INTERVAL_MS = 15_000;
+  const taskSignatureRef = useRef<Map<number, string>>(new Map());
+  const computeSignature = (summary: { id: number; status?: string | null; updatedDate?: string | null }) =>
+    `${summary.status ?? ""}|${summary.updatedDate ?? ""}`;
+
+  const loadTasks = async (force = false) => {
     setLoading(true);
     setError(null);
     try {
       const squadId = Number(squad.id);
       const summaries = await fetchSquadTasks(Number.isFinite(squadId) ? { squadId } : undefined);
-      const detailed = await Promise.all(summaries.slice(0, 20).map((entry) => fetchSquadTask(entry.id)));
-      setTasks(detailed);
+      // Only hit /SquadExecutions/{id} for tasks whose summary changed
+      // since last poll (or on the very first load / manual refresh).
+      const selected = summaries.slice(0, 20);
+      const stale: typeof selected = [];
+      const unchanged: typeof selected = [];
+      for (const entry of selected) {
+        const sig = computeSignature(entry);
+        const prev = taskSignatureRef.current.get(entry.id);
+        if (force || prev !== sig) {
+          stale.push(entry);
+        } else {
+          unchanged.push(entry);
+        }
+        taskSignatureRef.current.set(entry.id, sig);
+      }
+      const refreshed = await Promise.all(
+        stale.map(async (entry) => {
+          try {
+            return await fetchSquadTask(entry.id);
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setTasks((current) => {
+        const byId = new Map(current.map((t) => [t.id, t]));
+        for (const task of refreshed) if (task) byId.set(task.id, task);
+        // Drop tasks that no longer appear in the summary list.
+        const keep = new Set(selected.map((s) => s.id));
+        const next: SquadTask[] = [];
+        for (const id of keep) {
+          const found = byId.get(id);
+          if (found) next.push(found);
+        }
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load squad tasks.");
     } finally {
@@ -65,11 +115,29 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
   };
 
   useEffect(() => {
-    void loadTasks();
-    const timer = window.setInterval(() => {
+    // Reset delta cache whenever we switch squads.
+    taskSignatureRef.current = new Map();
+    void loadTasks(true);
+    let timer: number | null = null;
+    const tick = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       void loadTasks();
-    }, 3000);
-    return () => window.clearInterval(timer);
+    };
+    timer = window.setInterval(tick, POLL_INTERVAL_MS);
+    const onVis = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        void loadTasks();
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVis);
+    }
+    return () => {
+      if (timer) window.clearInterval(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVis);
+      }
+    };
   }, [squad.id]);
 
   const visibleTasks = useMemo(() => {

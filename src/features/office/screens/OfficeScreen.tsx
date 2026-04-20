@@ -4891,12 +4891,31 @@ export function OfficeScreen({
     if (!focusedSquadChatTarget) return;
 
     let cancelled = false;
-    const loadFocusedSquadTasks = async () => {
+    // v58 perf — delta-fetch + longer interval + pause-when-hidden.
+    // Previously this fired every 3s and fanned out N + 1 GETs to the
+    // backend (/SquadExecutions/by-company + /SquadExecutions/{id} per
+    // task). With multiple squad chats mounted the office was making
+    // ~7 requests/second which visibly choked the 3D scene and could
+    // cause the gateway to drop the agent roster mid-refresh.
+    const FOCUSED_POLL_MS = 15_000;
+    const focusedSignatures = new Map<number, string>();
+    const signatureFor = (summary: { id: number; status?: string | null; updatedDate?: string | null }) =>
+      `${summary.status ?? ""}|${summary.updatedDate ?? ""}`;
+
+    const loadFocusedSquadTasks = async (force = false) => {
       try {
         const summaries = await fetchSquadTasks({ squadId: Number(focusedSquadChatTarget.id) });
         if (cancelled) return;
-        const detailed = await Promise.all(
-          summaries.slice(0, 20).map(async (summary) => {
+        const selected = summaries.slice(0, 20);
+        const stale: typeof selected = [];
+        for (const entry of selected) {
+          const sig = signatureFor(entry);
+          const prev = focusedSignatures.get(entry.id);
+          if (force || prev !== sig) stale.push(entry);
+          focusedSignatures.set(entry.id, sig);
+        }
+        const refreshed = await Promise.all(
+          stale.map(async (summary) => {
             try {
               return await fetchSquadTask(summary.id);
             } catch {
@@ -4905,27 +4924,55 @@ export function OfficeScreen({
           }),
         );
         if (cancelled) return;
-        const nextTasks = detailed.filter((entry): entry is SquadTask => Boolean(entry));
-        setSquadChatTasksBySquadId((current) => ({
-          ...current,
-          [focusedSquadChatTarget.id]: nextTasks,
-        }));
+        const refreshedById = new Map<number, SquadTask>();
+        for (const t of refreshed) if (t) refreshedById.set(t.id, t);
+        setSquadChatTasksBySquadId((current) => {
+          const existing = current[focusedSquadChatTarget.id] ?? [];
+          const byId = new Map(existing.map((t) => [t.id, t]));
+          for (const [id, t] of refreshedById) byId.set(id, t);
+          const keep = new Set(selected.map((s) => s.id));
+          const next: SquadTask[] = [];
+          for (const id of keep) {
+            const found = byId.get(id);
+            if (found) next.push(found);
+          }
+          return {
+            ...current,
+            [focusedSquadChatTarget.id]: next,
+          };
+        });
         setActiveSquadChatTaskBySquadId((current) => ({
           ...current,
-          [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]: current[focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`] ?? nextTasks[0]?.id ?? null,
+          [focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`]:
+            current[focusedSquadChatEntryId ?? `squad:${focusedSquadChatTarget.id}`] ??
+            selected[0]?.id ??
+            null,
         }));
       } catch {
         // best-effort hydration for squad chat task sessions
       }
     };
 
-    void loadFocusedSquadTasks();
-    const timer = window.setInterval(() => {
+    void loadFocusedSquadTasks(true);
+    const tick = () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       void loadFocusedSquadTasks();
-    }, 3000);
+    };
+    const timer = window.setInterval(tick, FOCUSED_POLL_MS);
+    const onVis = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        void loadFocusedSquadTasks();
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVis);
+    }
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVis);
+      }
     };
   }, [fetchSquadTask, fetchSquadTasks, focusedSquadChatEntryId, focusedSquadChatTarget]);
 

@@ -290,6 +290,23 @@ const createRuntimeAgentState = (
 const reducer = (state: AgentStoreState, action: Action): AgentStoreState => {
   switch (action.type) {
     case "hydrateAgents": {
+      // v58 safety-net: if the incoming hydration is EMPTY but we already
+      // have agents mounted, refuse to wipe them. This guards against the
+      // "office desaparece" bug caused by a transient gateway disconnect
+      // or an overloaded poll returning an empty roster — the office
+      // would blank out until the next successful reconcile. Keeping the
+      // previous roster is always safer: a subsequent non-empty hydrate
+      // will refresh it, and /office/status feeds update in place.
+      if (action.agents.length === 0 && state.agents.length > 0) {
+        if (typeof console !== "undefined") {
+          console.warn(
+            "[agents-store] Ignored empty hydrateAgents; preserving existing roster of",
+            state.agents.length,
+            "agents.",
+          );
+        }
+        return { ...state, loading: false, error: null };
+      }
       const byId = new Map(state.agents.map((agent) => [agent.agentId, agent]));
       const agents = action.agents.map((seed) =>
         createRuntimeAgentState(seed, byId.get(seed.agentId))
