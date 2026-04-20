@@ -170,6 +170,16 @@ export const AgentModel = memo(function AgentModel({
       return;
     }
 
+    // ---- v63 perf: distance-based LOD from camera focus ----
+    // Past this ring, the agent is still in-frustum but far enough from the
+    // user's focus that micro-animations (face, brows, mouth, nameplate pulse)
+    // are invisible. We still run body/pose math so walking/workout agents
+    // feel alive, but skip the per-frame face updates below.
+    const dxFocus = wx - PerfLod.cameraFocusX;
+    const dzFocus = wz - PerfLod.cameraFocusZ;
+    const distSqFromFocus = dxFocus * dxFocus + dzFocus * dzFocus;
+    const isFarFromFocus = distSqFromFocus > PerfLod.fullDetailRadiusSq;
+
     // ---- v41 perf: half-rate animation for idle/sitting agents ----
     // Walking, workout, dancing, janitor, and ping-pong agents always run at
     // full rate. Everyone else alternates frames (30fps pose math, still 60fps
@@ -182,6 +192,11 @@ export const AgentModel = memo(function AgentModel({
     //   • farZoomedOut (zoom < 38): all non-janitor work runs at 1/3 rate.
     // Dancing and janitors still animate every frame so the overall scene
     // still reads as "alive" from a high-altitude view.
+    //
+    // v63 perf: when the user is *actively moving the camera*, push all
+    // non-dancing agents to 1-in-3 frames regardless of zoom — the user
+    // won't read micro-motion while the viewport is spinning, and every
+    // frame we skip here is a frame that doesn't drop during drag.
     const lightweight =
       agent.state !== "walking" &&
       agent.state !== "working_out" &&
@@ -191,19 +206,25 @@ export const AgentModel = memo(function AgentModel({
     const isDancingOrJanitor =
       agent.state === "dancing" ||
       ("role" in agent && agent.role === "janitor");
-    const zoomThrottle = PerfLod.farZoomedOut
-      ? 2 // 1 in 3 frames
-      : PerfLod.zoomedOut
-      ? 1 // 1 in 2 frames
-      : 0;
+    const zoomThrottle = PerfLod.cameraMoving
+      ? Math.max(2, PerfLod.farZoomedOut ? 3 : 2) // 1 in 3+ frames while dragging
+      : PerfLod.farZoomedOut
+        ? 2 // 1 in 3 frames
+        : PerfLod.zoomedOut
+          ? 1 // 1 in 2 frames
+          : 0;
     // Skip this frame entirely?
     //  - lightweight agents always use half-rate (the v41 behavior)
-    //  - when zoomed out, extend to walking/workout too
+    //  - when zoomed out / moving, extend to walking/workout too
+    //  - when far from focus + already throttled, skip even more aggressively
+    const farFromFocusExtra =
+      isFarFromFocus && zoomThrottle > 0 ? 1 : 0;
+    const effectiveThrottle = zoomThrottle + farFromFocusExtra;
     const skipFullAnim =
       (lightweight && (frameTickRef.current & 1) === 0) ||
       (!isDancingOrJanitor &&
-        zoomThrottle > 0 &&
-        frameTickRef.current % (zoomThrottle + 1) !== 0);
+        effectiveThrottle > 0 &&
+        frameTickRef.current % (effectiveThrottle + 1) !== 0);
     if (skipFullAnim) {
       // Still lerp position/rotation for smooth camera pans; skip the rest.
       const positionLerp = 1 - Math.exp(-Math.min(0.05, delta) * 12);
@@ -1157,6 +1178,22 @@ export const AgentModel = memo(function AgentModel({
     // truly static.
     const pulseActive = working && !isSitting;
 
+    // ---- v63 perf: skip all face/brow/mouth/nameplate/speech work ----
+    // This is the single biggest hot block per agent. It runs a dozen
+    // material.color.set + scale.set + position.set calls on sub-pixel geometry
+    // that nobody can see from far away anyway. Skip the whole block when:
+    //   • the camera is far-zoomed out (face is literally one pixel)
+    //   • OR the user is actively moving the camera (micro-motion unreadable)
+    //   • OR the agent is in-frustum but outside the focus bubble
+    // The held-tool + paddle visibility flags below still run, so janitors /
+    // ping-pong players render their equipment correctly.
+    const skipFaceDetail =
+      PerfLod.farZoomedOut ||
+      PerfLod.cameraMoving ||
+      isFarFromFocus ||
+      (lightweight && (frameTickRef.current & 3) !== 0);
+
+    if (!skipFaceDetail) {
     if (statusDotMatRef.current) {
       statusDotMatRef.current.color.set(
         isError ? "#ef4444" : working ? "#22c55e" : "#f59e0b",
@@ -1403,6 +1440,7 @@ export const AgentModel = memo(function AgentModel({
       );
       speechBubbleMatRef.current.opacity = isError ? 0.97 : 0.92;
     }
+    } // end if (!skipFaceDetail)
 
     if (heldPaddleRef.current) {
       const isPlaying = agent.pingPongUntil !== undefined;

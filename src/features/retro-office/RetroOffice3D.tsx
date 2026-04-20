@@ -774,8 +774,16 @@ function CameraSnapshotTracker({
   orbitRef: RefObject<{ target: THREE.Vector3 } | null>;
 }) {
   const { camera } = useThree();
+  // v63 perf: this snapshot is only consumed by localStorage persistence
+  // (read via `initialPersistedCameraRef`) — updating it every frame costs
+  // 2 fresh array literals per frame for zero perceivable benefit. Sample
+  // every 20 frames (~3× per second) which is more than enough for the
+  // "restore camera on reload" contract.
+  const tickRef = useRef(0);
 
   useFrame(() => {
+    tickRef.current = (tickRef.current + 1) | 0;
+    if (tickRef.current % 20 !== 0) return;
     const orbitTarget = orbitRef.current?.target;
     snapshotRef.current = {
       pos: [camera.position.x, camera.position.y, camera.position.z],
@@ -1362,11 +1370,21 @@ function AdaptiveDprController() {
     PerfLod.zoom = cameraZoom;
     PerfLod.zoomedOut = cameraZoom < 55;
     PerfLod.farZoomedOut = cameraZoom < 38;
+    // v63 perf: radius (in world units squared) of the "full-detail" bubble
+    // around the camera focus. Past this ring, agents skip face/brow/mouth/
+    // nameplate work even when inside the view frustum. Scales inversely
+    // with zoom — the wider the viewport, the bigger the bubble needs to be.
+    const detailRadius =
+      cameraZoom < 35 ? 18 : cameraZoom < 55 ? 12 : cameraZoom < 80 ? 8 : 6;
+    PerfLod.fullDetailRadiusSq = detailRadius * detailRadius;
 
     // v41: aggressive DPR drop while user is actively interacting. Restores
     // to normal ~220ms after last pointer/wheel event.
+    // v63: OrbitControls start/end events also flip PerfLod.cameraMoving,
+    // so we treat either signal as "interacting" for DPR purposes.
     const now = performance.now();
-    const isInteracting = now - lastInteractionRef.current < 220;
+    const isInteracting =
+      PerfLod.cameraMoving || now - lastInteractionRef.current < 220;
     if (isInteracting && !interactingDprRef.current) {
       interactingDprRef.current = true;
       // v45: when zoomed out during interaction, push DPR even lower (fewer
@@ -4504,6 +4522,12 @@ export function RetroOffice3D({
     cameraPresetRef.current = initialPreset;
     orbitRef.current?.target?.set(...initialPreset.target);
     orbitRef.current?.update?.();
+    // v63 perf: seed PerfLod.cameraFocus from the initial preset so the
+    // distance-based agent LOD has a sensible reference point before the
+    // user touches the camera (otherwise it stays at 0,0 and far-away
+    // agents would all be face-detail-skipped on first frame).
+    PerfLod.cameraFocusX = initialPreset.target[0];
+    PerfLod.cameraFocusZ = initialPreset.target[2];
   }, [cameraPersistenceKey, overviewCameraPreset]);
 
   return (
@@ -4584,6 +4608,24 @@ export function RetroOffice3D({
                 LEFT: spaceDown ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE,
                 MIDDLE: THREE.MOUSE.DOLLY,
                 RIGHT: THREE.MOUSE.PAN,
+              }}
+              // v63 perf: flip the shared LOD flag the instant the user starts
+              // dragging/zooming so every useFrame (agents, day/night, heatmap,
+              // trails) can defer non-essential work until the camera settles.
+              onStart={() => {
+                PerfLod.cameraMoving = true;
+              }}
+              onEnd={() => {
+                PerfLod.cameraMoving = false;
+              }}
+              onChange={() => {
+                // Track target in shared LOD state so per-agent distance culls
+                // stay cheap (one cross-component ref load instead of walking
+                // the R3F tree each frame).
+                const orbit = orbitRef.current;
+                if (!orbit?.target) return;
+                PerfLod.cameraFocusX = orbit.target.x;
+                PerfLod.cameraFocusZ = orbit.target.z;
               }}
             />
 

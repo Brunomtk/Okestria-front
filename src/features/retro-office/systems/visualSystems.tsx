@@ -11,6 +11,7 @@ import {
   SNAP_GRID,
 } from "@/features/retro-office/core/constants";
 import { toWorld } from "@/features/retro-office/core/geometry";
+import { PerfLod } from "@/features/retro-office/core/perfLod";
 import type {
   OfficeAgent,
   RenderAgent,
@@ -48,6 +49,10 @@ export function HeatmapSystem({
   }, [heatGridRef]);
 
   useFrame(() => {
+    // v63 perf: completely skip heatmap updates while the camera is moving.
+    // Trails/heat cells are low-priority viz data and the user isn't reading
+    // them mid-drag anyway. This spares a full agent-loop + array scan.
+    if (PerfLod.cameraMoving) return;
     frameRef.current += 1;
     const grid = heatGridRef.current ?? fallbackHeatGridRef.current;
     if (heatGridRef.current == null) {
@@ -213,9 +218,25 @@ export function TrailSystem({
   const [points, setPoints] = useState<TrailPoint[]>([]);
 
   useFrame(() => {
+    // v63 perf: pause trail updates while the camera is moving — stale
+    // trail points are invisible during a drag and the underlying agent
+    // sampling is expensive when we have dozens of walking agents.
+    if (PerfLod.cameraMoving) return;
     frameRef.current += 1;
     const agents = agentsRef.current ?? [];
     const trails = trailsRef.current;
+    // If there are no walking agents AND no active trails, there's nothing
+    // to update — short-circuit the loops below.
+    if (trails.size === 0) {
+      let hasWalker = false;
+      for (const agent of agents) {
+        if (agent.state === "walking") {
+          hasWalker = true;
+          break;
+        }
+      }
+      if (!hasWalker) return;
+    }
 
     if (frameRef.current % 12 === 0) {
       for (const agent of agents) {

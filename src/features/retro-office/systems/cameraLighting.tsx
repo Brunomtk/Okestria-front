@@ -10,6 +10,7 @@ import {
   DISTRICT_CAMERA_ZOOM,
 } from "@/features/retro-office/core/district";
 import { toWorld } from "@/features/retro-office/core/geometry";
+import { PerfLod } from "@/features/retro-office/core/perfLod";
 import type { RenderAgent } from "@/features/retro-office/core/types";
 
 export type CameraPreset = {
@@ -301,10 +302,23 @@ export function DayNightCycle({
   const ambientRef = useRef<THREE.AmbientLight>(null);
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const timeRef = useRef(0.25);
+  // v63 perf: throttle the lerpColor work — it's a string-parse + multiple
+  // material.color.set calls every frame even though the visual change is
+  // imperceptible second-to-second. Pause it entirely while the user is
+  // dragging the camera, and run only every Nth frame at far zoom.
+  const dayNightFrameRef = useRef(0);
 
   useFrame((_, delta) => {
     timeRef.current = (timeRef.current + delta / DAY_NIGHT_PERIOD) % 1;
     if (externalTimeRef) externalTimeRef.current = timeRef.current;
+    // While the camera is moving, no one can perceive the lerped colour
+    // shift — defer it to the next idle frame.
+    if (PerfLod.cameraMoving) return;
+    dayNightFrameRef.current = (dayNightFrameRef.current + 1) | 0;
+    // At far zoom the lights cover the whole scene equally — running every
+    // 6 frames is plenty (10fps colour update on a 5-minute cycle).
+    const stride = PerfLod.farZoomedOut ? 6 : PerfLod.zoomedOut ? 3 : 1;
+    if (stride > 1 && dayNightFrameRef.current % stride !== 0) return;
     const time = timeRef.current;
 
     let indexA = 0;
