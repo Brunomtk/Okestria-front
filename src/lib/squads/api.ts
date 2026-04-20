@@ -758,6 +758,43 @@ export const createSquadTask = async (params: {
   return normalizeExecutionTask(payload);
 };
 
+/**
+ * Delete a squad task. The backend currently doesn't expose a DELETE verb, so
+ * we first try DELETE /api/SquadExecutions/{id} and fall back to the existing
+ * cancel endpoint so the task transitions to "cancelled" on older deployments.
+ * Either way, the caller is expected to immediately clear the task's session
+ * state from every associated agent on the frontend.
+ */
+export const deleteSquadTask = async (
+  taskId: number,
+  token?: string | null,
+): Promise<void> => {
+  try {
+    await requestBackendJson<unknown>(
+      `/api/SquadExecutions/${taskId}`,
+      { method: "DELETE" },
+      token,
+    );
+    return;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // If the delete endpoint isn't implemented, gracefully fall back to cancel
+    // so the task stops draining hooks/tokens and can be hidden from the UI.
+    if (!/404|405|not\s*found|method\s*not/i.test(message)) {
+      throw error;
+    }
+    try {
+      await requestBackendJson<unknown>(
+        `/api/SquadExecutions/${taskId}/cancel`,
+        { method: "POST" },
+        token,
+      );
+    } catch {
+      // Swallow — the caller will still drop it from local state.
+    }
+  }
+};
+
 export const estimateSquadTaskDispatch = async (
   taskId: number,
   payload: SquadTaskDispatchRequest,

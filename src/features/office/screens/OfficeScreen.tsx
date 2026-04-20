@@ -141,6 +141,7 @@ import {
   createCompanySquad,
   createSquadTask,
   deleteCompanySquad,
+  deleteSquadTask,
   dispatchSquadTask,
   estimateSquadTaskDispatch,
   fetchCompanySquads,
@@ -894,7 +895,8 @@ type OfficeScreenProps = {
 const OFFICE_TITLE_DEFAULTS = new Set(["Luke Headquarters", "Company Headquarters", "Headquarters"]);
 
 export function OfficeScreen({
-  showOpenClawConsole = true,
+  // Dev-only OpenClaw console button — hidden in the shipped product.
+  showOpenClawConsole = false,
   companyId = null,
   workspaceId = null,
   companyName = null,
@@ -2316,7 +2318,12 @@ export function OfficeScreen({
   }, []);
 
   const handleCreateSquadTask = useCallback(
-    async (payload: { title: string; prompt: string; preferredModel: string | null }) => {
+    async (payload: {
+      title: string;
+      prompt: string;
+      preferredModel: string | null;
+      executionMode: string | null;
+    }) => {
       const numericSquadId = Number(squadOpsSquadId);
       if (!Number.isFinite(numericSquadId)) return;
       setSquadOpsCreateBusy(true);
@@ -2328,7 +2335,10 @@ export function OfficeScreen({
           squadId: numericSquadId,
           title: payload.title,
           prompt: payload.prompt,
-          executionMode: activeSquadOpsSquad?.executionMode ?? "leader",
+          // Prefer the per-task override the user picked in the modal. Fall back to
+          // the squad's default execution mode when they left it on "squad default".
+          executionMode:
+            payload.executionMode || activeSquadOpsSquad?.executionMode || "leader",
           preferredModel: payload.preferredModel,
         });
         await loadSquadOpsTasks(String(numericSquadId), created.id);
@@ -2340,6 +2350,62 @@ export function OfficeScreen({
       }
     },
     [activeSquadOpsSquad?.executionMode, loadSquadOpsTasks, squadOpsSquadId],
+  );
+
+  // Delete a squad task and cascade-clean every local slice that references it
+  // so the conversation, per-agent sessions and lingering UI state disappear
+  // from every agent associated with it — same UX as "delete chat".
+  const handleDeleteSquadTask = useCallback(
+    async (taskId: number) => {
+      try {
+        await deleteSquadTask(taskId);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Unable to delete the squad task right now.";
+        setSquadOpsError(message);
+        return;
+      }
+      setSquadOpsTasks((prev) => prev.filter((task) => task.id !== taskId));
+      setSelectedSquadTasks((prev) => prev.filter((task) => task.id !== taskId));
+      setSquadOpsSelectedTask((prev) => (prev?.id === taskId ? null : prev));
+      setSquadTaskSessionByTaskId((prev) => {
+        if (!(taskId in prev)) return prev;
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+      setSquadChatTasksBySquadId((prev) => {
+        let changed = false;
+        const next: Record<string, SquadTask[]> = {};
+        for (const [key, list] of Object.entries(prev)) {
+          const filtered = list.filter((task) => task.id !== taskId);
+          if (filtered.length !== list.length) changed = true;
+          next[key] = filtered;
+        }
+        return changed ? next : prev;
+      });
+      setActiveSquadChatTaskBySquadId((prev) => {
+        let changed = false;
+        const next: Record<string, number | null> = {};
+        for (const [key, value] of Object.entries(prev)) {
+          if (value === taskId) {
+            next[key] = null;
+            changed = true;
+          } else {
+            next[key] = value;
+          }
+        }
+        return changed ? next : prev;
+      });
+      // Refresh the active squad's task list from the server so the count
+      // matches even if the backend fell back to "cancel" instead of DELETE.
+      if (squadOpsSquadId) {
+        void loadSquadOpsTasks(squadOpsSquadId, null);
+      }
+    },
+    [loadSquadOpsTasks, squadOpsSquadId],
   );
 
   const buildSquadDispatchPayload = useCallback(
@@ -6698,6 +6764,9 @@ export function OfficeScreen({
         onUseLead={(leadId) => {
           void handlePrimeLeadContextFromChat({ type: "lead", id: leadId });
         }}
+        onRefresh={() => {
+          void loadLeadChatContext();
+        }}
       />
 
       {agentEditorAgent ? (
@@ -6804,6 +6873,9 @@ export function OfficeScreen({
           void handleConfirmDispatchSquadTask(taskId, mode);
         }}
         onCancelDispatchApproval={handleCancelSquadTaskDispatchApproval}
+        onDeleteTask={(taskId) => {
+          void handleDeleteSquadTask(taskId);
+        }}
         onEditSquad={handleEditSquad}
         onDeleteSquad={handleDeleteSquad}
       />

@@ -878,7 +878,13 @@ export function LeadOpsPanel({
 
       {/* New Mission Modal */}
       {modalView === "new-mission" && (
-        <Modal onClose={() => setModalView("none")} title="New Lead Mission" subtitle="Configure your prospecting run">
+        <Modal
+          onClose={() => setModalView("none")}
+          title="New Lead Mission"
+          subtitle="Configure your prospecting run"
+          icon={<Target className="h-5 w-5" />}
+          accent="#22d3ee"
+        >
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
@@ -1004,6 +1010,8 @@ export function LeadOpsPanel({
           title={selectedJob ? `${selectedJob.title} · Company Leads` : "Company Leads"}
           subtitle={`${stats.total} leads available for this company`}
           size="xl"
+          icon={<Building2 className="h-5 w-5" />}
+          accent="#a78bfa"
         >
           {/* Search & Stats */}
           <div className="mb-5 flex flex-wrap items-center gap-4">
@@ -1211,6 +1219,8 @@ export function LeadOpsPanel({
           title={selectedLeadDetail.businessName}
           subtitle={[selectedLeadDetail.city, selectedLeadDetail.state].filter(Boolean).join(", ") || selectedLeadDetail.category || "Lead Details"}
           size="lg"
+          icon={<Sparkles className="h-5 w-5" />}
+          accent="#34d399"
         >
           {/* Tabs */}
           <div className="mb-5 flex items-center gap-1 rounded-lg bg-white/5 p-1">
@@ -1435,7 +1445,13 @@ export function LeadOpsPanel({
 
       {/* Email Batch Modal */}
       {modalView === "email-batch" && selectedJob && (
-        <Modal onClose={() => setModalView("none")} title="Send Batch Email" subtitle={`Queue outreach for ${selectedJob.title}`}>
+        <Modal
+          onClose={() => setModalView("none")}
+          title="Send Batch Email"
+          subtitle={`Queue outreach for ${selectedJob.title}`}
+          icon={<Send className="h-5 w-5" />}
+          accent="#f59e0b"
+        >
           <div className="space-y-4">
             <p className="text-sm text-white/50">
               Supported tokens: <code className="rounded bg-white/5 px-1 text-cyan-400">{"{{businessName}}"}</code>, 
@@ -1518,7 +1534,13 @@ export function LeadOpsPanel({
 
       {/* Single Email Modal */}
       {modalView === "single-email" && selectedLeadDetail && (
-        <Modal onClose={() => setModalView("lead-detail")} title="Send Email" subtitle={`To ${selectedLeadDetail.businessName}`}>
+        <Modal
+          onClose={() => setModalView("lead-detail")}
+          title="Send Email"
+          subtitle={`To ${selectedLeadDetail.businessName}`}
+          icon={<Mail className="h-5 w-5" />}
+          accent="#22d3ee"
+        >
           <div className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-white/50">Recipient</label>
@@ -1576,27 +1598,66 @@ export function LeadOpsPanel({
 
 // ====== COMPONENTS ======
 
-function Modal({ children, onClose, title, subtitle, size = "md" }: { children: ReactNode; onClose: () => void; title: string; subtitle?: string; size?: "md" | "lg" | "xl" }) {
+function Modal({
+  children,
+  onClose,
+  title,
+  subtitle,
+  size = "md",
+  icon,
+  accent = "#22d3ee",
+  footer,
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  size?: "md" | "lg" | "xl";
+  icon?: ReactNode;
+  accent?: string;
+  footer?: ReactNode;
+}) {
   const widthClass = size === "xl" ? "max-w-5xl" : size === "lg" ? "max-w-3xl" : "max-w-xl";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className={`relative w-full ${widthClass} max-h-[90vh] overflow-y-auto rounded-2xl bg-slate-900 p-6 shadow-2xl ring-1 ring-white/10`}>
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">{title}</h2>
-            {subtitle && <p className="mt-1 text-sm text-white/50">{subtitle}</p>}
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+      <section
+        className={`relative z-10 flex max-h-[92vh] w-full ${widthClass} flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]`}
+        style={{ borderColor: `${accent}30` }}
+      >
+        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+          {icon ? (
+            <div
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+              style={{
+                backgroundColor: `${accent}20`,
+                border: `1.5px solid ${accent}50`,
+                color: accent,
+              }}
+            >
+              {icon}
+            </div>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-lg font-semibold text-white">{title}</h2>
+            {subtitle && (
+              <p className="truncate text-xs text-white/40">{subtitle}</p>
+            )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-white/40 transition hover:bg-white/5 hover:text-white"
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        {children}
-      </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
+        {footer ? (
+          <div className="border-t border-white/10 bg-white/[0.02] px-6 py-4">{footer}</div>
+        ) : null}
+      </section>
     </div>
   );
 }

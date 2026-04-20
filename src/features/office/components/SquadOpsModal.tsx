@@ -10,6 +10,7 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Trash2,
   Users2,
   X,
   Zap,
@@ -48,10 +49,17 @@ type SquadOpsModalProps = {
   onRefresh: () => void;
   onSelectSquad: (squadId: string) => void;
   onSelectTask: (taskId: number) => void;
-  onCreateTask: (payload: { title: string; prompt: string; preferredModel: string | null }) => void;
+  onCreateTask: (payload: {
+    title: string;
+    prompt: string;
+    preferredModel: string | null;
+    executionMode: SquadExecutionMode | null;
+  }) => void;
   onPreviewDispatchTask: (taskId: number, mode: DispatchMode) => void;
   onConfirmDispatchTask: (taskId: number, mode: DispatchMode) => void;
   onCancelDispatchApproval: () => void;
+  /** Delete the task, cascading cleanup across every agent's session state. */
+  onDeleteTask?: (taskId: number) => Promise<void> | void;
   onEditSquad?: (
     squadId: string,
     payload: {
@@ -174,13 +182,18 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
     onPreviewDispatchTask,
     onConfirmDispatchTask,
     onCancelDispatchApproval,
+    onDeleteTask,
   } = props;
+
+  const [deletingTaskId, setDeletingTaskId] = useState<number | null>(null);
 
   const [tab, setTab] = useState<"tasks" | "new">("tasks");
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
   const [prompt, setPrompt] = useState("");
   const [preferredModel, setPreferredModel] = useState("");
+  // Allow overriding the squad's default execution mode for this specific task.
+  const [taskExecutionMode, setTaskExecutionMode] = useState<SquadExecutionMode | "">("");
 
   /* Reset on open / squad change */
   useEffect(() => {
@@ -188,6 +201,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
     setTitle("");
     setPrompt("");
     setPreferredModel("");
+    setTaskExecutionMode("");
     setTab("tasks");
   }, [open, selectedSquadId]);
 
@@ -325,6 +339,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
       title: title.trim(),
       prompt: prompt.trim(),
       preferredModel: preferredModel || null,
+      executionMode: taskExecutionMode || null,
     });
   };
 
@@ -352,6 +367,26 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
       onConfirmDispatchTask(selectedTask.id, "retryFailed");
     } else {
       onPreviewDispatchTask(selectedTask.id, "retryFailed");
+    }
+  };
+
+  const handleDeleteTask = async (taskId: number, taskTitle: string) => {
+    if (!onDeleteTask) return;
+    const label = taskTitle.trim() || `task #${taskId}`;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `Delete ${label}? The conversation will be cleared from every agent associated with this task.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      setDeletingTaskId(taskId);
+      await onDeleteTask(taskId);
+      if (expandedId === taskId) setExpandedId(null);
+    } finally {
+      setDeletingTaskId((prev) => (prev === taskId ? null : prev));
     }
   };
 
@@ -662,8 +697,43 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                               <span className="ml-auto text-[10px] text-white/30">
                                 {respondedAgents.length}/{runs.length || memberCount} replied
                               </span>
+                              {onDeleteTask ? (
+                                <button
+                                  type="button"
+                                  disabled={deletingTaskId === task.id || dispatchBusy}
+                                  onClick={() => void handleDeleteTask(task.id, task.title ?? "")}
+                                  title="Delete this task and clear it from every agent"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {deletingTaskId === task.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                  Delete task
+                                </button>
+                              ) : null}
                             </div>
                           )}
+                          {/* When hooks are not configured, still expose delete so stale sessions
+                              can be cleaned up from the UI. */}
+                          {!hooksConfigured && onDeleteTask ? (
+                            <div className="mt-3 flex justify-end border-t border-white/5 pt-3">
+                              <button
+                                type="button"
+                                disabled={deletingTaskId === task.id}
+                                onClick={() => void handleDeleteTask(task.id, task.title ?? "")}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-200 transition hover:bg-red-500/15 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {deletingTaskId === task.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                                Delete task
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </div>
@@ -686,6 +756,38 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                   placeholder="Short task name"
                   className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
                 />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-medium uppercase tracking-wider text-white/45">
+                  Execution mode{" "}
+                  <span className="normal-case text-white/25">
+                    (override for this task)
+                  </span>
+                </label>
+                <select
+                  value={taskExecutionMode}
+                  onChange={(e) =>
+                    setTaskExecutionMode(
+                      (e.target.value as SquadExecutionMode | "") ?? "",
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
+                >
+                  <option value="">
+                    Use squad default ({MODE_LABEL[activeMode] ?? activeMode})
+                  </option>
+                  <option value="leader">Leader first</option>
+                  <option value="all">All at once</option>
+                  <option value="workflow">Workflow</option>
+                  <option value="manual">Manual</option>
+                </select>
+                <p className="mt-2 text-[11px] text-white/35">
+                  Leader first runs the squad leader before delegating.
+                  All at once dispatches every member in parallel.
+                  Workflow follows the squad&rsquo;s step order. Manual only
+                  primes the session so you can dispatch by hand later.
+                </p>
               </div>
 
               <div>
@@ -736,7 +838,12 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                       {title.trim() || "Untitled task"}
                     </div>
                     <div className="text-[11px] text-white/40">
-                      {squad?.name ?? "Squad"} · {modeLabel}
+                      {squad?.name ?? "Squad"} ·{" "}
+                      {MODE_LABEL[taskExecutionMode || activeMode] ??
+                        (taskExecutionMode || activeMode)}
+                      {taskExecutionMode && taskExecutionMode !== activeMode ? (
+                        <span className="ml-1 text-white/25">(task override)</span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
