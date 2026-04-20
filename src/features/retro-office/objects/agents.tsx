@@ -923,6 +923,11 @@ export const AgentModel = memo(function AgentModel({
         }
       }
     }
+    // Flag set inside the leg blocks when the agent is sitting so the
+    // downstream SMOOTH lerp knows to skip them — we want sitting legs to
+    // be absolutely still, not lerping toward a target over multiple
+    // frames (which reads as "dobrando a perna" on screen).
+    let legsHardStatic = false;
     if (leftLegRef.current) {
       let leftLegX = 0;
       if (agent.state === "walking") {
@@ -971,12 +976,14 @@ export const AgentModel = memo(function AgentModel({
         // Gentle standing sway at the station — no rep motion needed.
         leftLegX = 0.02 + Math.sin(motionFrame * 0.05) * 0.015;
       } else if (agent.state === "sitting") {
-        // Sitting: thighs rotate forward at the hip. Desk chair uses a
-        // steeper flex (~60°) so thighs look almost horizontal with the
-        // feet reaching the floor naturally given the sittingLift above.
-        // Lounge is a bit more reclined & relaxed.
+        // Sitting is a HARD-STATIC pose. User asked repeatedly to remove
+        // ALL sitting leg animation — so we snap directly to the target
+        // rotation, zero-out Y/Z, and skip the downstream SMOOTH lerp
+        // entirely so there's never a visible inter-frame drift that
+        // reads as "dobrando a perna".
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         leftLegX = isLoungeSitLocal ? 0.72 : 1.05;
+        legsHardStatic = true;
       } else if (isIdle && idleAnim.type === 7) {
         // Tap foot animation - left leg taps
         leftLegX = Math.max(0, Math.sin(frameValue * 0.2)) * 0.12 * idleSmooth;
@@ -985,6 +992,10 @@ export const AgentModel = memo(function AgentModel({
         leftLegX = Math.sin(idleProgress * Math.PI) * 0.05 * idleSmooth;
       }
       leftLegRef.current.rotation.x = leftLegX;
+      if (legsHardStatic) {
+        leftLegRef.current.rotation.y = 0;
+        leftLegRef.current.rotation.z = 0;
+      }
     }
     if (rightLegRef.current) {
       let rightLegX = 0;
@@ -1032,11 +1043,16 @@ export const AgentModel = memo(function AgentModel({
       } else if (agent.state === "sitting") {
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         rightLegX = isLoungeSitLocal ? 0.72 : 1.05;
+        legsHardStatic = true;
       } else if (isIdle && idleAnim.type === 4) {
         // Stretch - slight leg movement
         rightLegX = -Math.sin(idleProgress * Math.PI) * 0.05 * idleSmooth;
       }
       rightLegRef.current.rotation.x = rightLegX;
+      if (legsHardStatic) {
+        rightLegRef.current.rotation.y = 0;
+        rightLegRef.current.rotation.z = 0;
+      }
     }
 
     // ──────────────────────────────────────────────────────────────
@@ -1050,37 +1066,64 @@ export const AgentModel = memo(function AgentModel({
     // from the upper-arm cylinder mid-transition.
     // ──────────────────────────────────────────────────────────────
     const SMOOTH = 0.45;
+    // While seated the arms/legs are HARD-STATIC (no inter-frame lerp) —
+    // any residual drift reads as the agent "mexendo a perna" which the
+    // user explicitly does NOT want on chair or sofa.
+    const armsHardStatic = agent.state === "sitting";
     if (leftArmRef.current) {
-      const rot = leftArmRef.current.rotation;
-      const prev = leftArmTargetRef.current;
-      rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
-      rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
-      rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
-      prev.x = rot.x;
-      prev.y = rot.y;
-      prev.z = rot.z;
+      if (armsHardStatic) {
+        const rot = leftArmRef.current.rotation;
+        leftArmTargetRef.current.x = rot.x;
+        leftArmTargetRef.current.y = rot.y;
+        leftArmTargetRef.current.z = rot.z;
+      } else {
+        const rot = leftArmRef.current.rotation;
+        const prev = leftArmTargetRef.current;
+        rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
+        rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
+        rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
+        prev.x = rot.x;
+        prev.y = rot.y;
+        prev.z = rot.z;
+      }
     }
     if (rightArmRef.current) {
-      const rot = rightArmRef.current.rotation;
-      const prev = rightArmTargetRef.current;
-      rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
-      rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
-      rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
-      prev.x = rot.x;
-      prev.y = rot.y;
-      prev.z = rot.z;
+      if (armsHardStatic) {
+        const rot = rightArmRef.current.rotation;
+        rightArmTargetRef.current.x = rot.x;
+        rightArmTargetRef.current.y = rot.y;
+        rightArmTargetRef.current.z = rot.z;
+      } else {
+        const rot = rightArmRef.current.rotation;
+        const prev = rightArmTargetRef.current;
+        rot.x = prev.x + (rot.x - prev.x) * SMOOTH;
+        rot.y = prev.y + (rot.y - prev.y) * SMOOTH;
+        rot.z = prev.z + (rot.z - prev.z) * SMOOTH;
+        prev.x = rot.x;
+        prev.y = rot.y;
+        prev.z = rot.z;
+      }
     }
     if (leftLegRef.current) {
-      const rot = leftLegRef.current.rotation;
-      const prev = leftLegTargetRef.current;
-      rot.x = prev + (rot.x - prev) * SMOOTH;
-      leftLegTargetRef.current = rot.x;
+      if (legsHardStatic) {
+        // Snap — no lerp while seated so the thigh never visibly drifts.
+        leftLegTargetRef.current = leftLegRef.current.rotation.x;
+      } else {
+        const rot = leftLegRef.current.rotation;
+        const prev = leftLegTargetRef.current;
+        rot.x = prev + (rot.x - prev) * SMOOTH;
+        leftLegTargetRef.current = rot.x;
+      }
     }
     if (rightLegRef.current) {
-      const rot = rightLegRef.current.rotation;
-      const prev = rightLegTargetRef.current;
-      rot.x = prev + (rot.x - prev) * SMOOTH;
-      rightLegTargetRef.current = rot.x;
+      if (legsHardStatic) {
+        rightLegTargetRef.current = rightLegRef.current.rotation.x;
+      } else {
+        const rot = rightLegRef.current.rotation;
+        const prev = rightLegTargetRef.current;
+        rot.x = prev + (rot.x - prev) * SMOOTH;
+        rightLegTargetRef.current = rot.x;
+      }
     }
 
     const isSitting = agent.state === "sitting";
