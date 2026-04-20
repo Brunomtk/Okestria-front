@@ -1083,10 +1083,18 @@ export const AgentModel = memo(function AgentModel({
       rightLegTargetRef.current = rot.x;
     }
 
+    const isSitting = agent.state === "sitting";
     const working =
-      agent.state === "sitting" || isWorkout || isDancing || agent.status === "working";
+      isSitting || isWorkout || isDancing || agent.status === "working";
     const isError = agent.status === "error";
     const isAway = agent.state === "away";
+    // Seated agents must look completely still — no pulsing ring, no nameplate
+    // bounce, nothing that reads as an idle animation. We still keep the
+    // colour cue (green dot / green ring) because that's a static signal, not
+    // an animation. `pulseActive` is the flag that gates every continuous
+    // sin-based oscillation around the agent so the chair/sofa poses read as
+    // truly static.
+    const pulseActive = working && !isSitting;
 
     if (statusDotMatRef.current) {
       statusDotMatRef.current.color.set(
@@ -1095,37 +1103,57 @@ export const AgentModel = memo(function AgentModel({
     }
 
     if (pulseRingRef.current && pulseRingMatRef.current) {
-      const pulse =
-        (Math.sin(agent.frame * (isError ? 0.15 : working ? 0.08 : 0.05)) + 1) /
-        2;
-      const scale = isError
-        ? 1.24 + pulse * 0.52
-        : working
-          ? 1.18 + pulse * 0.74
-          : 1.08 + pulse * 0.18;
-      pulseRingRef.current.scale.setScalar(scale);
-      pulseRingMatRef.current.color.set(
-        isError ? "#ef4444" : working ? "#22c55e" : "#38bdf8",
-      );
-      pulseRingMatRef.current.opacity = isError
-        ? 0.68 - pulse * 0.24
-        : working
-          ? 0.52 - pulse * 0.4
-          : 0.18 + pulse * 0.08;
-      pulseRingRef.current.visible = true;
+      if (isSitting) {
+        // Freeze the ring completely while seated — no sin() drive at all.
+        pulseRingRef.current.scale.setScalar(1.16);
+        pulseRingMatRef.current.color.set(
+          isError ? "#ef4444" : "#22c55e",
+        );
+        pulseRingMatRef.current.opacity = 0.22;
+        pulseRingRef.current.visible = true;
+      } else {
+        const pulse =
+          (Math.sin(agent.frame * (isError ? 0.15 : pulseActive ? 0.08 : 0.05)) +
+            1) /
+          2;
+        const scale = isError
+          ? 1.24 + pulse * 0.52
+          : pulseActive
+            ? 1.18 + pulse * 0.74
+            : 1.08 + pulse * 0.18;
+        pulseRingRef.current.scale.setScalar(scale);
+        pulseRingMatRef.current.color.set(
+          isError ? "#ef4444" : working ? "#22c55e" : "#38bdf8",
+        );
+        pulseRingMatRef.current.opacity = isError
+          ? 0.68 - pulse * 0.24
+          : pulseActive
+            ? 0.52 - pulse * 0.4
+            : 0.18 + pulse * 0.08;
+        pulseRingRef.current.visible = true;
+      }
     }
 
     if (nameplateRef.current) {
-      const pulse =
-        (Math.sin(agent.frame * (isError ? 0.16 : working ? 0.09 : 0.05)) + 1) /
-        2;
-      const scale = isError
-        ? 1.035 + pulse * 0.03
-        : working
-          ? 1.02 + pulse * 0.025
-          : 1.01 + pulse * 0.01;
-      nameplateRef.current.scale.set(scale, scale, 1);
-      nameplateRef.current.position.y = working ? pulse * 0.012 : pulse * 0.008;
+      if (isSitting) {
+        // Nameplate sits still while seated — no scale pulse, no bob.
+        nameplateRef.current.scale.set(1.02, 1.02, 1);
+        nameplateRef.current.position.y = 0;
+      } else {
+        const pulse =
+          (Math.sin(agent.frame * (isError ? 0.16 : pulseActive ? 0.09 : 0.05)) +
+            1) /
+          2;
+        const scale = isError
+          ? 1.035 + pulse * 0.03
+          : pulseActive
+            ? 1.02 + pulse * 0.025
+            : 1.01 + pulse * 0.01;
+        nameplateRef.current.scale.set(scale, scale, 1);
+        nameplateRef.current.position.y = pulseActive
+          ? pulse * 0.012
+          : pulse * 0.008;
+      }
     }
     if (nameplateMatRef.current) {
       nameplateMatRef.current.opacity = isError
