@@ -358,16 +358,25 @@ export const AgentModel = memo(function AgentModel({
           workoutBodyRotX = -0.12 + Math.max(0, workoutPhase) * 0.22;
           break;
         case "stretch":
-          // Yoga body lean per pose: forward fold on pose 0's tail end,
-          // upright for warrior / mountain / tree, slight back-bend on upward salute
-          if (yogaPoseIndex === 0) {
-            workoutBodyRotX = yogaPoseProgress > 0.5 ? (yogaPoseProgress - 0.5) * 1.6 : 0;
-          } else if (yogaPoseIndex === 1) {
-            workoutBodyRotX = 0.08; // slight hip-hinge
-          } else if (yogaPoseIndex === 2) {
-            workoutBodyRotX = -0.14; // slight back-bend
-          } else {
-            workoutBodyRotX = 0.02;
+          // Yoga body lean per pose — REDUCED amplitudes so the agent
+          // never "tomba" (topples forward). We keep the character's
+          // torso mostly upright; the yoga reads from the arms and legs,
+          // not from a dramatic body fold. All four poses now stay in
+          // the safe ±0.18 rad window and transitions are smoothed in the
+          // switchover using yogaPoseProgress easing.
+          {
+            // Target body tilts per pose — all gentle.
+            const YOGA_BODY_LEAN = [0.08, 0.06, -0.08, 0.02];
+            const curr = YOGA_BODY_LEAN[yogaPoseIndex]!;
+            const next = YOGA_BODY_LEAN[(yogaPoseIndex + 1) % 4]!;
+            // Hold for first 65% then ease into next pose (match arm/leg).
+            const holdCutoff = 0.65;
+            const blendT =
+              yogaPoseProgress < holdCutoff
+                ? 0
+                : (yogaPoseProgress - holdCutoff) / (1 - holdCutoff);
+            const t = blendT * blendT * (3 - 2 * blendT);
+            workoutBodyRotX = curr + (next - curr) * t;
           }
           break;
         case "run":
@@ -445,8 +454,10 @@ export const AgentModel = memo(function AgentModel({
         // Inspecting rack — upright, slow sway
         qaBodyRotX = 0.04 + Math.sin(motionFrame * 0.03) * 0.02;
       } else if (qaStationType === "bench") {
-        // Bench work — deeper forward lean (soldering/probe)
-        qaBodyRotX = 0.22 + Math.abs(qaPhase) * 0.02;
+        // Bench work — mild forward lean only (was 0.22 which was tipping
+        // the figure forward enough to read as "tombando"). 0.1 gives the
+        // soldering/probe feel without toppling the boneco.
+        qaBodyRotX = 0.1 + Math.abs(qaPhase) * 0.015;
       }
     }
     groupRef.current.rotation.x =
@@ -939,8 +950,12 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") leftLegX = workoutPhase * 0.82;
         else if (workoutStyle === "row") leftLegX = 0.14 + Math.max(0, workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") {
-          // Yoga left-leg keyframes, lerped pose → next pose.
-          const LEFT_YOGA_LEG = [0.12, 0.55, 0.0, 0.08];
+          // Yoga left-leg keyframes — softened so the stance never lifts
+          // the knee high enough to look like the boneco losing balance.
+          // Previous pose 1 (warrior) used 0.55 rad which, combined with
+          // the body lean, read as "tombando". 0.22 gives the warrior
+          // feel without destabilising the silhouette.
+          const LEFT_YOGA_LEG = [0.12, 0.22, 0.0, 0.08];
           const curr = LEFT_YOGA_LEG[yogaPoseIndex]!;
           const next = LEFT_YOGA_LEG[(yogaPoseIndex + 1) % 4]!;
           const holdCutoff = 0.65;
@@ -1008,8 +1023,11 @@ export const AgentModel = memo(function AgentModel({
         else if (workoutStyle === "bike") rightLegX = -workoutPhase * 0.82;
         else if (workoutStyle === "row") rightLegX = 0.14 + Math.max(0, -workoutPhase) * 0.42;
         else if (workoutStyle === "stretch") {
-          // Yoga right-leg keyframes, lerped pose → next pose.
-          const RIGHT_YOGA_LEG = [0.12, -0.12, 0.0, -0.55];
+          // Yoga right-leg keyframes — softened (see LEFT_YOGA_LEG).
+          // Pose 3 (tree) used -0.55 which combined with body tilt read
+          // as tipping. -0.22 keeps the one-foot vibe without looking
+          // like the agent is going to fall.
+          const RIGHT_YOGA_LEG = [0.12, -0.12, 0.0, -0.22];
           const curr = RIGHT_YOGA_LEG[yogaPoseIndex]!;
           const next = RIGHT_YOGA_LEG[(yogaPoseIndex + 1) % 4]!;
           const holdCutoff = 0.65;
