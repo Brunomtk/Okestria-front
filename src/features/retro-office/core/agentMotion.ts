@@ -678,7 +678,11 @@ export function useRebuiltAgentTick(
           targetY: target.targetY,
           facing: targetPoint.facing ?? seatFacing,
           path: target.path,
-          state: "sitting",
+          // v56: desk interaction reverted to a "standing" stop — the
+          // sit-on-chair pose was bugging visually (body/legs twisting
+          // wrong, pulsing around the chair). Agents now walk up to their
+          // desk and stand idle there. No sit pose is ever triggered.
+          state: "standing",
           interactionTarget: "desk",
         };
       }
@@ -785,7 +789,11 @@ export function useRebuiltAgentTick(
           targetY: target.targetY,
           facing: point.facing ?? agent.facing,
           path: target.path,
-          state: "sitting",
+          // v56: lounge interaction reverted to a "standing" stop — the
+          // sit-on-couch/puff pose was bugging visually (agent floating
+          // next to the sofa, zzz bubble showing while standing). Agents
+          // now walk into the lounge area and stand. No sit pose fires.
+          state: "standing",
           interactionTarget: "lounge",
         };
       }
