@@ -104,8 +104,10 @@ export const OfficeFigure = ({
     const t = state.clock.elapsedTime;
     if (faceFocus) {
       // Portrait mode — very subtle head-turn, no body sway, so the face
-      // stays framed like a real profile picture.
-      groupRef.current.rotation.y = Math.sin(t * 0.35) * 0.15;
+      // stays framed like a real profile picture. v50: shrunk the rotation
+      // amplitude so the face reads as "looking at you" rather than
+      // "turning side to side" inside the tight circular chat avatar.
+      groupRef.current.rotation.y = Math.sin(t * 0.35) * 0.06;
       groupRef.current.position.y = -0.78 + Math.sin(t * 0.9) * 0.003;
       if (leftArmRef.current) {
         leftArmRef.current.rotation.x = 0;
@@ -869,13 +871,26 @@ export const AgentOfficeFigure3D = ({
   const isReady = readyProfileKey === profileKey;
 
   // Camera presets — the figure lives at y≈-0.78 with a 2.86-tall scale,
-  // so the head sits roughly around world y ≈ 0.5. For "face" mode we
-  // pull the camera closer and aim at the head; for "body" we frame the
-  // full 3/4 shot that shows shoulders + chin silhouette.
+  // so the head sits roughly around world y ≈ 0.55–0.75. For "face" mode we
+  // aim the camera straight at the head (lookAtY matches camera Y) so the
+  // full face reads through the circular crop. For "body" mode we frame the
+  // full 3/4 shot from a gentle angle above the shoulders.
+  // v50: previous face camera at z=1.05 + no explicit lookAt was pitching
+  // the viewport down toward the origin, which cropped the forehead and
+  // squashed the face. We now pull back to z=1.45, level the camera at
+  // head height, and widen the FOV to 34 so the face has breathing room.
   const cameraConfig =
     focus === "face"
-      ? { position: [0, 0.55, 1.05] as [number, number, number], fov: 28 }
-      : { position: [0.35, 0.35, 2.15] as [number, number, number], fov: 30 };
+      ? {
+          position: [0, 0.6, 1.45] as [number, number, number],
+          fov: 34,
+          lookAt: [0, 0.6, 0] as [number, number, number],
+        }
+      : {
+          position: [0.35, 0.35, 2.15] as [number, number, number],
+          fov: 30,
+          lookAt: [0, 0.1, 0] as [number, number, number],
+        };
 
   return (
     <div
@@ -889,9 +904,16 @@ export const AgentOfficeFigure3D = ({
       ) : null}
       <Canvas
         key={`${profileKey}-${focus}`}
-        camera={cameraConfig}
+        camera={{ position: cameraConfig.position, fov: cameraConfig.fov }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
+        onCreated={({ camera }) => {
+          camera.lookAt(
+            cameraConfig.lookAt[0],
+            cameraConfig.lookAt[1],
+            cameraConfig.lookAt[2],
+          );
+        }}
       >
         <color attach="background" args={["#0a0f1d"]} />
         {/* Softer ambient so the rim light can actually define form. */}

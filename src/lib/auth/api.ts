@@ -243,20 +243,103 @@ function normalizeErrorText(text: string, status: number) {
   return `Request failed with status ${status}`;
 }
 
-async function requestJson<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
-  const headers = new Headers(init?.headers);
-  headers.set('Content-Type', 'application/json');
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+// ── Auto-refresh on 401 ──────────────────────────────────────────────
+//
+// When an authenticated request comes back 401, the access token has expired
+// but the refresh token may still be valid. Before v50 the request just threw
+// and the user fell back to the login screen. Now we:
+//   1) pull the refresh token from the `okestria_refresh_token` cookie
+//   2) hit /api/Users/refresh-token (deduped — all concurrent 401s share a
+//      single in-flight refresh promise so we don't spam the endpoint)
+//   3) persist the new access + refresh tokens to cookies
+//   4) retry the original request once with the new access token
+//
+// The deduping is what matches the backend grace window (60s): even when two
+// tabs race, only one refresh hits the API.
+//
+// All of this is gated on `typeof document !== 'undefined'` so SSR paths
+// keep their previous no-retry behaviour.
 
-  let response: Response;
-  try {
-    response = await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
-      ...init,
-      headers,
-      cache: 'no-store',
-    });
-  } catch {
-    throw new Error('Não foi possível conectar ao backend do Okestria. Verifique a URL da API e confirme se o servidor está rodando.');
+let inflightRefresh: Promise<string | null> | null = null;
+
+function readRefreshCookieFromDocument(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)okestria_refresh_token=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function refreshAndPersistAccessToken(): Promise<string | null> {
+  if (inflightRefresh) return inflightRefresh;
+
+  inflightRefresh = (async () => {
+    try {
+      const refreshToken = readRefreshCookieFromDocument();
+      if (!refreshToken) return null;
+
+      const response = await fetch(`${getOkestriaApiBaseUrl()}/api/Users/refresh-token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+        cache: 'no-store',
+      });
+
+      if (!response.ok) return null;
+
+      const session = (await response.json()) as OkestriaTokenResponse;
+
+      // Lazy import avoids pulling session-client into SSR bundles.
+      const { persistAuthSession } = await import('./session-client');
+      persistAuthSession(session);
+
+      return session.token;
+    } catch {
+      return null;
+    } finally {
+      // Release the dedupe lock on the next microtask so callers that await
+      // inflightRefresh still see the resolved value.
+      queueMicrotask(() => {
+        inflightRefresh = null;
+      });
+    }
+  })();
+
+  return inflightRefresh;
+}
+
+async function requestJson<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
+  const sendOnce = async (authToken?: string) => {
+    const headers = new Headers(init?.headers);
+    headers.set('Content-Type', 'application/json');
+    if (authToken) headers.set('Authorization', `Bearer ${authToken}`);
+
+    try {
+      return await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+        ...init,
+        headers,
+        cache: 'no-store',
+      });
+    } catch {
+      throw new Error('Não foi possível conectar ao backend do Okestria. Verifique a URL da API e confirme se o servidor está rodando.');
+    }
+  };
+
+  let response = await sendOnce(token);
+
+  // v50: if we had a token and got 401, try a single refresh + retry before
+  // surfacing the auth failure. This covers the common case of access token
+  // expiring while the user is actively using the app.
+  const canRetry =
+    response.status === 401 &&
+    !!token &&
+    typeof document !== 'undefined' &&
+    !path.includes('/api/Users/refresh-token') &&
+    !path.includes('/api/Users/authenticate');
+
+  if (canRetry) {
+    const refreshed = await refreshAndPersistAccessToken();
+    if (refreshed) {
+      response = await sendOnce(refreshed);
+    }
   }
 
   if (!response.ok) {

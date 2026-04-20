@@ -532,8 +532,13 @@ export const AgentModel = memo(function AgentModel({
       agent.status === "error" ? Math.sin(agent.frame * 0.9) * 0.01 : 0;
     const errorShakeZ =
       agent.status === "error" ? Math.cos(agent.frame * 0.72) * 0.007 : 0;
-    const statusScale =
-      agent.status === "working"
+    // v50: when seated, freeze the whole body so it doesn't throb or shake.
+    // The status-scale pulse was the main source of the "twitching" the user
+    // noticed — a seated agent should just sit.
+    const isSitting = agent.state === "sitting";
+    const statusScale = isSitting
+      ? 1
+      : agent.status === "working"
         ? 1.02 + Math.sin(agent.frame * 0.09) * 0.015
         : agent.status === "error"
           ? 1.015 + Math.sin(agent.frame * 0.16) * 0.01
@@ -676,19 +681,20 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.12;
         }
       } else if (agent.state === "sitting") {
-        // Lounge vs desk: relaxed hands-on-lap for couch/beanbag,
-        // forward-reaching typing pose for desk.
+        // v50: user feedback — agents were "twitching" at desks because the
+        // typing bob oscillated every frame. We now lock the sitting pose to
+        // completely static targets. The smoothing lerp below (SMOOTH=0.45)
+        // still eases into this from the previous pose, so the transition is
+        // graceful even though the target itself no longer moves.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
-          // Arm resting on armrest / lap — slightly back and down
+          // Arm resting on armrest / lap — slightly back and down.
           leftArmRef.current.rotation.x = 0.45;
           leftArmRef.current.rotation.z = -0.18;
           leftArmRef.current.rotation.y = 0.05;
         } else {
-          // Desk/chair typing pose — arm reaches forward onto the desk,
-          // with a subtle typing bob so the agent reads as actively working.
-          const typeBob = Math.sin(motionFrame * 0.22) * 0.04;
-          leftArmRef.current.rotation.x = -0.95 + typeBob;
+          // Desk pose — arm reaches forward, perfectly still on the keyboard.
+          leftArmRef.current.rotation.x = -0.95;
           leftArmRef.current.rotation.z = -0.18;
           leftArmRef.current.rotation.y = -0.02;
         }
@@ -857,16 +863,15 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.08;
         }
       } else if (agent.state === "sitting") {
+        // v50: static sitting pose — see left-arm comment above.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
           rightArmRef.current.rotation.x = 0.45;
           rightArmRef.current.rotation.z = 0.18;
           rightArmRef.current.rotation.y = -0.05;
         } else {
-          // Typing pose — phase-offset from left arm for an asymmetric,
-          // alive-looking cadence at the keyboard.
-          const typeBob = Math.sin(motionFrame * 0.22 + Math.PI / 2) * 0.04;
-          rightArmRef.current.rotation.x = -0.95 + typeBob;
+          // Mirror of the left arm at the desk — perfectly still.
+          rightArmRef.current.rotation.x = -0.95;
           rightArmRef.current.rotation.z = 0.18;
           rightArmRef.current.rotation.y = 0.02;
         }
@@ -1087,9 +1092,11 @@ export const AgentModel = memo(function AgentModel({
     }
 
     if (pulseRingRef.current && pulseRingMatRef.current) {
-      const pulse =
-        (Math.sin(agent.frame * (isError ? 0.15 : working ? 0.08 : 0.05)) + 1) /
-        2;
+      // v50: no pulse while seated — the ring was oscillating under the
+      // agent every frame, contributing to the "twitching" perception.
+      const pulse = isSitting
+        ? 0
+        : (Math.sin(agent.frame * (isError ? 0.15 : working ? 0.08 : 0.05)) + 1) / 2;
       const scale = isError
         ? 1.24 + pulse * 0.52
         : working
