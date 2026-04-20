@@ -869,13 +869,16 @@ export const AgentOfficeFigure3D = ({
   const isReady = readyProfileKey === profileKey;
 
   // Camera presets — the figure lives at y≈-0.78 with a 2.86-tall scale,
-  // so the head sits roughly around world y ≈ 0.5. For "face" mode we
-  // pull the camera closer and aim at the head; for "body" we frame the
-  // full 3/4 shot that shows shoulders + chin silhouette.
+  // so the head center (hair + face block) sits around world y ≈ 0.56.
+  // For "face" mode we pull the camera closer and aim AT the head (see
+  // onCreated below); for "body" we frame a 3/4 shot. Both presets use
+  // an explicit lookAt so the subject stays centered even when the
+  // default camera target (origin) would clip the head.
   const cameraConfig =
     focus === "face"
-      ? { position: [0, 0.55, 1.05] as [number, number, number], fov: 28 }
+      ? { position: [0, 0.55, 1.1] as [number, number, number], fov: 30 }
       : { position: [0.35, 0.35, 2.15] as [number, number, number], fov: 30 };
+  const lookTargetY = focus === "face" ? 0.55 : 0.2;
 
   return (
     <div
@@ -892,6 +895,7 @@ export const AgentOfficeFigure3D = ({
         camera={cameraConfig}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false }}
+        onCreated={({ camera }) => camera.lookAt(0, lookTargetY, 0)}
       >
         <color attach="background" args={["#0a0f1d"]} />
         {/* Softer ambient so the rim light can actually define form. */}

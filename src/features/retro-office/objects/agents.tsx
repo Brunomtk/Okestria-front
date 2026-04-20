@@ -533,12 +533,18 @@ export const AgentModel = memo(function AgentModel({
       agent.status === "error" ? Math.sin(agent.frame * 0.9) * 0.01 : 0;
     const errorShakeZ =
       agent.status === "error" ? Math.cos(agent.frame * 0.72) * 0.007 : 0;
+    // Status pulse (working/error) is SUPPRESSED while sitting so the
+     // agent is a completely static sit — no breathing scale, no pulse,
+     // no sway. User explicitly asked for sitting to have zero animation
+     // on both the desk chair and the sofa.
     const statusScale =
-      agent.status === "working"
-        ? 1.02 + Math.sin(agent.frame * 0.09) * 0.015
-        : agent.status === "error"
-          ? 1.015 + Math.sin(agent.frame * 0.16) * 0.01
-          : 1;
+      agent.state === "sitting"
+        ? 1
+        : agent.status === "working"
+          ? 1.02 + Math.sin(agent.frame * 0.09) * 0.015
+          : agent.status === "error"
+            ? 1.015 + Math.sin(agent.frame * 0.16) * 0.01
+            : 1;
     groupRef.current.position.set(
       wx + errorShakeX,
       bounce + breathe + idleFloat + sittingLift,
@@ -677,20 +683,19 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.12;
         }
       } else if (agent.state === "sitting") {
-        // Lounge vs desk: static hands-on-lap (sleeping) for couch/beanbag,
-        // forward-reaching typing pose for desk.
+        // Sitting pose is 100% static — no typing bob, no breathing, no
+        // sway. Both the couch/beanbag and the desk/meeting chair poses
+        // are fixed frames. User explicitly asked to remove all sitting
+        // animation (both on chair and sofa).
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
-          // Arm resting on lap — perfectly still (sleeping/dozing pose).
+          // Arm resting on lap — sleeping/dozing pose, frozen.
           leftArmRef.current.rotation.x = 0.55;
           leftArmRef.current.rotation.z = -0.14;
           leftArmRef.current.rotation.y = 0.04;
         } else {
-          // Desk/chair typing pose — arms reach forward onto the desk with
-          // a gentle, calm typing bob. Body stays perfectly still — only
-          // the hands move, reading as "working".
-          const typeBob = Math.sin(motionFrame * 0.18) * 0.03;
-          leftArmRef.current.rotation.x = -0.98 + typeBob;
+          // Desk/meeting chair — hands resting on the desk, frozen pose.
+          leftArmRef.current.rotation.x = -0.98;
           leftArmRef.current.rotation.z = -0.16;
           leftArmRef.current.rotation.y = -0.02;
         }
@@ -866,10 +871,10 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.z = 0.14;
           rightArmRef.current.rotation.y = -0.04;
         } else {
-          // Typing pose — phase-offset from left arm for an asymmetric,
-          // alive-looking cadence at the keyboard.
-          const typeBob = Math.sin(motionFrame * 0.18 + Math.PI / 2) * 0.03;
-          rightArmRef.current.rotation.x = -0.98 + typeBob;
+          // Desk/meeting chair — right hand resting on desk, frozen pose.
+          // No typing bob, no breathing — user explicitly asked to remove
+          // all sitting animation (both on chair and sofa).
+          rightArmRef.current.rotation.x = -0.98;
           rightArmRef.current.rotation.z = 0.16;
           rightArmRef.current.rotation.y = 0.02;
         }
