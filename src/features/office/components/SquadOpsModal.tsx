@@ -19,11 +19,22 @@ import type {
   SquadExecutionMode,
   SquadSummary,
   SquadTask,
+  SquadTaskAttachment,
   SquadTaskDispatchEstimate,
   SquadTaskRun,
   SquadTaskSummary,
 } from "@/lib/squads/api";
 import type { GatewayModelChoice } from "@/lib/gateway/models";
+import {
+  listLeadGenerationJobs,
+  listLeadsByCompany,
+  type LeadGenerationJob,
+  type LeadSummary,
+} from "@/lib/leads/lead-generation-api";
+import {
+  LeadContextAttachmentsSection,
+  type LeadContextAttachmentsValue,
+} from "./shared/LeadContextAttachmentsSection";
 
 type DispatchMode = "pending" | "retryFailed" | "redispatchAll";
 
@@ -54,6 +65,13 @@ type SquadOpsModalProps = {
     prompt: string;
     preferredModel: string | null;
     executionMode: SquadExecutionMode | null;
+    /** Pin the task to a specific lead — backend injects the full lead record
+     *  into every step's system prompt as an OKESTRIA_LEAD_CHAT_CONTEXT block. */
+    leadId: number | null;
+    /** Same as leadId but scoped to a whole lead generation mission. */
+    leadGenerationJobId: number | null;
+    /** Up to 6 base64-encoded files (15MB each, 25MB total). */
+    attachments: SquadTaskAttachment[] | null;
   }) => void;
   onPreviewDispatchTask: (taskId: number, mode: DispatchMode) => void;
   onConfirmDispatchTask: (taskId: number, mode: DispatchMode) => void;
@@ -195,6 +213,15 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   // Allow overriding the squad's default execution mode for this specific task.
   const [taskExecutionMode, setTaskExecutionMode] = useState<SquadExecutionMode | "">("");
 
+  // Lead context + attachments (backend v14 context_attachments feature).
+  const [contextValue, setContextValue] = useState<LeadContextAttachmentsValue>({
+    leadId: null,
+    leadGenerationJobId: null,
+    attachments: [],
+  });
+  const [contextLeads, setContextLeads] = useState<LeadSummary[]>([]);
+  const [contextMissions, setContextMissions] = useState<LeadGenerationJob[]>([]);
+
   /* Reset on open / squad change */
   useEffect(() => {
     if (!open) return;
@@ -202,8 +229,55 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
     setPrompt("");
     setPreferredModel("");
     setTaskExecutionMode("");
+    setContextValue({ leadId: null, leadGenerationJobId: null, attachments: [] });
     setTab("tasks");
   }, [open, selectedSquadId]);
+
+  // Lazy-load lead / mission options the first time the user opens the "new"
+  // tab — avoids a list round-trip every time the sessions tab is loaded.
+  useEffect(() => {
+    const companyId = squad?.companyId ?? null;
+    if (!open || tab !== "new" || !companyId) return;
+    let cancelled = false;
+    const loadContextOptions = async () => {
+      try {
+        const [leads, missions] = await Promise.all([
+          listLeadsByCompany(companyId).catch(() => [] as LeadSummary[]),
+          listLeadGenerationJobs(companyId).catch(() => [] as LeadGenerationJob[]),
+        ]);
+        if (cancelled) return;
+        setContextLeads(leads);
+        setContextMissions(missions);
+      } catch {
+        // Non-fatal — section simply shows no options.
+      }
+    };
+    void loadContextOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tab, squad?.companyId]);
+
+  const leadOptions = useMemo(
+    () =>
+      contextLeads.map((lead) => ({
+        id: lead.id,
+        label: lead.businessName || `Lead #${lead.id}`,
+        sublabel:
+          [lead.city, lead.state].filter(Boolean).join(", ") || lead.category || null,
+      })),
+    [contextLeads],
+  );
+
+  const missionOptions = useMemo(
+    () =>
+      contextMissions.map((mission) => ({
+        id: mission.id,
+        label: mission.title || `Mission #${mission.id}`,
+        sublabel: mission.query || null,
+      })),
+    [contextMissions],
+  );
 
   /* Auto-expand the selected task */
   useEffect(() => {
@@ -340,6 +414,10 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
       prompt: prompt.trim(),
       preferredModel: preferredModel || null,
       executionMode: taskExecutionMode || null,
+      leadId: contextValue.leadId,
+      leadGenerationJobId: contextValue.leadGenerationJobId,
+      attachments:
+        contextValue.attachments.length > 0 ? contextValue.attachments : null,
     });
   };
 
@@ -820,6 +898,16 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                   className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none transition focus:border-white/25"
                 />
               </div>
+
+              <LeadContextAttachmentsSection
+                value={contextValue}
+                onChange={setContextValue}
+                leadOptions={leadOptions}
+                missionOptions={missionOptions}
+                accent="cyan"
+                disabled={createBusy}
+                description="Pin a lead or full mission so every agent on this task sees the same frozen briefing, and drop up to 6 files (15MB each, 25MB total) the squad can open at runtime."
+              />
 
               {/* Preview card, same feel as SquadCreateModal */}
               <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">

@@ -154,6 +154,7 @@ import {
   type SquadExecutionMode,
   type SquadSummary,
   type SquadTask,
+  type SquadTaskAttachment,
   type SquadTaskDispatchEstimate,
   type SquadTaskSummary,
 } from "@/lib/squads/api";
@@ -2323,6 +2324,9 @@ export function OfficeScreen({
       prompt: string;
       preferredModel: string | null;
       executionMode: string | null;
+      leadId?: number | null;
+      leadGenerationJobId?: number | null;
+      attachments?: SquadTaskAttachment[] | null;
     }) => {
       const numericSquadId = Number(squadOpsSquadId);
       if (!Number.isFinite(numericSquadId)) return;
@@ -2340,6 +2344,9 @@ export function OfficeScreen({
           executionMode:
             payload.executionMode || activeSquadOpsSquad?.executionMode || "leader",
           preferredModel: payload.preferredModel,
+          leadId: payload.leadId ?? null,
+          leadGenerationJobId: payload.leadGenerationJobId ?? null,
+          attachments: payload.attachments ?? null,
         });
         await loadSquadOpsTasks(String(numericSquadId), created.id);
       } catch (error) {

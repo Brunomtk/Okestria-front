@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  DownloadCloud,
   ExternalLink,
   Eye,
   Globe,
@@ -49,6 +50,7 @@ import {
   fetchJobChatContext,
   bulkGenerateInsights,
   bulkDeleteLeads,
+  syncLeadGenerationJob,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
   type LeadSummary,
@@ -148,6 +150,7 @@ export function LeadOpsPanel({
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [syncingJobId, setSyncingJobId] = useState<number | null>(null);
 
   // AI Model selection
   const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250514");
@@ -420,6 +423,30 @@ export function LeadOpsPanel({
   const handleCancelJob = useCallback(async (jobId: number) => {
     await cancelLeadGenerationJob(jobId);
     setJobs((c) => c.map((j) => (j.id === jobId ? { ...j, status: "cancelled", currentStage: "Cancelled" } : j)));
+  }, []);
+
+  const handleSyncJob = useCallback(async (jobId: number) => {
+    setSyncingJobId(jobId);
+    setError(null);
+    try {
+      const result = await syncLeadGenerationJob(jobId);
+      if (result.job) {
+        const refreshedJob = result.job;
+        setJobs((c) => c.map((j) => (j.id === jobId ? { ...j, ...refreshedJob } : j)));
+      }
+      const msg =
+        result.newLeads > 0
+          ? `Synced from Apify — ${result.newLeads} new lead${result.newLeads === 1 ? "" : "s"} saved` +
+            (result.skippedDuplicates > 0 ? ` · ${result.skippedDuplicates} duplicate${result.skippedDuplicates === 1 ? "" : "s"} skipped.` : ".")
+          : `Already up to date — no new leads (${result.rawCount} scanned${result.skippedDuplicates > 0 ? `, ${result.skippedDuplicates} duplicates` : ""}).`;
+      setError(msg);
+      setTimeout(() => setError((c) => (c === msg ? null : c)), 3500);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to sync from Apify.");
+    } finally {
+      setSyncingJobId(null);
+    }
   }, []);
 
   const handleOpenLeadVault = useCallback((jobId: number) => {
@@ -706,6 +733,26 @@ export function LeadOpsPanel({
                     <Mail className="h-3.5 w-3.5" />
                     Send Batch
                   </button>
+                  {selectedJob.canSync && (
+                    <button
+                      type="button"
+                      onClick={() => void handleSyncJob(selectedJob.id)}
+                      disabled={syncingJobId === selectedJob.id}
+                      title={
+                        selectedJob.lastSyncedAtUtc
+                          ? `Last Apify sync: ${formatDateTime(selectedJob.lastSyncedAtUtc)}${selectedJob.syncCount ? ` · ${selectedJob.syncCount} sync${selectedJob.syncCount === 1 ? "" : "s"}` : ""}`
+                          : "Pull the latest results straight from the Apify dataset (no credits burned)."
+                      }
+                      className="inline-flex items-center gap-2 rounded-lg bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-300 ring-1 ring-sky-500/20 transition hover:bg-sky-500/20 disabled:opacity-50"
+                    >
+                      {syncingJobId === selectedJob.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <DownloadCloud className="h-3.5 w-3.5" />
+                      )}
+                      {syncingJobId === selectedJob.id ? "Syncing…" : "Sync Apify"}
+                    </button>
+                  )}
                   {(selectedJob.status === "queued" || selectedJob.status === "running") && (
                     <button
                       type="button"

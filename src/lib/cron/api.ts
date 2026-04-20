@@ -26,6 +26,24 @@ export type CronJobRunStatus =
   | "skipped"
   | "cancelled";
 
+/**
+ * Base64-encoded file the user attaches to a cron job or squad task. The
+ * backend unpacks these into the runtime session and feeds them to the agent
+ * alongside any lead context / mission context snapshots.
+ *
+ * Contract (enforced on the server):
+ *   - max 6 files per job
+ *   - max 15MB per individual file
+ *   - max 25MB total payload
+ */
+export type CronJobAttachment = {
+  filename: string;
+  mimeType: string;
+  /** Base64 (no data-url prefix). Callers MUST strip `data:*;base64,` from FileReader output. */
+  content: string;
+  sizeBytes: number;
+};
+
 export type CronJob = {
   id: number;
   companyId: number;
@@ -55,6 +73,10 @@ export type CronJob = {
   failureCount: number;
   lastErrorMessage: string | null;
   metadataJson: string | null;
+  leadId: number | null;
+  leadGenerationJobId: number | null;
+  leadContextJson: string | null;
+  attachmentsJson: string | null;
   createdDate: string;
   updatedDate: string | null;
 };
@@ -77,6 +99,9 @@ export type CronJobListItem = {
   agentId: number | null;
   squadId: string | null;
   deliveryMode: CronJobDeliveryMode;
+  leadId: number | null;
+  leadGenerationJobId: number | null;
+  hasAttachments: boolean;
   createdDate: string;
   updatedDate: string | null;
 };
@@ -120,6 +145,16 @@ export type CreateCronJobInput = {
   webhookToken?: string | null;
   deleteAfterRun: boolean;
   metadataJson?: string | null;
+  /** Optional lead context anchor — the backend resolves the lead + attaches a
+   *  [OKESTRIA_LEAD_CHAT_CONTEXT] block to every run. */
+  leadId?: number | null;
+  /** Optional mission (LeadGenerationJob) context anchor — same mechanism,
+   *  scoped to the full generation instead of a single lead. */
+  leadGenerationJobId?: number | null;
+  /** Raw JSON string for custom context (escape hatch — rarely used from UI). */
+  leadContextJson?: string | null;
+  /** Max 6 files / 15MB each / 25MB total. */
+  attachments?: CronJobAttachment[] | null;
 };
 
 export type UpdateCronJobInput = {

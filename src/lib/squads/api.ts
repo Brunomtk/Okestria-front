@@ -726,6 +726,17 @@ export const fetchSquadTask = async (taskId: number, token?: string | null): Pro
   return normalizeExecutionTask(payload);
 };
 
+/**
+ * Same contract as {@link CronJobAttachment} — kept as its own local type so
+ * the squads module doesn't have a runtime import edge into the cron module.
+ */
+export type SquadTaskAttachment = {
+  filename: string;
+  mimeType: string;
+  content: string; // base64, no data-url prefix
+  sizeBytes: number;
+};
+
 export const createSquadTask = async (params: {
   squadId: number;
   companyId?: number | null;
@@ -734,6 +745,16 @@ export const createSquadTask = async (params: {
   executionMode?: string | null;
   preferredModel?: string | null;
   targetAgentId?: number | null;
+  /** Pin the task to a specific lead — backend loads the full lead record and
+   *  injects an `[OKESTRIA_LEAD_CHAT_CONTEXT]...[/OKESTRIA_LEAD_CHAT_CONTEXT]`
+   *  block into every step's prompt. */
+  leadId?: number | null;
+  /** Same mechanism as {@link leadId} but scoped to a full lead generation mission. */
+  leadGenerationJobId?: number | null;
+  /** Raw JSON fallback for external callers that already built their own snapshot. */
+  leadContextJson?: string | null;
+  /** Max 6 files / 15MB each / 25MB total — enforced server-side. */
+  attachments?: SquadTaskAttachment[] | null;
   token?: string | null;
 }): Promise<SquadTask> => {
   const companyId = params.companyId ?? getBrowserCompanyId();
@@ -751,6 +772,10 @@ export const createSquadTask = async (params: {
         mode: params.executionMode ?? "sequential",
         preferredModel: params.preferredModel ?? null,
         autoDispatch: false,
+        leadId: params.leadId ?? null,
+        leadGenerationJobId: params.leadGenerationJobId ?? null,
+        leadContextJson: params.leadContextJson ?? null,
+        attachments: params.attachments ?? null,
       }),
     },
     params.token,
@@ -759,9 +784,18 @@ export const createSquadTask = async (params: {
 };
 
 /**
- * Delete a squad task. The backend currently doesn't expose a DELETE verb, so
- * we first try DELETE /api/SquadExecutions/{id} and fall back to the existing
- * cancel endpoint so the task transitions to "cancelled" on older deployments.
+ * Delete a squad task end-to-end.
+ *
+ * Primary path: `DELETE /api/SquadExecutions/{id}` — hits the backend action
+ * that (a) runs a best-effort `DELETE /sessions/{sessionKey}` on OpenClaw for
+ * each step, and (b) cascade-removes the execution + steps + messages + events
+ * from the database.
+ *
+ * Safety net: if the backend is an older build that hasn't been upgraded yet
+ * and responds 404/405 on DELETE, we fall back to the cancel endpoint so the
+ * task at least transitions to "cancelled" instead of leaking forever. Any
+ * other error (auth, 5xx, network) is propagated so the UI can show it.
+ *
  * Either way, the caller is expected to immediately clear the task's session
  * state from every associated agent on the frontend.
  */

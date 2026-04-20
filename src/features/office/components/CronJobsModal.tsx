@@ -46,6 +46,16 @@ import {
   type CronJobWakeMode,
   type CreateCronJobInput,
 } from "@/lib/cron/api";
+import {
+  listLeadGenerationJobs,
+  listLeadsByCompany,
+  type LeadGenerationJob,
+  type LeadSummary,
+} from "@/lib/leads/lead-generation-api";
+import {
+  LeadContextAttachmentsSection,
+  type LeadContextAttachmentsValue,
+} from "./shared/LeadContextAttachmentsSection";
 
 type CronAgentOption = {
   id: number;
@@ -131,6 +141,15 @@ export function CronJobsModal({
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Lead context + attachments (backend v14 context_attachments feature).
+  const [contextValue, setContextValue] = useState<LeadContextAttachmentsValue>({
+    leadId: null,
+    leadGenerationJobId: null,
+    attachments: [],
+  });
+  const [contextLeads, setContextLeads] = useState<LeadSummary[]>([]);
+  const [contextMissions, setContextMissions] = useState<LeadGenerationJob[]>([]);
+
   const resetForm = useCallback(() => {
     setFormName("");
     setFormDescription("");
@@ -148,8 +167,54 @@ export function CronJobsModal({
     setFormAgentId("");
     setFormSquadId("");
     setFormDeleteAfterRun(true);
+    setContextValue({ leadId: null, leadGenerationJobId: null, attachments: [] });
     setCreateError(null);
   }, []);
+
+  // Lazy-load lead/mission options the first time the user opens the "new"
+  // tab — avoids burning a list round-trip every time the jobs tab loads.
+  useEffect(() => {
+    if (!open || tab !== "new" || !companyId) return;
+    let cancelled = false;
+    const loadContextOptions = async () => {
+      try {
+        const [leads, missions] = await Promise.all([
+          listLeadsByCompany(companyId).catch(() => [] as LeadSummary[]),
+          listLeadGenerationJobs(companyId).catch(() => [] as LeadGenerationJob[]),
+        ]);
+        if (cancelled) return;
+        setContextLeads(leads);
+        setContextMissions(missions);
+      } catch {
+        // Non-fatal — the section simply shows no options.
+      }
+    };
+    void loadContextOptions();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, tab, companyId]);
+
+  const leadOptions = useMemo(
+    () =>
+      contextLeads.map((lead) => ({
+        id: lead.id,
+        label: lead.businessName || `Lead #${lead.id}`,
+        sublabel:
+          [lead.city, lead.state].filter(Boolean).join(", ") || lead.category || null,
+      })),
+    [contextLeads],
+  );
+
+  const missionOptions = useMemo(
+    () =>
+      contextMissions.map((mission) => ({
+        id: mission.id,
+        label: mission.title || `Mission #${mission.id}`,
+        sublabel: mission.query || null,
+      })),
+    [contextMissions],
+  );
 
   const loadJobs = useCallback(async () => {
     if (!companyId) return;
@@ -330,6 +395,10 @@ export function CronJobsModal({
             ? Number(formAgentId)
             : null,
         squadId: formSquadId.trim() || null,
+        leadId: contextValue.leadId,
+        leadGenerationJobId: contextValue.leadGenerationJobId,
+        attachments:
+          contextValue.attachments.length > 0 ? contextValue.attachments : null,
       };
       await createCronJob(payload);
       resetForm();
@@ -343,6 +412,7 @@ export function CronJobsModal({
   }, [
     canCreate,
     companyId,
+    contextValue,
     formAgentId,
     formCron,
     formDelivery,
@@ -934,6 +1004,16 @@ export function CronJobsModal({
                   Delete the job automatically after it runs
                 </label>
               )}
+
+              <LeadContextAttachmentsSection
+                value={contextValue}
+                onChange={setContextValue}
+                leadOptions={leadOptions}
+                missionOptions={missionOptions}
+                accent="amber"
+                disabled={createBusy}
+                description="Pin a lead or mission so every firing of this cron sees the same briefing, and drop up to 6 files the agent can open at runtime (15MB each, 25MB total)."
+              />
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button

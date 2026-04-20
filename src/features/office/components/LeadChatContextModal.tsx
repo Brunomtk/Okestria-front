@@ -102,7 +102,7 @@ export function LeadChatContextModal({
         {/* Header */}
         <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
           <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
             style={{ backgroundColor: `${accent}20`, border: `1.5px solid ${accent}50` }}
           >
             <Target className="h-5 w-5" style={{ color: accent }} />

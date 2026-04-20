@@ -35,6 +35,28 @@ export type LeadGenerationJob = {
   finishedAtUtc?: string | null;
   createdDate?: string | null;
   updatedDate?: string | null;
+
+  // Apify provider tracking — lets us re-pull the same dataset without
+  // burning credits on a new actor run (back v14+).
+  apifyActorId?: string | null;
+  apifyRunId?: string | null;
+  apifyDatasetId?: string | null;
+  lastSyncedAtUtc?: string | null;
+  syncCount?: number | null;
+  canSync?: boolean;
+};
+
+/** Response of `POST /api/LeadGenerationJobs/{id}/sync`. */
+export type LeadGenerationJobSyncResult = {
+  jobId: number;
+  newLeads: number;
+  skippedDuplicates: number;
+  rawCount: number;
+  actorId?: string | null;
+  runId?: string | null;
+  datasetId?: string | null;
+  syncedAtUtc: string;
+  job?: LeadGenerationJob | null;
 };
 
 export type LeadGenerationJobPayload = {
@@ -294,6 +316,15 @@ const normalizeJob = (value: unknown): LeadGenerationJob | null => {
     finishedAtUtc: parseString(pick(entry, "finishedAtUtc", "FinishedAtUtc")),
     createdDate: parseString(pick(entry, "createdDate", "CreatedDate")),
     updatedDate: parseString(pick(entry, "updatedDate", "UpdatedDate")),
+    apifyActorId: parseString(pick(entry, "apifyActorId", "ApifyActorId")),
+    apifyRunId: parseString(pick(entry, "apifyRunId", "ApifyRunId")),
+    apifyDatasetId: parseString(pick(entry, "apifyDatasetId", "ApifyDatasetId")),
+    lastSyncedAtUtc: parseString(pick(entry, "lastSyncedAtUtc", "LastSyncedAtUtc")),
+    syncCount: parseNumber(pick(entry, "syncCount", "SyncCount"), 0),
+    canSync:
+      typeof pick(entry, "canSync", "CanSync") === "boolean"
+        ? Boolean(pick(entry, "canSync", "CanSync"))
+        : undefined,
   };
 };
 
@@ -492,6 +523,48 @@ export const getLeadGenerationJob = async (jobId: number) => {
   }
 
   return readLocalJobs().find((entry) => entry.id === jobId) ?? null;
+};
+
+/**
+ * On-demand Apify sync — re-pulls the dataset for a finished job and
+ * inserts any new leads that appeared since the original run. Does NOT
+ * kick off a new actor run (no credits burned). Safe to call repeatedly.
+ *
+ * Returns a small counts payload + the refreshed job so callers can
+ * reconcile state without a second request.
+ */
+export const syncLeadGenerationJob = async (
+  jobId: number,
+): Promise<LeadGenerationJobSyncResult> => {
+  const raw = await requestBackend<unknown>(`/api/LeadGenerationJobs/${jobId}/sync`, {
+    method: "POST",
+  });
+  if (!raw || typeof raw !== "object") {
+    throw new Error("Sync endpoint returned an empty response.");
+  }
+  const entry = raw as Record<string, unknown>;
+  const refreshedJob = normalizeJob(pick(entry, "job", "Job"));
+  const result: LeadGenerationJobSyncResult = {
+    jobId: parseNumber(pick(entry, "jobId", "JobId"), jobId),
+    newLeads: parseNumber(pick(entry, "newLeads", "NewLeads"), 0),
+    skippedDuplicates: parseNumber(pick(entry, "skippedDuplicates", "SkippedDuplicates"), 0),
+    rawCount: parseNumber(pick(entry, "rawCount", "RawCount"), 0),
+    actorId: parseString(pick(entry, "actorId", "ActorId")),
+    runId: parseString(pick(entry, "runId", "RunId")),
+    datasetId: parseString(pick(entry, "datasetId", "DatasetId")),
+    syncedAtUtc: parseString(pick(entry, "syncedAtUtc", "SyncedAtUtc")) ?? new Date().toISOString(),
+    job: refreshedJob,
+  };
+
+  // Keep the local cache fresh so sibling UIs see the updated status.
+  if (refreshedJob) {
+    const current = readLocalJobs();
+    writeLocalJobs([
+      refreshedJob,
+      ...current.filter((entry) => entry.id !== refreshedJob.id),
+    ]);
+  }
+  return result;
 };
 
 export const cancelLeadGenerationJob = async (jobId: number) => {
