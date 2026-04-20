@@ -831,12 +831,17 @@ export const getGymWorkoutLocations = (
         };
       }
       if (item.type === "deadlift_platform") {
-        const x = item.x + 75;
-        const y = item.y + 55;
+        // Stable anchor at the PLATFORM CENTER (on the wooden strip, with
+        // the loaded bar right in front of the agent's shins), facing
+        // perpendicular to the bar's long axis. The earlier offset
+        // `(item.x+75, item.y+55)` was rotation-unaware — for a facing=270
+        // platform it put the agent off-center along the bar, and the
+        // facing snapped between ticks making the agent "quikar" (bounce).
+        // Same pattern as a meeting-room chair: one anchor, one facing.
         return {
-          x,
-          y,
-          facing: facingTowardEquipment(x, y),
+          x: equipmentCenterX,
+          y: equipmentCenterY,
+          facing: facingWithEquipment + Math.PI / 2,
           workoutStyle: "deadlift",
         };
       }

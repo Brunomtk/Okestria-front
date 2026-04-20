@@ -387,8 +387,11 @@ export const AgentModel = memo(function AgentModel({
           workoutBodyRotX = -0.1;
           break;
         case "deadlift":
-          // Hip-hinge: bent over on the bottom, tall on the top
-          workoutBodyRotX = 0.08 + Math.max(0, -workoutPhase) * 0.55;
+          // Hip-hinge: bent over on the bottom, tall on the top. Reduced
+          // maximum lean so the rep reads as a controlled pull instead of
+          // a jittery bounce — pairs with the stable center-of-platform
+          // anchor (see navigation.ts deadlift_platform target).
+          workoutBodyRotX = 0.08 + Math.max(0, -workoutPhase) * 0.38;
           break;
         case "curl":
           workoutBodyRotX = 0.02;
@@ -482,8 +485,10 @@ export const AgentModel = memo(function AgentModel({
           workoutBounce = -Math.max(0, -workoutPhase) * 0.12;
           break;
         case "deadlift":
-          // Stays low on the down phase, rises on the up phase
-          workoutBounce = -Math.max(0, -workoutPhase) * 0.08;
+          // Stays low on the down phase, rises on the up phase — tamed
+          // amplitude so the agent looks like they're pulling smoothly
+          // rather than quikando (bouncing) on the platform.
+          workoutBounce = -Math.max(0, -workoutPhase) * 0.05;
           break;
         case "kettlebell":
           workoutBounce = -Math.max(0, -workoutPhase) * 0.06;

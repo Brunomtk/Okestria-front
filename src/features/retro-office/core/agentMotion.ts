@@ -303,6 +303,13 @@ const chooseSpawnPoint = (agentId: string) => {
   return { x: anchor.x + offsetX, y: anchor.y + offsetY, facing: anchor.facing };
 };
 
+// Build stable seating anchors ON TOP of each couch/beanbag/ottoman so the
+// agent sits exactly on the cushion — same pattern used by meeting-room
+// chairs. Earlier versions returned multiple "in front of the couch" points,
+// which made the agent teleport between them every tick (the infamous
+// "bouncing" bug). Now each furniture piece exposes ONE fixed anchor at the
+// cushion center, with a facing derived from the item's own rotation so the
+// occupant looks away from the backrest.
 const buildLoungePoints = (items: FurnitureItem[]): LoungePoint[] =>
   items
     .filter((item) => ["couch", "couch_v", "beanbag", "ottoman"].includes(item.type))
@@ -311,17 +318,23 @@ const buildLoungePoints = (items: FurnitureItem[]): LoungePoint[] =>
       const height = item.h ?? 60;
       const centerX = item.x + width / 2;
       const centerY = item.y + height / 2;
-      const points = item.type === "couch_v"
-        ? [
-            { x: item.x + width + 24, y: centerY, facing: angleFrom(item.x + width + 24, centerY, centerX, centerY) },
-            { x: item.x + width + 24, y: centerY - 20, facing: angleFrom(item.x + width + 24, centerY - 20, centerX, centerY) },
-          ]
-        : [
-            { x: centerX, y: item.y + height + 18, facing: angleFrom(centerX, item.y + height + 18, centerX, centerY) },
-            { x: centerX - 26, y: item.y + height + 20, facing: angleFrom(centerX - 26, item.y + height + 20, centerX, centerY) },
-            { x: centerX + 26, y: item.y + height + 20, facing: angleFrom(centerX + 26, item.y + height + 20, centerX, centerY) },
-          ];
-      return points.filter((point) => !isInAgentPauseExclusionZone(point.x, point.y));
+      // Convert item.facing (degrees, pointing "into the backrest") into
+      // the agent's canvas facing. The couch renders with its back toward
+      // item.facing, so occupants naturally look in the OPPOSITE direction.
+      // Canvas convention: agent.facing uses atan2(dx, dy), i.e. 0 = south,
+      // π = north. item.facing follows the same convention (0° = south).
+      const itemFacingRad = ((item.facing ?? 0) * Math.PI) / 180;
+      // Agent looks "forward" (away from backrest). For the canonical couch
+      // (facing=180° = backrest south), the agent faces north (π rad) which
+      // equals the item's own facing in radians.
+      const agentFacing = itemFacingRad;
+      const anchor: LoungePoint = {
+        x: centerX,
+        y: centerY,
+        facing: agentFacing,
+      };
+      if (isInAgentPauseExclusionZone(anchor.x, anchor.y)) return [];
+      return [anchor];
     });
 
 const isPantryDoorConflictPoint = (x: number, y: number) => x <= 290 && y >= 390;
