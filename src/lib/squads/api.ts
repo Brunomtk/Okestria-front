@@ -6,6 +6,7 @@ import {
   getBrowserCompanyId,
 } from "@/lib/agents/backend-api";
 import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
+import { ensureFreshAccessToken } from "@/lib/auth/session-client";
 
 export type SquadExecutionMode = "manual" | "leader" | "all" | "workflow";
 
@@ -62,23 +63,41 @@ const normalizeErrorText = async (response: Response) => {
   return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
 };
 
+const performSquadRequest = async (
+  path: string,
+  init: RequestInit | undefined,
+  bearer: string | null,
+) => {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
+  }
+  return fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+};
+
 const requestBackendJson = async <T>(
   path: string,
   init?: RequestInit,
   token?: string | null,
 ): Promise<T> => {
-  const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
-  const resolvedToken = token ?? getBrowserAccessToken();
-  if (resolvedToken) {
-    headers.set("Authorization", `Bearer ${resolvedToken}`);
+  let resolvedToken: string | null | undefined = token;
+  if (!resolvedToken) {
+    resolvedToken = (await ensureFreshAccessToken()) ?? getBrowserAccessToken();
   }
 
-  const response = await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let response = await performSquadRequest(path, init, resolvedToken ?? null);
+
+  if (response.status === 401 && !token) {
+    const refreshed = await ensureFreshAccessToken(Number.POSITIVE_INFINITY);
+    if (refreshed && refreshed !== resolvedToken) {
+      response = await performSquadRequest(path, init, refreshed);
+    }
+  }
 
   if (!response.ok) {
     throw new Error(await normalizeErrorText(response));

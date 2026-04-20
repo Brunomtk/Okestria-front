@@ -268,11 +268,22 @@ function PlayerView() {
 
   const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Poll player state every 5 seconds.
+  // Poll player state every 5 seconds — but only while the tab is visible so
+  // backgrounded panels don't keep hammering the Spotify proxy.
   useEffect(() => {
-    refreshPlayer();
-    const id = window.setInterval(() => { void refreshPlayer(); }, 5000);
-    return () => window.clearInterval(id);
+    void refreshPlayer();
+    const id = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void refreshPlayer();
+    }, 5000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshPlayer();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

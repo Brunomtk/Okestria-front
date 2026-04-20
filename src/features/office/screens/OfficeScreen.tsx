@@ -206,6 +206,7 @@ import { deriveSkillReadinessState } from "@/lib/skills/presentation";
 import type { StandupAgentSnapshot } from "@/lib/office/standup/types";
 import type { SkillStatusEntry } from "@/lib/skills/types";
 import { fetchCompanyEmailContext, fetchRuntimeConfigStatus, type OkestriaCompanyEmailContext, type RuntimeConfigStatusResponse } from "@/lib/auth/api";
+import { ensureFreshAccessToken } from "@/lib/auth/session-client";
 
 const stringToColor = (str: string) => {
   let hash = 0;
@@ -1572,14 +1573,64 @@ export function OfficeScreen({
     void loadCompanySquads(false);
   }, [loadCompanySquads, state.agents.length]);
 
+  // Keep the access token fresh while the user lingers on the Office screen.
+  // We decode the JWT expiry and proactively refresh before it lapses so they
+  // don't get booted back to the login page while the 3D scene is idle.
+  useEffect(() => {
+    let cancelled = false;
+    const REFRESH_CHECK_MS = 5 * 60_000; // check every 5 minutes
+
+    const tick = async () => {
+      if (cancelled) return;
+      try {
+        // 2 minute pre-expiry window: refreshes if the current token has less
+        // than ~120s of life remaining.
+        await ensureFreshAccessToken(120);
+      } catch {
+        /* silent — next tick will retry */
+      }
+    };
+
+    // Kick off immediately so we refresh right when the user opens the Office.
+    void tick();
+    const intervalId = window.setInterval(tick, REFRESH_CHECK_MS);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    const handleFocus = () => {
+      void tick();
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, []);
+
   useEffect(() => {
     if (status !== "connected") return;
+    // First load is forceful so the scope is hydrated fresh.
     void loadCompanyScopedAgentScope(true);
+    // Subsequent polls reuse the gatewayAgentId cache to avoid a
+    // 1 + N fan-out of /api/Agents/by-company + /api/Agents/{id} requests
+    // every interval. Bumped from 20s to 120s, skipped when hidden.
     const intervalId = window.setInterval(() => {
-      void loadCompanyScopedAgentScope(true);
-    }, 20_000);
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      void loadCompanyScopedAgentScope(false);
+    }, 120_000);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void loadCompanyScopedAgentScope(false);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [loadCompanyScopedAgentScope, status]);
 
@@ -4634,9 +4685,12 @@ export function OfficeScreen({
     };
 
     void poll();
+    // 8s cadence + visibility pause: squad run completion usually arrives via
+    // the gateway event stream, this poll is a fallback for edge cases.
     const timer = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       void poll();
-    }, 3000);
+    }, 8000);
 
     return () => {
       cancelled = true;
@@ -5177,9 +5231,12 @@ export function OfficeScreen({
     };
 
     void syncSession();
+    // 10s cadence + visibility pause for the focused squad session sync.
+    // Events arrive on the gateway stream, this poll is a safety net.
     const timer = window.setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       void syncSession();
-    }, 3000);
+    }, 10_000);
 
     return () => {
       cancelled = true;

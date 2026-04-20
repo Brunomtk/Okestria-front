@@ -5,6 +5,7 @@
 
 import { getBrowserAccessToken } from "@/lib/agents/backend-api";
 import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
+import { ensureFreshAccessToken } from "@/lib/auth/session-client";
 
 export type CronJobKind = "one-shot" | "recurring";
 export type CronJobSessionMode = "fresh" | "main" | "named";
@@ -153,22 +154,49 @@ const normalizeErrorText = async (response: Response) => {
   return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
 };
 
-const requestBackendJson = async <T>(
+const performCronFetch = async (
   path: string,
-  init?: RequestInit,
-): Promise<T> => {
+  init: RequestInit | undefined,
+  bearer: string | null,
+): Promise<Response> => {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  const token = getBrowserAccessToken();
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
   }
-
-  const response = await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+  return fetch(`${getOkestriaApiBaseUrl()}${path}`, {
     ...init,
     headers,
     cache: "no-store",
   });
+};
+
+const requestBackendJson = async <T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> => {
+  // Proactively refresh the access token if it's close to expiry so long-lived
+  // cron editing sessions don't get booted mid-action.
+  let bearer: string | null = null;
+  try {
+    bearer = (await ensureFreshAccessToken()) ?? getBrowserAccessToken();
+  } catch {
+    bearer = getBrowserAccessToken();
+  }
+
+  let response = await performCronFetch(path, init, bearer);
+
+  // If the server still rejects us with 401, force a refresh and retry once.
+  if (response.status === 401) {
+    try {
+      const refreshed = await ensureFreshAccessToken(Number.POSITIVE_INFINITY);
+      if (refreshed && refreshed !== bearer) {
+        response = await performCronFetch(path, init, refreshed);
+      }
+    } catch {
+      // swallow — fall through to the error path below
+    }
+  }
 
   if (!response.ok) {
     throw new Error(await normalizeErrorText(response));

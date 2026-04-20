@@ -1,4 +1,5 @@
 import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
+import { ensureFreshAccessToken } from "@/lib/auth/session-client";
 import type { PersonalityBuilderDraft } from "@/lib/agents/personalityBuilder";
 import { serializePersonalityFiles } from "@/lib/agents/personalityBuilder";
 import type { AgentAvatarProfile } from "@/lib/avatars/profile";
@@ -97,23 +98,45 @@ const normalizeErrorText = async (response: Response) => {
   return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
 };
 
+const performRequest = async (
+  path: string,
+  init: RequestInit | undefined,
+  bearer: string | null,
+) => {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
+  }
+
+  return fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+};
+
 const requestBackendJson = async <T>(
   path: string,
   init?: RequestInit,
   token?: string | null,
 ): Promise<T> => {
-  const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
-  const resolvedToken = token ?? getBrowserAccessToken();
-  if (resolvedToken) {
-    headers.set("Authorization", `Bearer ${resolvedToken}`);
+  // Proactively refresh expiring access tokens before firing the request so
+  // users don't lose their session while the office is idle in the background.
+  let resolvedToken: string | null | undefined = token;
+  if (!resolvedToken) {
+    resolvedToken = (await ensureFreshAccessToken()) ?? getBrowserAccessToken();
   }
 
-  const response = await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
-    ...init,
-    headers,
-    cache: "no-store",
-  });
+  let response = await performRequest(path, init, resolvedToken ?? null);
+
+  // If we got a 401 using a cached token, attempt one forced refresh + retry.
+  if (response.status === 401 && !token) {
+    const refreshed = await ensureFreshAccessToken(Number.POSITIVE_INFINITY);
+    if (refreshed && refreshed !== resolvedToken) {
+      response = await performRequest(path, init, refreshed);
+    }
+  }
 
   if (!response.ok) {
     throw new Error(await normalizeErrorText(response));
@@ -203,35 +226,122 @@ export const fetchCompanyAgents = async (companyId: number, token?: string | nul
   });
 };
 
-export const fetchCompanyAgentDetails = async (agentId: number, token?: string | null) => {
-  return requestBackendJson<BackendAgentDetails>(`/api/Agents/${agentId}`, undefined, token);
+// Short TTL cache so clustered callers (avatar seed, scope resolver, etc.)
+// in the same tick don't each fan out an /api/Agents/{id} request.
+type AgentDetailsCacheEntry = { at: number; promise: Promise<BackendAgentDetails> };
+const agentDetailsCache = new Map<number, AgentDetailsCacheEntry>();
+const AGENT_DETAILS_TTL_MS = 30_000;
+
+export const invalidateAgentDetailsCache = (agentId?: number) => {
+  if (typeof agentId === "number" && Number.isFinite(agentId)) {
+    agentDetailsCache.delete(agentId);
+  } else {
+    agentDetailsCache.clear();
+  }
 };
 
+export const fetchCompanyAgentDetails = async (
+  agentId: number,
+  token?: string | null,
+  options?: { force?: boolean },
+) => {
+  const now = Date.now();
+  if (!options?.force) {
+    const cached = agentDetailsCache.get(agentId);
+    if (cached && now - cached.at < AGENT_DETAILS_TTL_MS) {
+      return cached.promise;
+    }
+  }
+  const entry: AgentDetailsCacheEntry = { at: now, promise: Promise.resolve() as unknown as Promise<BackendAgentDetails> };
+  const promise = requestBackendJson<BackendAgentDetails>(
+    `/api/Agents/${agentId}`,
+    undefined,
+    token,
+  ).catch((error) => {
+    // Invalidate on failure so retries don't keep returning the broken promise.
+    if (agentDetailsCache.get(agentId) === entry) {
+      agentDetailsCache.delete(agentId);
+    }
+    throw error;
+  });
+  entry.promise = promise;
+  agentDetailsCache.set(agentId, entry);
+  return promise;
+};
+
+
+// ---------------------------------------------------------------------------
+// Scope cache: once an Agent's gatewayAgentId has been resolved we keep it in
+// memory so subsequent scope polls don't fan out one /api/Agents/{id} call per
+// agent. gatewayAgentId is a stable identifier and the details endpoint was
+// previously being hit N times every 20s (visible as burst traffic in devtools).
+// ---------------------------------------------------------------------------
+const gatewayAgentIdByBackendId = new Map<number, string | null>();
+const inFlightScopeByCompanyId = new Map<number, Promise<CompanyAgentScope>>();
+
+export const invalidateCompanyAgentScopeCache = (backendAgentId?: number) => {
+  if (typeof backendAgentId === "number" && Number.isFinite(backendAgentId)) {
+    gatewayAgentIdByBackendId.delete(backendAgentId);
+  } else {
+    gatewayAgentIdByBackendId.clear();
+  }
+};
 
 export const fetchCompanyAgentScope = async (params?: {
   companyId?: number | null;
   token?: string | null;
+  /** Force-refetch details even if we have a cached gatewayAgentId. */
+  force?: boolean;
 }): Promise<CompanyAgentScope> => {
   const companyId = params?.companyId ?? getBrowserCompanyId();
   if (!companyId) return { gatewayAgentIds: [], agentSlugs: [] };
   const token = params?.token;
-  const companyAgents = await fetchCompanyAgents(companyId, token);
-  const details = await Promise.all(
-    companyAgents.map(async (agent) => {
-      try {
-        return await fetchCompanyAgentDetails(agent.id, token);
-      } catch {
-        return null;
-      }
-    })
-  );
-  const gatewayAgentIds = details
-    .map((entry) => (entry ? extractGatewayAgentId(entry) : null))
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-  const agentSlugs = companyAgents
-    .map((agent) => (typeof agent.slug === "string" ? agent.slug.trim().toLowerCase() : ""))
-    .filter((value) => value.length > 0);
-  return { gatewayAgentIds, agentSlugs };
+
+  // Dedupe concurrent callers on the same company. Without this, multiple
+  // mount-time effects in OfficeScreen can all fire scope loads in parallel.
+  if (!params?.force) {
+    const inFlight = inFlightScopeByCompanyId.get(companyId);
+    if (inFlight) return inFlight;
+  }
+
+  const task = (async () => {
+    const companyAgents = await fetchCompanyAgents(companyId, token);
+
+    const details = await Promise.all(
+      companyAgents.map(async (agent) => {
+        // Happy path: we already know this agent's gatewayAgentId.
+        if (!params?.force && gatewayAgentIdByBackendId.has(agent.id)) {
+          const cached = gatewayAgentIdByBackendId.get(agent.id) ?? null;
+          return cached;
+        }
+        try {
+          const detail = await fetchCompanyAgentDetails(agent.id, token);
+          const gatewayAgentId = extractGatewayAgentId(detail);
+          gatewayAgentIdByBackendId.set(agent.id, gatewayAgentId);
+          return gatewayAgentId;
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const gatewayAgentIds = details
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    const agentSlugs = companyAgents
+      .map((agent) => (typeof agent.slug === "string" ? agent.slug.trim().toLowerCase() : ""))
+      .filter((value) => value.length > 0);
+    return { gatewayAgentIds, agentSlugs };
+  })();
+
+  inFlightScopeByCompanyId.set(companyId, task);
+  try {
+    return await task;
+  } finally {
+    // Only clear if the entry is still the same promise we inserted.
+    if (inFlightScopeByCompanyId.get(companyId) === task) {
+      inFlightScopeByCompanyId.delete(companyId);
+    }
+  }
 };
 
 export const fetchCompanyAgentRuntimeRoster = async (params?: {
@@ -393,7 +503,7 @@ export const updateAgentAvatarProfileJson = async (params: {
   avatarProfileJson: string;
   token?: string | null;
 }) => {
-  return requestBackendJson<BackendAgentDetails>(
+  const result = await requestBackendJson<BackendAgentDetails>(
     `/api/Agents/update/${params.backendAgentId}`,
     {
       method: "PUT",
@@ -403,6 +513,10 @@ export const updateAgentAvatarProfileJson = async (params: {
     },
     params.token,
   );
+  // Stale cached details for this agent — scope cache entries stay valid since
+  // gatewayAgentId doesn't change with avatar tweaks.
+  invalidateAgentDetailsCache(params.backendAgentId);
+  return result;
 };
 
 export const resolveBackendAgentIdByGatewayId = async (params: {
@@ -440,6 +554,8 @@ export const deletePersistedCompanyAgentByGatewayId = async (params: {
         continue;
       }
       await requestBackendJson<boolean>(`/api/Agents/delete/${agent.id}`, { method: "DELETE" }, params.token);
+      invalidateAgentDetailsCache(agent.id);
+      invalidateCompanyAgentScopeCache(agent.id);
       return true;
     } catch {
       // ignore and continue to the next candidate

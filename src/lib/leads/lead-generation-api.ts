@@ -1,4 +1,5 @@
 import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
+import { ensureFreshAccessToken } from "@/lib/auth/session-client";
 import { getBrowserAccessToken, getBrowserCompanyId } from "@/lib/agents/backend-api";
 
 export type LeadGenerationJobStatus =
@@ -193,19 +194,46 @@ const safeJson = async (response: Response) => {
   }
 };
 
-const requestBackend = async <T>(path: string, init?: RequestInit): Promise<T> => {
+const performLeadFetch = async (
+  path: string,
+  init: RequestInit | undefined,
+  bearer: string | null,
+): Promise<Response> => {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
-  const token = getBrowserAccessToken();
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
   }
-
-  const response = await fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+  return fetch(`${getOkestriaApiBaseUrl()}${path}`, {
     ...init,
     headers,
     cache: "no-store",
   });
+};
+
+const requestBackend = async <T>(path: string, init?: RequestInit): Promise<T> => {
+  // Proactively refresh the access token if it's close to expiry so we don't
+  // get booted mid-request while the user is in the middle of a long job.
+  let bearer: string | null = null;
+  try {
+    bearer = (await ensureFreshAccessToken()) ?? getBrowserAccessToken();
+  } catch {
+    bearer = getBrowserAccessToken();
+  }
+
+  let response = await performLeadFetch(path, init, bearer);
+
+  // If the server still rejects us with 401, force a refresh and retry once.
+  if (response.status === 401) {
+    try {
+      const refreshed = await ensureFreshAccessToken(Number.POSITIVE_INFINITY);
+      if (refreshed && refreshed !== bearer) {
+        response = await performLeadFetch(path, init, refreshed);
+      }
+    } catch {
+      // swallow — fall through to the error path below
+    }
+  }
 
   if (!response.ok) {
     const body = await safeJson(response);
