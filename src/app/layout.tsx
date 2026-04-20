@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthKeepAlive from "@/lib/auth/AuthKeepAlive";
 
 export const metadata: Metadata = {
   title: "Orkestria",
@@ -35,6 +36,7 @@ export default function RootLayout({
         />
       </head>
       <body className="font-sans antialiased">
+        <AuthKeepAlive />
         {children}
       </body>
     </html>

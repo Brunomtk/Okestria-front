@@ -1645,6 +1645,13 @@ export function OfficeScreen({
         .map((value) => value.trim())
         .filter((value) => value.length > 0),
     );
+    // Safety: if the scope poll returned an empty allow-list but we *do* have
+    // agents loaded, assume the scope call was transient (e.g. the tab just
+    // woke up from standby and the backend scope endpoint hasn't warmed up).
+    // Do NOT flush every agent off-screen — wait for the next successful poll.
+    if (allowedIdSet.size === 0 && state.agents.length > 0) {
+      return;
+    }
     for (const agent of state.agents) {
       if (!allowedIdSet.has(agent.agentId.trim())) {
         dispatch({ type: "removeAgent", agentId: agent.agentId });
