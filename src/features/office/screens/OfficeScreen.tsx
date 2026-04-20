@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Users2 } from "lucide-react";
+import { MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Timer, Users2 } from "lucide-react";
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
@@ -69,6 +69,7 @@ import { CreateTargetModal } from "@/features/office/components/CreateTargetModa
 import { SquadChatPanel } from "@/features/office/components/SquadChatPanel";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
+import { CronJobsModal } from "@/features/office/components/CronJobsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
@@ -1071,6 +1072,7 @@ export function OfficeScreen({
   const [hqModalOpen, setHqModalOpen] = useState(false);
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [leadOpsModalOpen, setLeadOpsModalOpen] = useState(false);
+  const [cronJobsModalOpen, setCronJobsModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
@@ -1417,6 +1419,24 @@ export function OfficeScreen({
         (agent) => agent.status === "running" || Boolean(agent.runId),
       ),
     [state.agents],
+  );
+
+  const cronAgentOptions = useMemo<{ id: number; name: string }[]>(() => {
+    const out: { id: number; name: string }[] = [];
+    const seen = new Set<number>();
+    for (const agent of state.agents) {
+      const backendId = backendAgentByGatewayIdRef.current.get(agent.agentId);
+      if (typeof backendId === "number" && !seen.has(backendId)) {
+        seen.add(backendId);
+        out.push({ id: backendId, name: agent.name || `Agent ${backendId}` });
+      }
+    }
+    return out;
+  }, [state.agents]);
+
+  const cronSquadOptions = useMemo<{ id: string; name: string }[]>(
+    () => companySquads.map((s) => ({ id: s.id, name: s.name })),
+    [companySquads],
   );
   const hasDeleteMutationBlock = deleteAgentBlock?.kind === "delete-agent";
   const { enqueueConfigMutation } = useConfigMutationQueue({
@@ -6411,6 +6431,15 @@ export function OfficeScreen({
 
         <button
           type="button"
+          onClick={() => setCronJobsModalOpen((current) => !current)}
+          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider shadow-lg backdrop-blur transition-colors ${cronJobsModalOpen ? "border-amber-300/55 bg-amber-500/14 text-amber-50" : "border-amber-500/35 bg-[#120c04]/92 text-amber-200 hover:border-amber-400/55 hover:text-amber-50"}`}
+        >
+          {cronJobsModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Timer className="h-3.5 w-3.5" />}
+          <span>{cronJobsModalOpen ? "CLOSE CRON" : "CRON JOBS"}</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => {
             if (chatOpen) {
               setChatOpen(false);
@@ -6673,6 +6702,14 @@ export function OfficeScreen({
         onCancelDispatchApproval={handleCancelSquadTaskDispatchApproval}
         onEditSquad={handleEditSquad}
         onDeleteSquad={handleDeleteSquad}
+      />
+
+      <CronJobsModal
+        open={cronJobsModalOpen}
+        companyId={companyId ?? null}
+        agents={cronAgentOptions}
+        squads={cronSquadOptions}
+        onClose={() => setCronJobsModalOpen(false)}
       />
 
       <AgentCreateWizardModal

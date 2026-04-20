@@ -665,13 +665,8 @@ export const getDeskLocations = (items: FurnitureItem[]) => {
       usedChairUids.add(uid);
       const seatX = bestChair.x + 12;
       const seatY = bestChair.y + 12;
-      // v49: align the agent's facing with the chair's OWN forward direction
-      // instead of aiming at the desk center. Chairs are placed with the
-      // correct facing (backrest opposite to the desk), so using the chair's
-      // own rotation guarantees the agent sits squarely on the cushion and
-      // their eyes point straight at the monitor, instead of leaning at a
-      // slight angle because the chair center is offset from the desk center.
-      const seatFacing = ((bestChair.facing ?? 0) * Math.PI) / 180;
+      // Agent should look toward the desk from the chair seat.
+      const seatFacing = Math.atan2(deskCenterX - seatX, deskCenterY - seatY);
       return {
         x: deskCenterX,
         y: deskCenterY,

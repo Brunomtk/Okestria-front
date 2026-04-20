@@ -406,21 +406,17 @@ export const AgentModel = memo(function AgentModel({
       }
     }
 
-    // Desk chair vs lounge vs meeting — each needs different recline.
+    // Desk chair vs lounge vs meeting — we keep sitting agents perfectly
+    // upright so the pose never "bugs" with jittery recline/breath blending.
+    // Desk = working (arms will type), Lounge = sleeping (zzz bubble shows).
     const isDeskChairSit =
       agent.state === "sitting" &&
       (agent.interactionTarget === "desk" ||
         agent.interactionTarget === "meeting_room");
     const isLoungeSit =
       agent.state === "sitting" && agent.interactionTarget === "lounge";
-    const sittingBodyRotX =
-      agent.state === "sitting"
-        ? isLoungeSit
-          ? -0.28 // deeper recline on couch/beanbag
-          : isDeskChairSit
-            ? -0.02 // desk chair — essentially upright, tiny ease-back
-            : -0.1 // any other sit (stool, bench, etc.)
-        : 0;
+    // Rock-steady upright torso while seated — no micro-recline, no sway.
+    const sittingBodyRotX = 0;
     // Lift the agent's root up onto the seat surface. Without this the
     // model's feet-plane stays on the floor and the character appears to
     // "float" through the chair cushion rather than sit on it. The values
@@ -532,13 +528,8 @@ export const AgentModel = memo(function AgentModel({
       agent.status === "error" ? Math.sin(agent.frame * 0.9) * 0.01 : 0;
     const errorShakeZ =
       agent.status === "error" ? Math.cos(agent.frame * 0.72) * 0.007 : 0;
-    // v50: when seated, freeze the whole body so it doesn't throb or shake.
-    // The status-scale pulse was the main source of the "twitching" the user
-    // noticed — a seated agent should just sit.
-    const isSitting = agent.state === "sitting";
-    const statusScale = isSitting
-      ? 1
-      : agent.status === "working"
+    const statusScale =
+      agent.status === "working"
         ? 1.02 + Math.sin(agent.frame * 0.09) * 0.015
         : agent.status === "error"
           ? 1.015 + Math.sin(agent.frame * 0.16) * 0.01
@@ -681,21 +672,21 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.12;
         }
       } else if (agent.state === "sitting") {
-        // v50: user feedback — agents were "twitching" at desks because the
-        // typing bob oscillated every frame. We now lock the sitting pose to
-        // completely static targets. The smoothing lerp below (SMOOTH=0.45)
-        // still eases into this from the previous pose, so the transition is
-        // graceful even though the target itself no longer moves.
+        // Lounge vs desk: static hands-on-lap (sleeping) for couch/beanbag,
+        // forward-reaching typing pose for desk.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
-          // Arm resting on armrest / lap — slightly back and down.
-          leftArmRef.current.rotation.x = 0.45;
-          leftArmRef.current.rotation.z = -0.18;
-          leftArmRef.current.rotation.y = 0.05;
+          // Arm resting on lap — perfectly still (sleeping/dozing pose).
+          leftArmRef.current.rotation.x = 0.55;
+          leftArmRef.current.rotation.z = -0.14;
+          leftArmRef.current.rotation.y = 0.04;
         } else {
-          // Desk pose — arm reaches forward, perfectly still on the keyboard.
-          leftArmRef.current.rotation.x = -0.95;
-          leftArmRef.current.rotation.z = -0.18;
+          // Desk/chair typing pose — arms reach forward onto the desk with
+          // a gentle, calm typing bob. Body stays perfectly still — only
+          // the hands move, reading as "working".
+          const typeBob = Math.sin(motionFrame * 0.18) * 0.03;
+          leftArmRef.current.rotation.x = -0.98 + typeBob;
+          leftArmRef.current.rotation.z = -0.16;
           leftArmRef.current.rotation.y = -0.02;
         }
       } else if (isIdle) {
@@ -863,16 +854,18 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.08;
         }
       } else if (agent.state === "sitting") {
-        // v50: static sitting pose — see left-arm comment above.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
-          rightArmRef.current.rotation.x = 0.45;
-          rightArmRef.current.rotation.z = 0.18;
-          rightArmRef.current.rotation.y = -0.05;
+          // Mirror of left arm — still, resting on lap (sleeping).
+          rightArmRef.current.rotation.x = 0.55;
+          rightArmRef.current.rotation.z = 0.14;
+          rightArmRef.current.rotation.y = -0.04;
         } else {
-          // Mirror of the left arm at the desk — perfectly still.
-          rightArmRef.current.rotation.x = -0.95;
-          rightArmRef.current.rotation.z = 0.18;
+          // Typing pose — phase-offset from left arm for an asymmetric,
+          // alive-looking cadence at the keyboard.
+          const typeBob = Math.sin(motionFrame * 0.18 + Math.PI / 2) * 0.03;
+          rightArmRef.current.rotation.x = -0.98 + typeBob;
+          rightArmRef.current.rotation.z = 0.16;
           rightArmRef.current.rotation.y = 0.02;
         }
       } else if (isIdle) {
@@ -1092,11 +1085,9 @@ export const AgentModel = memo(function AgentModel({
     }
 
     if (pulseRingRef.current && pulseRingMatRef.current) {
-      // v50: no pulse while seated — the ring was oscillating under the
-      // agent every frame, contributing to the "twitching" perception.
-      const pulse = isSitting
-        ? 0
-        : (Math.sin(agent.frame * (isError ? 0.15 : working ? 0.08 : 0.05)) + 1) / 2;
+      const pulse =
+        (Math.sin(agent.frame * (isError ? 0.15 : working ? 0.08 : 0.05)) + 1) /
+        2;
       const scale = isError
         ? 1.24 + pulse * 0.52
         : working
@@ -1142,7 +1133,16 @@ export const AgentModel = memo(function AgentModel({
       );
     }
 
-    if (awayBubbleRef.current) awayBubbleRef.current.visible = isAway;
+    // "zzz" bubble floats above agents who are away OR dozing on the lounge.
+    const showSleepBubble = isAway || isLoungeSit;
+    if (awayBubbleRef.current) {
+      awayBubbleRef.current.visible = showSleepBubble;
+      if (showSleepBubble) {
+        // Gentle bob + faint pulse so the bubble reads as "sleeping".
+        const bob = Math.sin(frameValue * 0.04) * 0.04;
+        awayBubbleRef.current.position.y = bob;
+      }
+    }
     if (bodyMatRef.current) bodyMatRef.current.opacity = isAway ? 0.45 : 1;
     // v41 perf: only traverse the mesh tree when `isAway` actually flips.
     // Previously this ran EVERY FRAME for EVERY agent — the single biggest hot
@@ -2336,19 +2336,43 @@ export const AgentModel = memo(function AgentModel({
         </Billboard>
       ) : null}
       <group ref={awayBubbleRef} visible={false}>
-        <Billboard position={[0, 1.3, 0]}>
-          <mesh position={[0, 0, -0.001]}>
-            <planeGeometry args={[0.32, 0.18]} />
-            <meshBasicMaterial color="#0d1015" transparent opacity={0.85} />
+        <Billboard position={[0, 1.35, 0]}>
+          {/* Soft cloud-shaped sleep bubble */}
+          <mesh position={[0, 0, -0.002]}>
+            <planeGeometry args={[0.38, 0.22]} />
+            <meshBasicMaterial color="#121622" transparent opacity={0.82} />
           </mesh>
+          <mesh position={[0, 0, -0.001]}>
+            <planeGeometry args={[0.36, 0.20]} />
+            <meshBasicMaterial color="#1e2438" transparent opacity={0.9} />
+          </mesh>
+          {/* Z Z Z — ascending sizes so it reads as "floating up" */}
           <Text
-            position={[0, 0, 0.001]}
-            fontSize={0.11}
-            color="#6080b0"
+            position={[-0.09, -0.025, 0.001]}
+            fontSize={0.09}
+            color="#7a93c2"
             anchorX="center"
             anchorY="middle"
           >
-            z z z
+            z
+          </Text>
+          <Text
+            position={[0.0, 0.005, 0.001]}
+            fontSize={0.11}
+            color="#a8bfe6"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Z
+          </Text>
+          <Text
+            position={[0.105, 0.04, 0.001]}
+            fontSize={0.13}
+            color="#d6e4ff"
+            anchorX="center"
+            anchorY="middle"
+          >
+            Z
           </Text>
         </Billboard>
       </group>
