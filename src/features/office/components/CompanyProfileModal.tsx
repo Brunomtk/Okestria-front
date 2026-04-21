@@ -8,6 +8,7 @@ import {
   Check,
   ChevronRight,
   Globe,
+  ImageIcon,
   Loader2,
   LogOut,
   Mail,
@@ -20,6 +21,8 @@ import {
   SlidersHorizontal,
   Sparkles,
   StickyNote,
+  Trash2,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -345,7 +348,13 @@ const EMPTY_CONTEXT: OkestriaCompanyEmailContext = {
   website: "",
   phone: "",
   extraNotes: "",
+  footerImageBase64: "",
 };
+
+// Hard cap on footer image size (data URL string length). Roughly ~1.5MB
+// of raw bytes after base64 decoding. Anything bigger risks payload
+// rejections and bloats the DB row unnecessarily.
+const FOOTER_IMAGE_MAX_DATAURL_LENGTH = 2_200_000;
 
 function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
   const [form, setForm] = useState<OkestriaCompanyEmailContext>({ ...EMPTY_CONTEXT });
@@ -375,6 +384,7 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
             website: ctx.website ?? "",
             phone: ctx.phone ?? "",
             extraNotes: ctx.extraNotes ?? "",
+            footerImageBase64: ctx.footerImageBase64 ?? "",
           });
         }
       } catch {
@@ -512,6 +522,12 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
         </div>
       </div>
 
+      {/* Footer image uploader — full-width, visually prominent */}
+      <FooterImageUploader
+        value={form.footerImageBase64 ?? ""}
+        onChange={(v) => updateField("footerImageBase64", v)}
+      />
+
       {/* Save bar */}
       <div className="flex items-center justify-between gap-4 rounded-[20px] border border-white/8 bg-white/[0.03] px-5 py-4">
         <div className="text-sm text-white/45">
@@ -602,16 +618,19 @@ function ContextField({
    ═══════════════════════════════════════════════════════════════════════ */
 
 function ContextPreviewCard({ form }: { form: OkestriaCompanyEmailContext }) {
-  const filledCount = [
-    form.description,
-    form.products,
-    form.tone,
-    form.website,
-    form.phone,
-    form.extraNotes,
-  ].filter((v) => v && v.trim().length > 0).length;
+  const filledFlags = [
+    !!form.description?.trim(),
+    !!form.products?.trim(),
+    !!form.tone?.trim(),
+    !!form.website?.trim(),
+    !!form.phone?.trim(),
+    !!form.extraNotes?.trim(),
+    !!form.footerImageBase64 && form.footerImageBase64.trim().length > 0,
+  ];
+  const filledCount = filledFlags.filter(Boolean).length;
+  const totalFields = filledFlags.length;
 
-  const completionPercent = Math.round((filledCount / 6) * 100);
+  const completionPercent = Math.round((filledCount / totalFields) * 100);
 
   return (
     <div className="rounded-[20px] border border-white/8 bg-white/[0.02] p-4">
@@ -637,7 +656,7 @@ function ContextPreviewCard({ form }: { form: OkestriaCompanyEmailContext }) {
 
       <div className="mt-2 flex items-center justify-between">
         <span className="text-xs text-white/40">
-          {filledCount} of 6 fields configured
+          {filledCount} of {totalFields} fields configured
         </span>
         <span
           className={`text-xs font-semibold ${
@@ -660,6 +679,10 @@ function ContextPreviewCard({ form }: { form: OkestriaCompanyEmailContext }) {
         <StatusPill filled={!!form.website?.trim()} label="Website" />
         <StatusPill filled={!!form.phone?.trim()} label="Phone" />
         <StatusPill filled={!!form.extraNotes?.trim()} label="Extra" />
+        <StatusPill
+          filled={!!form.footerImageBase64 && form.footerImageBase64.trim().length > 0}
+          label="Footer"
+        />
       </div>
     </div>
   );
@@ -677,6 +700,183 @@ function StatusPill({ filled, label }: { filled: boolean; label: string }) {
       {filled ? <Check className="h-2.5 w-2.5" /> : <span className="h-2.5 w-2.5 rounded-full border border-white/15" />}
       {label}
     </span>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FOOTER IMAGE UPLOADER
+
+   Full-width card that lets the user attach a signature/banner image to
+   every outreach email. The image is persisted as a complete data URL on
+   the Company row (Companies.EmailContextFooterImageBase64) and appended
+   verbatim to the HTML rendering of outbound emails in the backend.
+
+   - File picker: accepts image/* only
+   - Preview thumbnail (on a subtle checkered background so transparent
+     PNGs read correctly)
+   - Clear button sets the value to "" which the backend treats as
+     "remove saved image"
+   - Soft size validation: rejects files whose encoded data URL exceeds
+     FOOTER_IMAGE_MAX_DATAURL_LENGTH (~1.5MB of decoded bytes)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function FooterImageUploader({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const hasImage = !!value && value.trim().length > 0;
+
+  const handleFile = useCallback(
+    async (file: File | null) => {
+      if (!file) return;
+      setError(null);
+
+      if (!file.type.startsWith("image/")) {
+        setError("Please select an image file (PNG, JPG, or WebP).");
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result === "string") resolve(result);
+            else reject(new Error("Could not read file"));
+          };
+          reader.onerror = () => reject(reader.error ?? new Error("Read failed"));
+          reader.readAsDataURL(file);
+        });
+
+        if (dataUrl.length > FOOTER_IMAGE_MAX_DATAURL_LENGTH) {
+          setError(
+            "That image is too large. Please pick a file under ~1.5 MB — ideally a slim banner around 600×160 px."
+          );
+          return;
+        }
+
+        onChange(dataUrl);
+      } catch {
+        setError("Could not read that file. Try a different image.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [onChange]
+  );
+
+  const handleClear = () => {
+    // Empty string signals the backend to clear the saved footer.
+    setError(null);
+    onChange("");
+  };
+
+  return (
+    <div className="rounded-[22px] border border-cyan-300/16 bg-[linear-gradient(140deg,rgba(15,26,38,0.82),rgba(7,12,18,0.82))] p-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+        {/* ── Label / copy ─────────────────────────────────── */}
+        <div className="min-w-0 lg:w-[280px] lg:shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/22 bg-cyan-400/10 text-cyan-100">
+              <ImageIcon className="h-4 w-4" />
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/55">
+              Email Signature Footer
+            </span>
+          </div>
+          <p className="mt-3 text-[13px] leading-relaxed text-white/55">
+            Attach a banner or signature image — it&rsquo;s appended to every outreach
+            email, right under the sign-off. A slim, wide banner around{" "}
+            <span className="text-white/75">600×160&nbsp;px</span> looks best.
+          </p>
+          <p className="mt-2 text-[11px] leading-relaxed text-white/35">
+            PNG, JPG, or WebP · up to ~1.5 MB
+          </p>
+        </div>
+
+        {/* ── Preview + controls ──────────────────────────── */}
+        <div className="min-w-0 flex-1">
+          {hasImage ? (
+            <div className="overflow-hidden rounded-[16px] border border-white/10 bg-[repeating-conic-gradient(rgba(255,255,255,0.04)_0%_25%,rgba(255,255,255,0.08)_25%_50%)] bg-[length:18px_18px]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={value}
+                alt="Email signature footer"
+                className="block max-h-52 w-full object-contain"
+              />
+            </div>
+          ) : (
+            <label className="group flex h-40 cursor-pointer flex-col items-center justify-center gap-2 rounded-[16px] border border-dashed border-white/15 bg-black/20 text-center text-white/50 transition hover:border-cyan-300/40 hover:bg-cyan-500/5 hover:text-white/80">
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                disabled={busy}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  void handleFile(f);
+                  // Reset so picking the same file again still fires onChange.
+                  e.target.value = "";
+                }}
+              />
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-cyan-200/70 transition group-hover:border-cyan-300/35 group-hover:text-cyan-100">
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              </div>
+              <div className="text-sm font-medium">
+                {busy ? "Reading file…" : "Click to upload a footer image"}
+              </div>
+              <div className="text-[11px] text-white/35">PNG · JPG · WebP</div>
+            </label>
+          )}
+
+          {/* Action bar (only when an image is loaded) */}
+          {hasImage && (
+            <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2 text-[12px] font-medium text-white/75 transition hover:border-cyan-300/35 hover:bg-cyan-500/10 hover:text-white">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={busy}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null;
+                    void handleFile(f);
+                    e.target.value = "";
+                  }}
+                />
+                {busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                Replace
+              </label>
+              <button
+                type="button"
+                onClick={handleClear}
+                className="inline-flex items-center gap-2 rounded-xl border border-red-400/22 bg-red-500/8 px-3.5 py-2 text-[12px] font-medium text-red-100/85 transition hover:border-red-300/40 hover:bg-red-500/14"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Remove
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-3 rounded-lg border border-red-400/24 bg-red-500/8 px-3 py-2 text-[12px] text-red-200/90">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

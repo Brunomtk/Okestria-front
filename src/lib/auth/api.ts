@@ -38,6 +38,8 @@ export type OkestriaCompany = {
   emailContextWebsite?: string | null;
   emailContextPhone?: string | null;
   emailContextExtraNotes?: string | null;
+  /** Full data URL of the footer banner image (e.g. "data:image/png;base64,...") */
+  emailContextFooterImageBase64?: string | null;
 };
 
 export type OkestriaCompanyEmailContext = {
@@ -47,6 +49,12 @@ export type OkestriaCompanyEmailContext = {
   website?: string | null;
   phone?: string | null;
   extraNotes?: string | null;
+  /**
+   * Full data URL of the footer banner image.
+   * - Leave undefined/null to keep the saved value unchanged.
+   * - Send an empty string "" to clear the saved image.
+   */
+  footerImageBase64?: string | null;
 };
 
 export type OkestriaCompanyPagedResponse = {
