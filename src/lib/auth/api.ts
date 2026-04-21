@@ -602,3 +602,33 @@ export async function updateCompanyEmailContext(companyId: number, payload: Okes
     body: JSON.stringify(payload),
   }, token);
 }
+
+// ── User Email Context (per-user signature footer) ─────────────────
+//
+// In v21 the email-signature footer image moved from Company to User so
+// every teammate can upload their own banner. The text fields (tone,
+// description, products, website, phone, extra notes) are still per-company
+// and keep flowing through the Companies endpoints above. The footer image,
+// on the other hand, lives on the User row and must go through these
+// endpoints — otherwise the send path (which reads it off the authenticated
+// user) sees a null value and silently omits the footer.
+
+export type OkestriaUserEmailContext = {
+  /**
+   * Full data URL of the footer banner image (e.g. "data:image/png;base64,...").
+   * - Leave undefined/null to keep the saved value unchanged.
+   * - Send an empty string "" to clear the saved image.
+   */
+  footerImageBase64?: string | null;
+};
+
+export async function fetchUserEmailContext(userId: number, token: string) {
+  return requestJson<OkestriaUserEmailContext>(`/api/Users/${userId}/email-context`, undefined, token);
+}
+
+export async function updateUserEmailContext(userId: number, payload: OkestriaUserEmailContext, token: string) {
+  return requestJson<unknown>(`/api/Users/${userId}/email-context`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }, token);
+}

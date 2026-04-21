@@ -27,8 +27,10 @@ import {
 } from "lucide-react";
 import {
   fetchCompanyEmailContext,
+  fetchUserEmailContext,
   isOkestriaPayloadTooLargeError,
   updateCompanyEmailContext,
+  updateUserEmailContext,
   type OkestriaCompanyEmailContext,
 } from "@/lib/auth/api";
 import { getBrowserAccessToken } from "@/lib/agents/backend-api";
@@ -49,6 +51,13 @@ type CompanyProfileModalProps = {
   companyName?: string | null;
   workspaceName?: string | null;
   companyId?: number | null;
+  /**
+   * Authenticated user id — needed to read/write the per-user email
+   * signature footer. The six text fields (description/products/tone/etc)
+   * are still per-company; the footer banner image moved to the User row
+   * in v21 so every teammate has their own.
+   */
+  userId?: number | null;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -76,6 +85,7 @@ export function CompanyProfileModal({
   companyName,
   workspaceName,
   companyId,
+  userId,
 }: CompanyProfileModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -173,7 +183,7 @@ export function CompanyProfileModal({
               onLogout={onLogout}
             />
           ) : (
-            <EmailContextTabContent companyId={companyId} />
+            <EmailContextTabContent companyId={companyId} userId={userId} />
           )}
         </div>
       </section>
@@ -360,14 +370,31 @@ const EMPTY_CONTEXT: OkestriaCompanyEmailContext = {
 // "too large" message *before* they hit the server and receive a 413.
 const FOOTER_IMAGE_MAX_DATAURL_LENGTH = 1_200_000;
 
-function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
+function EmailContextTabContent({
+  companyId,
+  userId,
+}: {
+  companyId?: number | null;
+  userId?: number | null;
+}) {
+  // Form state holds the six per-company text fields + the per-user footer
+  // image (split targets on save, merged here only for UI convenience).
   const [form, setForm] = useState<OkestriaCompanyEmailContext>({ ...EMPTY_CONTEXT });
+  // Remember what the footer looked like when we loaded the page so we
+  // can tell whether the user actually changed it (and skip the extra
+  // PUT to /api/Users/{id}/email-context when they didn't).
+  const [initialFooter, setInitialFooter] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch existing context on mount
+  // Fetch existing context on mount. We hit two endpoints in parallel:
+  // - /api/Companies/{id}/email-context → text fields (tone, products, ...)
+  // - /api/Users/{id}/email-context     → per-user footer banner image
+  // In v21 the footer column was moved from Company to User so each
+  // teammate has their own signature; the two endpoints are the correct
+  // shape even though both payloads end up merged into the same form.
   useEffect(() => {
     if (!companyId) {
       setLoading(false);
@@ -379,17 +406,32 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
       try {
         const token = getBrowserAccessToken();
         if (!token) throw new Error("No auth token");
-        const ctx = await fetchCompanyEmailContext(companyId, token);
+
+        const companyCtxPromise = fetchCompanyEmailContext(companyId, token).catch(
+          () => null,
+        );
+        const userCtxPromise = userId
+          ? fetchUserEmailContext(userId, token).catch(() => null)
+          : Promise.resolve(null);
+        const [companyCtx, userCtx] = await Promise.all([
+          companyCtxPromise,
+          userCtxPromise,
+        ]);
+
         if (!cancelled) {
+          const nextFooter = userCtx?.footerImageBase64 ?? "";
           setForm({
-            description: ctx.description ?? "",
-            products: ctx.products ?? "",
-            tone: ctx.tone ?? "",
-            website: ctx.website ?? "",
-            phone: ctx.phone ?? "",
-            extraNotes: ctx.extraNotes ?? "",
-            footerImageBase64: ctx.footerImageBase64 ?? "",
+            description: companyCtx?.description ?? "",
+            products: companyCtx?.products ?? "",
+            tone: companyCtx?.tone ?? "",
+            website: companyCtx?.website ?? "",
+            phone: companyCtx?.phone ?? "",
+            extraNotes: companyCtx?.extraNotes ?? "",
+            // The footer is held on the form for UI convenience but is
+            // persisted to the User endpoint, not the Company one.
+            footerImageBase64: nextFooter,
           });
+          setInitialFooter(nextFooter);
         }
       } catch {
         // If 404 or empty, that's fine — fields stay empty
@@ -398,7 +440,7 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [companyId]);
+  }, [companyId, userId]);
 
   const handleSave = useCallback(async () => {
     if (!companyId) return;
@@ -408,7 +450,37 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
     try {
       const token = getBrowserAccessToken();
       if (!token) throw new Error("No auth token");
-      await updateCompanyEmailContext(companyId, form, token);
+
+      // Split the payload: text fields go to the company endpoint,
+      // the footer banner goes to the per-user endpoint (v21 and later).
+      // Strip footerImageBase64 from the company payload so the backend
+      // doesn't misinterpret it as a company-level field (the Company
+      // endpoint no longer reads that column — sending it would be a
+      // dead write).
+      const companyPayload: OkestriaCompanyEmailContext = {
+        description: form.description ?? "",
+        products: form.products ?? "",
+        tone: form.tone ?? "",
+        website: form.website ?? "",
+        phone: form.phone ?? "",
+        extraNotes: form.extraNotes ?? "",
+      };
+
+      await updateCompanyEmailContext(companyId, companyPayload, token);
+
+      // Only hit the user endpoint if (a) we know who we are and
+      // (b) the footer actually changed. This keeps the request small
+      // and avoids 413s when the user is only editing their tone.
+      const nextFooter = form.footerImageBase64 ?? "";
+      if (userId && nextFooter !== initialFooter) {
+        await updateUserEmailContext(
+          userId,
+          { footerImageBase64: nextFooter },
+          token,
+        );
+        setInitialFooter(nextFooter);
+      }
+
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -432,7 +504,7 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
     } finally {
       setSaving(false);
     }
-  }, [companyId, form]);
+  }, [companyId, userId, form, initialFooter]);
 
   const updateField = (key: keyof OkestriaCompanyEmailContext, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -728,8 +800,9 @@ function StatusPill({ filled, label }: { filled: boolean; label: string }) {
 
    Full-width card that lets the user attach a signature/banner image to
    every outreach email. The image is persisted as a complete data URL on
-   the Company row (Companies.EmailContextFooterImageBase64) and appended
-   verbatim to the HTML rendering of outbound emails in the backend.
+   the User row (User.EmailContextFooterImageBase64 — moved from Company
+   in v21 so every teammate has their own banner) and rendered as an
+   inline Resend attachment at the bottom of each outbound email.
 
    - File picker: accepts image/* only
    - Preview thumbnail (on a subtle checkered background so transparent

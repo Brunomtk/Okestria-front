@@ -56,6 +56,7 @@ export default async function CompanyOfficePage() {
             workspaceId={session?.workspaceId ?? null}
             companyName={session?.companyName ?? null}
             workspaceName={session?.workspaceName ?? null}
+            userId={session?.userId ?? null}
             userFullName={session?.fullName ?? null}
             userEmail={session?.email ?? null}
             userRole={session?.role ?? null}

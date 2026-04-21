@@ -887,6 +887,7 @@ type OfficeScreenProps = {
   workspaceId?: number | null;
   companyName?: string | null;
   workspaceName?: string | null;
+  userId?: number | null;
   userFullName?: string | null;
   userEmail?: string | null;
   userRole?: string | null;
@@ -902,6 +903,7 @@ export function OfficeScreen({
   workspaceId = null,
   companyName = null,
   workspaceName = null,
+  userId = null,
   userFullName = null,
   userEmail = null,
   userRole = null,
@@ -6715,6 +6717,7 @@ export function OfficeScreen({
         companyName={companyName}
         workspaceName={workspaceName}
         companyId={companyId}
+        userId={userId}
       />
 
       {debugEnabled ? (
