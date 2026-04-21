@@ -6,7 +6,6 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
-  ChevronRight,
   Globe,
   ImageIcon,
   Loader2,
