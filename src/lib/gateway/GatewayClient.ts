@@ -19,6 +19,11 @@ import type {
 import { resolveStudioProxyGatewayUrl } from "@/lib/gateway/proxy-url";
 import { ensureGatewayReloadModeHotForLocalStudio } from "@/lib/gateway/gatewayReloadMode";
 import { GatewayResponseError } from "@/lib/gateway/errors";
+import {
+  ensureFreshAccessToken,
+  isAuthExpired,
+  onAuthExpired,
+} from "@/lib/auth/session-client";
 
 
 export type ReqFrame = {
@@ -659,7 +664,26 @@ export const useGatewayConnection = (
     setError(null);
     setConnectErrorCode(null);
     wasManualDisconnectRef.current = false;
+
+    // If the backend has already told us the session is dead, don't bother
+    // trying to connect — the UI shows a "session expired" prompt instead.
+    if (isAuthExpired()) {
+      setError("Sua sessão expirou. Entre novamente para reconectar.");
+      return;
+    }
+
     try {
+      // Make sure the access-token cookie is fresh BEFORE we build the
+      // proxy URL (which embeds `access_token` as a query param) and
+      // BEFORE any API call that reads the cookie. This is what rescues
+      // the common "tab was asleep for an hour → Gateway closed (1006)"
+      // case: we simply mint a new JWT and reconnect with it.
+      await ensureFreshAccessToken(180);
+      if (isAuthExpired()) {
+        setError("Sua sessão expirou. Entre novamente para reconectar.");
+        return;
+      }
+
       await settingsCoordinator.flushPending();
       // In local/server deployments this can stay same-origin.
       // In Vercel deployments it should point at a persistent external proxy,
@@ -692,6 +716,12 @@ export const useGatewayConnection = (
 
   // Auto-retry on disconnect (gateway busy, network blip, etc.)
   useEffect(() => {
+    // If the backend has already declared the session dead, stop the
+    // retry treadmill — no amount of reconnecting will fix an expired
+    // refresh token, and hammering the WS proxy keeps the user stuck on
+    // "Waiting...". The UI surfaces a "Entrar novamente" prompt instead.
+    if (isAuthExpired()) return;
+
     const attempt = retryAttemptRef.current;
     const delay = resolveGatewayAutoRetryDelayMs({
       status,
@@ -716,6 +746,22 @@ export const useGatewayConnection = (
       }
     };
   }, [connect, connectErrorCode, error, gatewayUrl, status]);
+
+  // When the auth layer signals that the session is permanently dead,
+  // bail out of any pending reconnect + surface the friendly message
+  // that GatewayConnectScreen uses to render its "Entrar novamente" CTA.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    return onAuthExpired(() => {
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      client.disconnect();
+      setError("Sua sessão expirou. Entre novamente para reconectar.");
+      setConnectErrorCode("auth.session_expired");
+    });
+  }, [client]);
 
   // Reset retry count on successful connection
   useEffect(() => {

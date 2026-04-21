@@ -251,6 +251,30 @@ function normalizeErrorText(text: string, status: number) {
   return `Request failed with status ${status}`;
 }
 
+/**
+ * Thrown by {@link requestJson} when the backend returns a non-2xx response.
+ * Carries the HTTP status so callers can distinguish "server said 401" from
+ * "the network dropped" (which is still thrown as a plain Error).
+ *
+ * In particular, {@link refreshUserToken} throws this with `status === 401`
+ * when the refresh token has expired or been revoked, so the auth layer can
+ * stop the silent-retry loop and surface a "session expired" UI instead of
+ * leaving the user stuck on the loading screen forever.
+ */
+export class OkestriaHttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'OkestriaHttpError';
+    this.status = status;
+  }
+}
+
+export function isOkestriaUnauthorizedError(error: unknown): boolean {
+  return error instanceof OkestriaHttpError && error.status === 401;
+}
+
 async function requestJson<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set('Content-Type', 'application/json');
@@ -264,12 +288,14 @@ async function requestJson<T>(path: string, init?: RequestInit, token?: string):
       cache: 'no-store',
     });
   } catch {
+    // Network-level failure (DNS, offline, CORS, etc.). Thrown as a plain
+    // Error so callers can treat it as transient and keep retrying.
     throw new Error('Não foi possível conectar ao backend do Okestria. Verifique a URL da API e confirme se o servidor está rodando.');
   }
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(normalizeErrorText(text, response.status));
+    throw new OkestriaHttpError(response.status, normalizeErrorText(text, response.status));
   }
 
   return (await response.json()) as T;

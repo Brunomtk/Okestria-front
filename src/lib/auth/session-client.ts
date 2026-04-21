@@ -1,8 +1,21 @@
-import { refreshUserToken, type OkestriaTokenResponse } from './api';
+import {
+  isOkestriaUnauthorizedError,
+  refreshUserToken,
+  type OkestriaTokenResponse,
+} from './api';
 
 export const ACCESS_COOKIE = 'okestria_access_token';
 export const REFRESH_COOKIE = 'okestria_refresh_token';
 export const SESSION_COOKIE = 'okestria_session';
+
+/**
+ * Fired on `window` when we detect that the backend has permanently
+ * rejected our refresh token (401 on /api/Users/refresh-token). Screens
+ * that hide behind an auth gate listen for this to swap a spinning
+ * "Waiting..." for a "Your session expired, sign in again" call-to-action
+ * so the user is never stranded on the loading screen.
+ */
+export const AUTH_EXPIRED_EVENT = 'okestria:auth-expired';
 
 // One full year — we decouple the *cookie* TTL from the *JWT* TTL so that an
 // idle browser tab (standby) doesn't silently drop the user's identity cookie
@@ -53,6 +66,10 @@ export function persistAuthSession(session: OkestriaTokenResponse) {
     }),
     LONG_LIVED_MAX_AGE,
   );
+
+  // A fresh session is now active — any sticky "session expired" state from
+  // a previous tab should be cleared so the UI goes back to normal.
+  authExpiredSignaled = false;
 }
 
 export function clearAuthSession() {
@@ -98,6 +115,45 @@ function decodeJwtExpirySeconds(token: string): number | null {
 }
 
 let inFlightRefresh: Promise<OkestriaTokenResponse | null> | null = null;
+// Sticky signal: once the backend has definitively rejected our refresh
+// token, stop hammering the refresh endpoint from every focus/visibility
+// event and let the UI take over with a "session expired" prompt.
+let authExpiredSignaled = false;
+
+function signalAuthExpired(reason: string) {
+  if (authExpiredSignaled) return;
+  authExpiredSignaled = true;
+  clearAuthSession();
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(AUTH_EXPIRED_EVENT, { detail: { reason } }),
+      );
+    } catch (error) {
+      console.warn('[auth] Failed to dispatch auth-expired event.', error);
+    }
+  }
+}
+
+/** Synchronous flag for UI code that needs to know whether auth is dead. */
+export function isAuthExpired(): boolean {
+  return authExpiredSignaled;
+}
+
+/**
+ * Subscribe to the auth-expired event. Returns an unsubscribe function.
+ * Use this from screens that want to show a "session expired, sign in again"
+ * banner instead of hiding behind a perpetual loading spinner.
+ */
+export function onAuthExpired(listener: (reason: string) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const handler = (ev: Event) => {
+    const detail = (ev as CustomEvent<{ reason?: string }>).detail;
+    listener(detail?.reason ?? 'unknown');
+  };
+  window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
+}
 
 async function performRefresh(refreshTokenValue: string): Promise<OkestriaTokenResponse | null> {
   if (!inFlightRefresh) {
@@ -107,7 +163,19 @@ async function performRefresh(refreshTokenValue: string): Promise<OkestriaTokenR
         persistAuthSession(session);
         return session;
       } catch (error) {
-        console.warn('[auth] Failed to refresh access token.', error);
+        if (isOkestriaUnauthorizedError(error)) {
+          // Backend definitively rejected this refresh token (expired or
+          // revoked outside the grace window). Surface it to the UI so we
+          // can stop retrying and show a "sign in again" prompt instead of
+          // a silent "Waiting..." spinner.
+          console.warn('[auth] Refresh token rejected by backend — session expired.');
+          signalAuthExpired('refresh-rejected');
+        } else {
+          // Network blip / 5xx / transient failure — keep the cookies so
+          // the next tick can retry. We explicitly DO NOT flip the expired
+          // flag here; that would kick the user out over a flaky wifi.
+          console.warn('[auth] Failed to refresh access token.', error);
+        }
         return null;
       } finally {
         // Clear a tick later so clustered callers share the same promise
@@ -133,6 +201,11 @@ export async function ensureFreshAccessToken(
   earlyRefreshSeconds = 120,
 ): Promise<string | null> {
   if (typeof document === 'undefined') return null;
+
+  // Once the backend has told us the session is dead, stop hitting the
+  // refresh endpoint — the UI layer has already been notified and the
+  // user needs to sign in again.
+  if (authExpiredSignaled) return null;
 
   const access = getOkestriaAuthToken();
   const refresh = getOkestriaRefreshToken();

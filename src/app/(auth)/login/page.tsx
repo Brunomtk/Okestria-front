@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -225,8 +225,21 @@ function FeatureCard({
   );
 }
 
+// Accept only same-origin paths like "/company/office?x=1" — this blocks
+// the classic open-redirect foot-gun where a crafted `?returnTo=https://evil`
+// would bounce the user off-site right after login.
+function sanitizeReturnTo(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
+  if (trimmed.startsWith("/login")) return null; // avoid redirect loop
+  return trimmed;
+}
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = sanitizeReturnTo(searchParams?.get("returnTo") ?? null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -262,7 +275,11 @@ export default function LoginPage() {
 
       persistAuthSession(session);
 
-      const targetPath = session.type === 1 ? "/admin/companies" : "/company/office";
+      // If the user landed here after a "Sua sessão expirou" bounce, send
+      // them back to the screen they were on instead of the default role
+      // landing page — that's what "não sai da tela" means in practice.
+      const defaultPath = session.type === 1 ? "/admin/companies" : "/company/office";
+      const targetPath = returnTo ?? defaultPath;
       window.location.assign(targetPath);
       return;
     } catch (err) {
