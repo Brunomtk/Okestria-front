@@ -478,7 +478,29 @@ function EmailContextTabContent({
           { footerImageBase64: nextFooter },
           token,
         );
-        setInitialFooter(nextFooter);
+
+        // Round-trip verification — re-fetch the user's email context and
+        // confirm the footer actually persisted. This catches the silent
+        // "column doesn't exist / DB said OK but stored nothing" class of
+        // bug (see the v23 backend fix, which repaired the table-name
+        // mismatch on "User" vs "Users"). If the server is back to a
+        // sane state the confirmed value matches what we just sent; if
+        // not, we surface a clear warning instead of pretending it saved.
+        try {
+          const confirmed = await fetchUserEmailContext(userId, token);
+          const persisted = (confirmed?.footerImageBase64 ?? "") as string;
+          if (nextFooter.length > 0 && persisted.length === 0) {
+            setError(
+              "A imagem foi enviada, mas o servidor não persistiu o rodapé. Se isso continuar após o deploy do backend v23, avise o time — é sinal de que a coluna do banner ainda não existe na tabela de usuários.",
+            );
+            return;
+          }
+          setInitialFooter(persisted);
+        } catch {
+          // Verification is best-effort — don't block the UX if the
+          // follow-up GET fails for an unrelated reason (e.g. token race).
+          setInitialFooter(nextFooter);
+        }
       }
 
       setSaved(true);
