@@ -245,6 +245,13 @@ export function getOkestriaApiBaseUrl() {
 
 function normalizeErrorText(text: string, status: number) {
   const cleanText = text.trim().replace(/^"|"$/g, '');
+  // 413 bodies are almost always an nginx HTML page ("<html>... 413 Request
+  // Entity Too Large ...</html>") or an empty body — neither of which is
+  // useful to show the user, so we prefer our own message whenever the
+  // status is 413, regardless of what the body contains.
+  if (status === 413) {
+    return 'O arquivo enviado é grande demais. Escolha uma imagem menor (até ~1 MB) e tente novamente.';
+  }
   if (cleanText) return cleanText;
   if (status === 401) return 'E-mail ou senha inválidos.';
   if (status === 403) return 'Você não tem permissão para acessar este recurso.';
@@ -273,6 +280,16 @@ export class OkestriaHttpError extends Error {
 
 export function isOkestriaUnauthorizedError(error: unknown): boolean {
   return error instanceof OkestriaHttpError && error.status === 401;
+}
+
+/**
+ * True when the backend (or a reverse-proxy like nginx in front of it)
+ * rejected the request because the body was larger than the allowed limit.
+ * Callers should use this to surface a "the file is too big" message
+ * instead of dumping the raw HTML error page from the proxy.
+ */
+export function isOkestriaPayloadTooLargeError(error: unknown): boolean {
+  return error instanceof OkestriaHttpError && error.status === 413;
 }
 
 async function requestJson<T>(path: string, init?: RequestInit, token?: string): Promise<T> {

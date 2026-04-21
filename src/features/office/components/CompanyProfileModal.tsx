@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import {
   fetchCompanyEmailContext,
+  isOkestriaPayloadTooLargeError,
   updateCompanyEmailContext,
   type OkestriaCompanyEmailContext,
 } from "@/lib/auth/api";
@@ -353,7 +354,11 @@ const EMPTY_CONTEXT: OkestriaCompanyEmailContext = {
 // Hard cap on footer image size (data URL string length). Roughly ~1.5MB
 // of raw bytes after base64 decoding. Anything bigger risks payload
 // rejections and bloats the DB row unnecessarily.
-const FOOTER_IMAGE_MAX_DATAURL_LENGTH = 2_200_000;
+// Cap the encoded data URL at ~1.2 MB, which decodes to roughly 900 KB of
+// actual image bytes. This is slightly below the 1 MB body limit that the
+// production nginx proxy enforces by default, so users get an in-page
+// "too large" message *before* they hit the server and receive a 413.
+const FOOTER_IMAGE_MAX_DATAURL_LENGTH = 1_200_000;
 
 function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
   const [form, setForm] = useState<OkestriaCompanyEmailContext>({ ...EMPTY_CONTEXT });
@@ -407,7 +412,23 @@ function EmailContextTabContent({ companyId }: { companyId?: number | null }) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      // Translate "413 Content Too Large" from the backend / nginx into a
+      // direct, human message pointing at the most common culprit (the
+      // footer image). nginx returns an HTML error page, which is useless
+      // to surface verbatim — so we detect the 413 status and write our
+      // own copy. If the user *hasn't* uploaded a footer image, we fall
+      // back to a neutral "payload too large" phrasing.
+      if (isOkestriaPayloadTooLargeError(err)) {
+        const hasFooter =
+          !!form.footerImageBase64 && form.footerImageBase64.trim().length > 0;
+        setError(
+          hasFooter
+            ? "A imagem do rodapé é grande demais para o servidor aceitar. Escolha uma imagem menor (idealmente até ~1 MB, um banner fino em torno de 600×160 px) e salve de novo."
+            : "O conteúdo é grande demais para o servidor aceitar. Reduza o tamanho do texto ou da imagem e tente novamente."
+        );
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save");
+      }
     } finally {
       setSaving(false);
     }
@@ -756,7 +777,7 @@ function FooterImageUploader({
 
         if (dataUrl.length > FOOTER_IMAGE_MAX_DATAURL_LENGTH) {
           setError(
-            "That image is too large. Please pick a file under ~1.5 MB — ideally a slim banner around 600×160 px."
+            "That image is too large. Please pick a file under ~900 KB — ideally a slim banner around 600×160 px."
           );
           return;
         }
@@ -796,7 +817,7 @@ function FooterImageUploader({
             <span className="text-white/75">600×160&nbsp;px</span> looks best.
           </p>
           <p className="mt-2 text-[11px] leading-relaxed text-white/35">
-            PNG, JPG, or WebP · up to ~1.5 MB
+            PNG, JPG, or WebP · up to ~900 KB
           </p>
         </div>
 

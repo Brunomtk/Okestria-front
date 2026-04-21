@@ -9,9 +9,11 @@ import {
   CircleStop,
   Loader2,
   Pause,
+  Pencil,
   Play,
   Plus,
   RefreshCcw,
+  Save,
   Timer,
   Trash2,
   X,
@@ -45,6 +47,7 @@ import {
   type CronJobStatus,
   type CronJobWakeMode,
   type CreateCronJobInput,
+  type UpdateCronJobInput,
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -120,6 +123,9 @@ export function CronJobsModal({
   const [selectedJobRuns, setSelectedJobRuns] = useState<CronJobRun[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+
+  // Edit dialog — holds the job currently being edited (null = no dialog).
+  const [editingJob, setEditingJob] = useState<CronJob | null>(null);
 
   // Create form state
   const [formName, setFormName] = useState("");
@@ -350,6 +356,33 @@ export function CronJobsModal({
         if (selectedJobId === jobId) await loadJobDetail(jobId);
       },
     );
+
+  // Open the edit dialog for the currently selected job (or fetch if needed).
+  const handleOpenEdit = useCallback(
+    async (jobId: number) => {
+      try {
+        const job =
+          selectedJob && selectedJob.id === jobId ? selectedJob : await fetchCronJob(jobId);
+        setEditingJob(job);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [selectedJob],
+  );
+
+  // After a successful save: refresh list + detail so the new values show up
+  // immediately in the expanded row.
+  const handleEditSaved = useCallback(
+    async (jobId: number) => {
+      setEditingJob(null);
+      await loadJobs();
+      if (selectedJobId === jobId) {
+        await loadJobDetail(jobId);
+      }
+    },
+    [loadJobs, loadJobDetail, selectedJobId],
+  );
 
   const canCreate =
     !!companyId &&
@@ -710,6 +743,13 @@ export function CronJobsModal({
                                   busy={actionBusy === `run-${job.id}`}
                                   onClick={() => handleRunNow(job.id)}
                                 />
+                                <ActionButton
+                                  icon={<Pencil className="h-3.5 w-3.5" />}
+                                  label="Edit"
+                                  tone="muted"
+                                  busy={false}
+                                  onClick={() => void handleOpenEdit(job.id)}
+                                />
                                 {job.status === "active" && (
                                   <ActionButton
                                     icon={<Pause className="h-3.5 w-3.5" />}
@@ -1045,6 +1085,17 @@ export function CronJobsModal({
           )}
         </div>
       </section>
+
+      {/* Edit dialog — opens on top of the main modal when a job is picked */}
+      {editingJob && (
+        <EditCronJobDialog
+          job={editingJob}
+          agents={agents}
+          squads={squads}
+          onClose={() => setEditingJob(null)}
+          onSaved={() => void handleEditSaved(editingJob.id)}
+        />
+      )}
     </div>
   );
 }
@@ -1147,6 +1198,444 @@ function ActionButton({
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
       {label}
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EditCronJobDialog
+//
+// Secondary modal-on-top-of-modal that edits the editable subset of a
+// CronJob. It pre-fills from the current job, sends only changed fields
+// through `updateCronJob`, and bubbles a `onSaved` event so the parent
+// can refresh both the list and the expanded detail view.
+// ─────────────────────────────────────────────────────────────────────────
+
+type EditCronJobDialogProps = {
+  job: CronJob;
+  agents: CronAgentOption[];
+  squads: CronSquadOption[];
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+// Convert an ISO string back to the value a <input type="datetime-local"/>
+// expects (YYYY-MM-DDTHH:mm in local time).
+const isoToLocalDateTimeInput = (iso: string | null): string => {
+  if (!iso) return toLocalDateTimeInput(30);
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return toLocalDateTimeInput(30);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+function EditCronJobDialog({
+  job,
+  agents,
+  squads,
+  onClose,
+  onSaved,
+}: EditCronJobDialogProps) {
+  // ── Form state, seeded from the job ──
+  const [name, setName] = useState(job.name ?? "");
+  const [description, setDescription] = useState(job.description ?? "");
+  const [runAt, setRunAt] = useState(() =>
+    job.kind === "one-shot" ? isoToLocalDateTimeInput(job.runAtUtc) : toLocalDateTimeInput(30),
+  );
+  const [cronExpr, setCronExpr] = useState(job.cronExpression ?? "0 9 * * *");
+  const [timezone, setTimezone] = useState(job.timezone ?? DEFAULT_TZ);
+  const [systemEvent, setSystemEvent] = useState(job.systemEvent ?? "");
+  const [sessionMode, setSessionMode] = useState<CronJobSessionMode>(job.sessionMode);
+  const [sessionKey, setSessionKey] = useState(job.sessionKey ?? "");
+  const [wakeMode, setWakeMode] = useState<CronJobWakeMode>(job.wakeMode);
+  const [deliveryMode, setDeliveryMode] = useState<CronJobDeliveryMode>(job.deliveryMode);
+  const [webhookUrl, setWebhookUrl] = useState(job.webhookUrl ?? "");
+  const [webhookToken, setWebhookToken] = useState(job.webhookToken ?? "");
+  const [agentId, setAgentId] = useState<string>(
+    job.agentId != null ? String(job.agentId) : "",
+  );
+  const [squadId, setSquadId] = useState<string>(job.squadId ?? "");
+  const [deleteAfterRun, setDeleteAfterRun] = useState(job.deleteAfterRun);
+
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const canSave =
+    name.trim().length > 0 &&
+    systemEvent.trim().length > 0 &&
+    (job.kind === "one-shot"
+      ? !!fromLocalDateTimeInput(runAt)
+      : cronExpr.trim().length > 0);
+
+  const handleSave = useCallback(async () => {
+    if (!canSave) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      // Build the update payload — only include fields that actually changed.
+      const payload: UpdateCronJobInput = {};
+
+      const nextName = name.trim();
+      if (nextName !== (job.name ?? "")) payload.name = nextName;
+
+      const nextDescription = description.trim() || null;
+      if (nextDescription !== (job.description ?? null)) {
+        payload.description = nextDescription;
+      }
+
+      if (job.kind === "one-shot") {
+        const nextRunAt = fromLocalDateTimeInput(runAt);
+        if (nextRunAt !== job.runAtUtc) payload.runAtUtc = nextRunAt;
+        if (deleteAfterRun !== job.deleteAfterRun) {
+          payload.deleteAfterRun = deleteAfterRun;
+        }
+      } else {
+        const nextCron = cronExpr.trim() || null;
+        if (nextCron !== (job.cronExpression ?? null)) {
+          payload.cronExpression = nextCron;
+        }
+        const nextTz = timezone.trim() || null;
+        if (nextTz !== (job.timezone ?? null)) payload.timezone = nextTz;
+      }
+
+      const nextSystemEvent = systemEvent.trim();
+      if (nextSystemEvent !== (job.systemEvent ?? "")) {
+        payload.systemEvent = nextSystemEvent;
+      }
+
+      if (sessionMode !== job.sessionMode) payload.sessionMode = sessionMode;
+      const nextSessionKey =
+        sessionMode === "named" && sessionKey.trim() ? sessionKey.trim() : null;
+      if (nextSessionKey !== (job.sessionKey ?? null)) {
+        payload.sessionKey = nextSessionKey;
+      }
+
+      if (wakeMode !== job.wakeMode) payload.wakeMode = wakeMode;
+      if (deliveryMode !== job.deliveryMode) payload.deliveryMode = deliveryMode;
+
+      const nextWebhookUrl =
+        deliveryMode === "webhook" && webhookUrl.trim() ? webhookUrl.trim() : null;
+      if (nextWebhookUrl !== (job.webhookUrl ?? null)) {
+        payload.webhookUrl = nextWebhookUrl;
+      }
+      const nextWebhookToken =
+        deliveryMode === "webhook" && webhookToken.trim() ? webhookToken.trim() : null;
+      if (nextWebhookToken !== (job.webhookToken ?? null)) {
+        payload.webhookToken = nextWebhookToken;
+        if (nextWebhookToken === null) payload.clearWebhookToken = true;
+      }
+
+      // Agent / squad retarget.
+      const nextAgentId =
+        agentId.trim() && !Number.isNaN(Number(agentId)) ? Number(agentId) : null;
+      if (nextAgentId !== (job.agentId ?? null)) {
+        if (nextAgentId === null) {
+          payload.clearAgent = true;
+        } else {
+          payload.agentId = nextAgentId;
+        }
+      }
+      const nextSquadId = squadId.trim() || null;
+      if (nextSquadId !== (job.squadId ?? null)) {
+        if (nextSquadId === null) {
+          payload.clearSquad = true;
+        } else {
+          payload.squadId = nextSquadId;
+        }
+      }
+
+      if (Object.keys(payload).length === 0) {
+        // Nothing to do — just close.
+        onSaved();
+        return;
+      }
+
+      await updateCronJob(job.id, payload);
+      onSaved();
+    } catch (error) {
+      setErr(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [
+    agentId,
+    canSave,
+    cronExpr,
+    deleteAfterRun,
+    deliveryMode,
+    description,
+    job,
+    name,
+    onSaved,
+    runAt,
+    sessionKey,
+    sessionMode,
+    squadId,
+    systemEvent,
+    timezone,
+    wakeMode,
+    webhookToken,
+    webhookUrl,
+  ]);
+
+  const scheduleSummary =
+    job.kind === "one-shot"
+      ? (() => {
+          const parsed = fromLocalDateTimeInput(runAt);
+          if (!parsed) return "Pick a date and time";
+          return `Runs once · ${formatCronDate(parsed)}`;
+        })()
+      : `${cronExpr.trim() || "?"} · ${timezone || DEFAULT_TZ}`;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-md">
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+
+      <section
+        className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        style={{ borderColor: `${ACCENT}30` }}
+      >
+        {/* Header */}
+        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+          <div
+            className="flex h-11 w-11 items-center justify-center rounded-xl"
+            style={{ backgroundColor: `${ACCENT}20`, border: `1.5px solid ${ACCENT}50` }}
+          >
+            <Pencil className="h-4 w-4" style={{ color: ACCENT }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-base font-semibold text-white">
+              Edit cron job
+            </h2>
+            <p className="truncate text-xs text-white/40">
+              {job.name || `Job #${job.id}`} · {KIND_LABEL[job.kind]}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+          {err && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="leading-6">{err}</span>
+            </div>
+          )}
+
+          <Field label="Name" required>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Description" hint="Internal note — not sent to the agent.">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={2}
+              className={`${inputClass} resize-none`}
+            />
+          </Field>
+
+          {job.kind === "one-shot" ? (
+            <Field label="Run at" required hint="Your local time — stored as UTC.">
+              <input
+                type="datetime-local"
+                value={runAt}
+                onChange={(e) => setRunAt(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+          ) : (
+            <>
+              <Field
+                label="Cron expression"
+                required
+                hint="Standard 5-field syntax (min hour day month dow)."
+              >
+                <input
+                  type="text"
+                  value={cronExpr}
+                  onChange={(e) => setCronExpr(e.target.value)}
+                  className={`${inputClass} font-mono tracking-wider`}
+                />
+              </Field>
+              <Field label="Timezone" hint="IANA zone (e.g. America/Los_Angeles).">
+                <input
+                  type="text"
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+            </>
+          )}
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/60">
+            <span className="font-semibold text-white/70">Schedule preview:</span>{" "}
+            {scheduleSummary}
+          </div>
+
+          <Field
+            label="System event"
+            required
+            hint="The message the cron will deliver to the agent when it fires."
+          >
+            <textarea
+              value={systemEvent}
+              onChange={(e) => setSystemEvent(e.target.value)}
+              rows={3}
+              className={`${inputClass} resize-none`}
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Session mode">
+              <select
+                value={sessionMode}
+                onChange={(e) => setSessionMode(e.target.value as CronJobSessionMode)}
+                className={inputClass}
+              >
+                <option value="fresh">Fresh session per run</option>
+                <option value="main">Main session</option>
+                <option value="named">Named session</option>
+              </select>
+            </Field>
+            <Field label="Wake mode">
+              <select
+                value={wakeMode}
+                onChange={(e) => setWakeMode(e.target.value as CronJobWakeMode)}
+                className={inputClass}
+              >
+                <option value="now">Wake immediately</option>
+                <option value="idle">Only when idle</option>
+                <option value="next-turn">Wait for next turn</option>
+              </select>
+            </Field>
+          </div>
+
+          {sessionMode === "named" && (
+            <Field label="Session key">
+              <input
+                type="text"
+                value={sessionKey}
+                onChange={(e) => setSessionKey(e.target.value)}
+                placeholder="session:daily-brief"
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Agent (optional)">
+              <select
+                value={agentId}
+                onChange={(e) => setAgentId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— None —</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Squad (optional)">
+              <select
+                value={squadId}
+                onChange={(e) => setSquadId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— None —</option>
+                {squads.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Delivery">
+            <select
+              value={deliveryMode}
+              onChange={(e) => setDeliveryMode(e.target.value as CronJobDeliveryMode)}
+              className={inputClass}
+            >
+              <option value="announce">Announce in chat</option>
+              <option value="webhook">Webhook callback</option>
+              <option value="none">Silent (no delivery)</option>
+            </select>
+          </Field>
+
+          {deliveryMode === "webhook" && (
+            <div className="grid grid-cols-1 gap-3">
+              <Field label="Webhook URL">
+                <input
+                  type="text"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  placeholder="https://your-host/callbacks/cron"
+                  className={`${inputClass} font-mono`}
+                />
+              </Field>
+              <Field label="Webhook bearer token (optional)">
+                <input
+                  type="text"
+                  value={webhookToken}
+                  onChange={(e) => setWebhookToken(e.target.value)}
+                  placeholder="tok_…"
+                  className={`${inputClass} font-mono`}
+                />
+              </Field>
+            </div>
+          )}
+
+          {job.kind === "one-shot" && (
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-white/70">
+              <input
+                type="checkbox"
+                checked={deleteAfterRun}
+                onChange={(e) => setDeleteAfterRun(e.target.checked)}
+                className="h-3.5 w-3.5 accent-amber-400"
+              />
+              Delete the job automatically after it runs
+            </label>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={!canSave || busy}
+            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ backgroundColor: ACCENT }}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Save changes
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
