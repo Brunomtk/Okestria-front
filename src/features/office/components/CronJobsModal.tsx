@@ -894,8 +894,8 @@ export function CronJobsModal({
                                   <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider">
                                     Last error
                                   </div>
-                                  <div className="whitespace-pre-wrap leading-5">
-                                    {selectedJob.lastErrorMessage}
+                                  <div className="whitespace-pre-wrap break-words leading-5">
+                                    {sanitizeErrorText(selectedJob.lastErrorMessage)}
                                   </div>
                                 </div>
                               )}
@@ -1988,7 +1988,11 @@ function RunRow({ run }: { run: CronJobRun }) {
           ? "#22d3ee"
           : "#94a3b8";
 
-  const hint = buildGatewayErrorHint(run.errorMessage ?? null, run.httpStatus ?? null);
+  const cleanedError = sanitizeErrorText(run.errorMessage);
+  const hint = buildGatewayErrorHint(
+    cleanedError || (run.errorMessage ?? null),
+    run.httpStatus ?? null,
+  );
 
   return (
     <div className="flex flex-col gap-1 px-3 py-2 text-[11px]">
@@ -2015,7 +2019,7 @@ function RunRow({ run }: { run: CronJobRun }) {
       </div>
       {run.errorMessage && (
         <div className="ml-5 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1.5 text-[10px] leading-4 text-red-100">
-          <div className="whitespace-pre-wrap break-words">{run.errorMessage}</div>
+          <div className="whitespace-pre-wrap break-words">{cleanedError || run.errorMessage}</div>
           {hint && (
             <div className="mt-1 border-t border-red-400/20 pt-1 text-red-200/80">
               {hint}
@@ -2025,6 +2029,59 @@ function RunRow({ run }: { run: CronJobRun }) {
       )}
     </div>
   );
+}
+
+/**
+ * Mirrors the backend v32 `SummarizeGatewayBody` helper: if the stored error
+ * message contains raw HTML (nginx's default 502/503/504 page, or any other
+ * upstream HTML error body) we strip tags and collapse whitespace so the UI
+ * shows "502 Bad Gateway nginx/1.18.0 (Ubuntu)" instead of a multi-line blob
+ * of `<html><head>…`.
+ *
+ * This is a pure render-time cleanup, applied to both `lastErrorMessage` on
+ * the job and `errorMessage` on each run. Backend v32 already cleans up new
+ * writes, but historic rows still carry the raw body — this keeps the UI
+ * readable for those too.
+ */
+function sanitizeErrorText(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+
+  // Heuristic: only touch the string if it actually looks HTML-ish. Plain
+  // error messages with the occasional "<" (e.g. a stack trace with generics)
+  // pass through unchanged.
+  const lower = trimmed.toLowerCase();
+  const looksHtml =
+    trimmed.startsWith("<") ||
+    lower.includes("<html") ||
+    lower.includes("<head") ||
+    lower.includes("<body") ||
+    /<\/?(html|head|body|title|center|h[1-6]|hr|br|p|div|span)\b/i.test(trimmed);
+
+  if (!looksHtml) return trimmed;
+
+  // Preserve the framing prefix we emit from the backend ("Gateway responded
+  // 502: …", "Upstream returned 503: …") so the sanitized output keeps its
+  // lead-in intact.
+  const prefixMatch = trimmed.match(/^([^<]*?:\s*)(<[\s\S]*)$/);
+  const prefix = prefixMatch ? prefixMatch[1] : "";
+  const htmlPart = prefixMatch ? prefixMatch[2] : trimmed;
+
+  const stripped = htmlPart
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const combined = (prefix + stripped).trim();
+  return combined.length > 0 ? combined : trimmed;
 }
 
 /**
