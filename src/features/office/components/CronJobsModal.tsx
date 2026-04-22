@@ -157,7 +157,9 @@ export function CronJobsModal({
   const [formEmailEnabled, setFormEmailEnabled] = useState(false);
   const [formEmailFrom, setFormEmailFrom] = useState("");
   const [formEmailFromName, setFormEmailFromName] = useState("");
-  const [formEmailReplyTo, setFormEmailReplyTo] = useState("");
+  // Reply-To is no longer an editable form field — OpenClaw picks the
+  // reply address at dispatch (verified Resend sender), so we just
+  // always submit `null` for this job shape.
   const [formEmailSubject, setFormEmailSubject] = useState("");
   const [formEmailFooterDataUrl, setFormEmailFooterDataUrl] = useState<string | null>(null);
   const [formEmailFooterName, setFormEmailFooterName] = useState<string | null>(null);
@@ -202,7 +204,6 @@ export function CronJobsModal({
     setFormEmailEnabled(false);
     setFormEmailFrom("");
     setFormEmailFromName("");
-    setFormEmailReplyTo("");
     setFormEmailSubject("");
     setFormEmailFooterDataUrl(null);
     setFormEmailFooterName(null);
@@ -279,7 +280,7 @@ export function CronJobsModal({
     if (!emailDefaults) return;
     setFormEmailFrom((current) => current || emailDefaults.fromEmail || "");
     setFormEmailFromName((current) => current || emailDefaults.fromName || "");
-    setFormEmailReplyTo((current) => current || emailDefaults.replyTo || "");
+    // Reply-To: no UI field → no prefill.
     setFormEmailFooterDataUrl((current) =>
       current ? current : emailDefaults.footerImageDataUrl || null,
     );
@@ -527,7 +528,8 @@ export function CronJobsModal({
           emailEnabled: formEmailEnabled,
           fromEmail: formEmailFrom,
           fromName: formEmailFromName,
-          replyTo: formEmailReplyTo,
+          // OpenClaw resolves Reply-To at dispatch (verified From sender).
+          replyTo: "",
           subjectTemplate: formEmailSubject,
           footerImageDataUrl: formEmailFooterDataUrl,
           instructionsHint: formEmailHint,
@@ -565,7 +567,6 @@ export function CronJobsModal({
     formEmailEnabled,
     formEmailFrom,
     formEmailFromName,
-    formEmailReplyTo,
     formEmailSubject,
     formEmailFooterDataUrl,
     formEmailHint,
@@ -1238,8 +1239,6 @@ export function CronJobsModal({
                 onFromEmailChange={setFormEmailFrom}
                 fromName={formEmailFromName}
                 onFromNameChange={setFormEmailFromName}
-                replyTo={formEmailReplyTo}
-                onReplyToChange={setFormEmailReplyTo}
                 subjectTemplate={formEmailSubject}
                 onSubjectTemplateChange={setFormEmailSubject}
                 footerDataUrl={formEmailFooterDataUrl}
@@ -1255,7 +1254,7 @@ export function CronJobsModal({
                   if (!emailDefaults) return;
                   setFormEmailFrom(emailDefaults.fromEmail ?? "");
                   setFormEmailFromName(emailDefaults.fromName ?? "");
-                  setFormEmailReplyTo(emailDefaults.replyTo ?? "");
+                  // Reply-To intentionally not restored — no UI field.
                   setFormEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
                   setFormEmailFooterName(
                     emailDefaults.footerImageDataUrl
@@ -1480,9 +1479,9 @@ function EditCronJobDialog({
   const [emailFromName, setEmailFromName] = useState<string>(
     initialEmail?.fromName ?? "",
   );
-  const [emailReplyTo, setEmailReplyTo] = useState<string>(
-    initialEmail?.replyTo ?? "",
-  );
+  // Reply-To is not editable anymore — OpenClaw picks it at dispatch.
+  // We don't track it as a form field; the submission always sends
+  // `null` for replyTo.
   const [emailSubject, setEmailSubject] = useState<string>(
     initialEmail?.subjectTemplate ?? "",
   );
@@ -1509,7 +1508,7 @@ function EditCronJobDialog({
     if (!emailDefaults) return;
     setEmailFrom((current) => current || emailDefaults.fromEmail || "");
     setEmailFromName((current) => current || emailDefaults.fromName || "");
-    setEmailReplyTo((current) => current || emailDefaults.replyTo || "");
+    // Reply-To: no UI field → no prefill.
     setEmailFooterDataUrl((current) =>
       current ? current : emailDefaults.footerImageDataUrl || null,
     );
@@ -1617,7 +1616,8 @@ function EditCronJobDialog({
         emailEnabled,
         fromEmail: emailFrom,
         fromName: emailFromName,
-        replyTo: emailReplyTo,
+        // OpenClaw resolves Reply-To at dispatch (verified From sender).
+        replyTo: "",
         subjectTemplate: emailSubject,
         footerImageDataUrl: emailFooterDataUrl,
         instructionsHint: emailHint,
@@ -1656,7 +1656,6 @@ function EditCronJobDialog({
     emailFrom,
     emailFromName,
     emailHint,
-    emailReplyTo,
     emailSubject,
     job,
     name,
@@ -1926,8 +1925,6 @@ function EditCronJobDialog({
             onFromEmailChange={setEmailFrom}
             fromName={emailFromName}
             onFromNameChange={setEmailFromName}
-            replyTo={emailReplyTo}
-            onReplyToChange={setEmailReplyTo}
             subjectTemplate={emailSubject}
             onSubjectTemplateChange={setEmailSubject}
             footerDataUrl={emailFooterDataUrl}
@@ -1943,7 +1940,7 @@ function EditCronJobDialog({
               if (!emailDefaults) return;
               setEmailFrom(emailDefaults.fromEmail ?? "");
               setEmailFromName(emailDefaults.fromName ?? "");
-              setEmailReplyTo(emailDefaults.replyTo ?? "");
+              // Reply-To intentionally not restored — no UI field.
               setEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
               setEmailFooterName(
                 emailDefaults.footerImageDataUrl
@@ -2160,8 +2157,9 @@ type EmailToolCardProps = {
   onFromEmailChange: (next: string) => void;
   fromName: string;
   onFromNameChange: (next: string) => void;
-  replyTo: string;
-  onReplyToChange: (next: string) => void;
+  // Reply-To is no longer operator-editable — OpenClaw picks it at
+  // dispatch (verified Resend sender), so the card doesn't take a
+  // replyTo / onReplyToChange pair anymore.
   subjectTemplate: string;
   onSubjectTemplateChange: (next: string) => void;
   footerDataUrl: string | null;
@@ -2187,8 +2185,6 @@ function EmailToolCard({
   onFromEmailChange,
   fromName,
   onFromNameChange,
-  replyTo,
-  onReplyToChange,
   subjectTemplate,
   onSubjectTemplateChange,
   footerDataUrl,
@@ -2352,15 +2348,9 @@ function EmailToolCard({
                       </span>
                     </>
                   )}
-                  {defaults.replyTo && (
-                    <>
-                      {" "}
-                      <span className="text-white/55">· reply-to</span>{" "}
-                      <span className="font-mono text-white/85">
-                        {defaults.replyTo}
-                      </span>
-                    </>
-                  )}
+                  {/* Reply-To chip removed — OpenClaw decides the reply
+                      address at dispatch time (defaults to the verified
+                      From sender), so it's not a user-editable field. */}
                   {defaults.footerImageDataUrl && (
                     <span className="text-white/55"> · personal footer</span>
                   )}
@@ -2427,38 +2417,23 @@ function EmailToolCard({
             </Field>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field
-              label="Reply-To (optional)"
-              hint={
-                defaults?.replyTo
-                  ? `Blank uses: ${defaults.replyTo}`
-                  : "Where replies will land. Blank reuses the From address."
-              }
-            >
-              <input
-                type="email"
-                value={replyTo}
-                onChange={(e) => onReplyToChange(e.target.value)}
-                placeholder={defaults?.replyTo ?? "lucas@ptxgroup.us"}
-                disabled={disabled}
-                className={`${inputClass} font-mono`}
-              />
-            </Field>
-            <Field
-              label="Default subject"
-              hint="The agent can override this per email."
-            >
-              <input
-                type="text"
-                value={subjectTemplate}
-                onChange={(e) => onSubjectTemplateChange(e.target.value)}
-                placeholder="PTX · Daily update"
-                disabled={disabled}
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          {/* Reply-To input intentionally removed — OpenClaw picks the
+              reply address at dispatch (defaults to the verified From
+              sender from Resend), so there is nothing for the operator
+              to fill in here. */}
+          <Field
+            label="Default subject"
+            hint="The agent can override this per email."
+          >
+            <input
+              type="text"
+              value={subjectTemplate}
+              onChange={(e) => onSubjectTemplateChange(e.target.value)}
+              placeholder="PTX · Daily update"
+              disabled={disabled}
+              className={inputClass}
+            />
+          </Field>
 
           <div>
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/50">

@@ -166,7 +166,9 @@ export function LeadOpsPanel({
   // Email form fields
   const [emailSenderName, setEmailSenderName] = useState(companyName?.trim() || "");
   const [emailSenderAddress, setEmailSenderAddress] = useState("");
-  const [emailReplyTo, setEmailReplyTo] = useState("");
+  // Reply-To is not a form field anymore — OpenClaw resolves it at
+  // dispatch time (verified Resend sender). We simply omit it from
+  // the outgoing payload.
   const [emailSubjectTemplate, setEmailSubjectTemplate] = useState("{{businessName}} · a tailored growth idea from {{companyName}}");
   const [emailIntroText, setEmailIntroText] = useState("I asked our team at {{companyName}} to prepare a tailored outreach idea based on your business profile.");
   const [singleLeadRecipient, setSingleLeadRecipient] = useState("");
@@ -176,7 +178,7 @@ export function LeadOpsPanel({
   const selectedJob = useMemo(() => jobs.find((j) => j.id === selectedJobId) ?? null, [jobs, selectedJobId]);
   const selectedLeadAgent = useMemo(() => leadAgentOptions.find((a) => a.backendAgentId === selectedBackendAgentId) ?? null, [leadAgentOptions, selectedBackendAgentId]);
   const effectiveCompanyName = companyBrandName.trim() || companyName?.trim() || "Your Company";
-  const effectiveCompanyEmail = companyBrandEmail.trim() || emailSenderAddress.trim() || emailReplyTo.trim();
+  const effectiveCompanyEmail = companyBrandEmail.trim() || emailSenderAddress.trim();
 
   // Filtered leads
   const filteredLeads = useMemo(() => {
@@ -495,9 +497,9 @@ export function LeadOpsPanel({
         title: `Outreach batch · ${selectedJob.title}`,
         senderName: emailSenderName.trim() || effectiveCompanyName,
         senderEmail: emailSenderAddress.trim() || effectiveCompanyEmail,
-        // Reply-To: only send what the operator explicitly typed.
-        // Blank → let OpenClaw default it to the verified From at dispatch.
-        replyTo: emailReplyTo.trim() || undefined,
+        // Reply-To: no UI field — let OpenClaw resolve it at dispatch
+        // (verified Resend sender is used as the default).
+        replyTo: undefined,
         subjectTemplate: emailSubjectTemplate.trim(),
         introText: emailIntroText.trim() || undefined,
       });
@@ -509,7 +511,7 @@ export function LeadOpsPanel({
     } finally {
       setSendingBatch(false);
     }
-  }, [companyId, effectiveCompanyEmail, effectiveCompanyName, emailIntroText, emailReplyTo, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
+  }, [companyId, effectiveCompanyEmail, effectiveCompanyName, emailIntroText, emailSenderAddress, emailSenderName, emailSubjectTemplate, selectedJob]);
 
   const handlePrimeLeadJobChat = useCallback(async () => {
     if (!selectedJob) return;
@@ -569,9 +571,9 @@ export function LeadOpsPanel({
         toEmail: singleLeadRecipient.trim() || undefined,
         subject: singleLeadSubject.trim() || undefined,
         introText: emailIntroText.trim() || undefined,
-        // Reply-To: only send what the operator explicitly typed.
-        // Blank → let OpenClaw default it to the verified From at dispatch.
-        replyTo: emailReplyTo.trim() || undefined,
+        // Reply-To: no UI field — let OpenClaw resolve it at dispatch
+        // (verified Resend sender is used as the default).
+        replyTo: undefined,
         generateInsightsIfMissing: true,
         forceRegenerateInsights: false,
         preferredModel: selectedModel,
@@ -586,7 +588,7 @@ export function LeadOpsPanel({
     } finally {
       setSendingSingleEmail(false);
     }
-  }, [effectiveCompanyEmail, emailIntroText, emailReplyTo, selectedLeadDetail, selectedModel, singleLeadRecipient, singleLeadSubject]);
+  }, [effectiveCompanyEmail, emailIntroText, selectedLeadDetail, selectedModel, singleLeadRecipient, singleLeadSubject]);
 
   const handleCancelEmailBatch = useCallback(async (batchId: number) => {
     try {
@@ -1537,15 +1539,8 @@ export function LeadOpsPanel({
               </div>
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-white/50">Reply-To</label>
-              <input
-                value={emailReplyTo}
-                onChange={(e) => setEmailReplyTo(e.target.value)}
-                placeholder={effectiveCompanyEmail || "reply@domain.com"}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
-              />
-            </div>
+            {/* Reply-To field removed — OpenClaw resolves the reply
+                address at dispatch (verified Resend sender). */}
 
             <div>
               <label className="mb-1.5 block text-xs font-medium text-white/50">Subject Template</label>
@@ -1617,15 +1612,8 @@ export function LeadOpsPanel({
               />
             </div>
 
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-white/50">Reply-To</label>
-              <input
-                value={emailReplyTo}
-                onChange={(e) => setEmailReplyTo(e.target.value)}
-                placeholder={effectiveCompanyEmail || "reply@domain.com"}
-                className="w-full rounded-lg bg-white/5 px-3 py-2.5 text-sm text-white outline-none ring-1 ring-white/10 placeholder:text-white/25 focus:ring-cyan-500/50"
-              />
-            </div>
+            {/* Reply-To field removed — OpenClaw resolves the reply
+                address at dispatch (verified Resend sender). */}
           </div>
 
           <div className="mt-6 flex items-center justify-end gap-3">
