@@ -28,7 +28,7 @@ import {
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
-  fetchEmailToolDefaults,
+  resolveEmailToolDefaults,
   formatCronDate,
   formatRelativeTime,
   KIND_LABEL,
@@ -235,20 +235,21 @@ export function CronJobsModal({
     };
   }, [open, tab, companyId]);
 
-  // Fetch the email-tool defaults once per modal lifecycle. We do it on any
-  // first open (not only when "new" is selected) because the edit dialog
-  // also consumes them — the user might open a job and want to see their
-  // name/email prefilled there too.
+  // Resolve the email-tool defaults as soon as the modal opens. We use
+  // `resolveEmailToolDefaults` (not the raw endpoint) so even if the v29
+  // backend endpoint is missing we still get the operator's profile data
+  // from /Users/me + /Companies/by-company + /Users/{id}/email-context +
+  // the session cookie. This is what the user explicitly asked for:
+  // "puxar tudo prenchido do usuario logado, footer, ...".
   useEffect(() => {
     if (!open || !companyId || emailDefaultsLoaded) return;
     let cancelled = false;
     (async () => {
       try {
-        const defaults = await fetchEmailToolDefaults(companyId);
+        const defaults = await resolveEmailToolDefaults(companyId);
         if (cancelled) return;
         setEmailDefaults(defaults);
       } catch {
-        // Non-fatal. The form just doesn't auto-fill.
         if (!cancelled) setEmailDefaults(null);
       } finally {
         if (!cancelled) setEmailDefaultsLoaded(true);
@@ -268,12 +269,14 @@ export function CronJobsModal({
     }
   }, [open]);
 
-  // Auto-populate the create form's email fields the first time the operator
-  // flips the tool on — but only for fields they haven't typed into yet,
-  // so we don't clobber anything. The edit dialog does the same thing
-  // internally using its own state.
+  // Eagerly prefill the create form's email fields the moment defaults
+  // arrive — regardless of whether the operator toggled the tool on.
+  // This is what makes the "Email tool (Resend)" card visibly populated
+  // the second the modal opens instead of sitting empty until the user
+  // checks the box. We only write into blank fields to avoid clobbering
+  // values the operator may have already typed.
   useEffect(() => {
-    if (!formEmailEnabled || !emailDefaults) return;
+    if (!emailDefaults) return;
     setFormEmailFrom((current) => current || emailDefaults.fromEmail || "");
     setFormEmailFromName((current) => current || emailDefaults.fromName || "");
     setFormEmailReplyTo((current) => current || emailDefaults.replyTo || "");
@@ -287,7 +290,7 @@ export function CronJobsModal({
           ? emailDefaults.footerImageFileName || "footer do seu perfil"
           : null,
     );
-  }, [formEmailEnabled, emailDefaults]);
+  }, [emailDefaults]);
 
   const leadOptions = useMemo(
     () =>
@@ -1496,11 +1499,14 @@ function EditCronJobDialog({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // If the operator flips the email tool ON while editing a job that never
-  // had it, prefill the fields from the fetched defaults — same behavior
-  // as the create form. We don't clobber user-typed values.
+  // Prefill the email-tool fields from the resolved defaults as soon as
+  // they arrive — same eager behavior as the create form. We only write
+  // into blank fields so saved job values (and operator-typed overrides)
+  // are preserved. This runs regardless of whether `emailEnabled` is true,
+  // so when the operator flips the tool ON later the card is already
+  // populated with their profile data.
   useEffect(() => {
-    if (!emailEnabled || !emailDefaults) return;
+    if (!emailDefaults) return;
     setEmailFrom((current) => current || emailDefaults.fromEmail || "");
     setEmailFromName((current) => current || emailDefaults.fromName || "");
     setEmailReplyTo((current) => current || emailDefaults.replyTo || "");
@@ -1514,7 +1520,7 @@ function EditCronJobDialog({
           ? emailDefaults.footerImageFileName || "footer do seu perfil"
           : null,
     );
-  }, [emailEnabled, emailDefaults]);
+  }, [emailDefaults]);
 
   const canSave =
     name.trim().length > 0 &&
@@ -2276,6 +2282,30 @@ function EmailToolCard({
             {" "}— aqui você só define o remetente, assunto padrão e banner de
             rodapé. Os campos são pré-preenchidos com os seus dados de perfil.
           </p>
+          {!enabled && defaults && (defaults.fromName || defaults.fromEmail) && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
+              <span
+                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
+                style={{ backgroundColor: `${ACCENT}25`, color: ACCENT, fontSize: 9, fontWeight: 700 }}
+              >
+                i
+              </span>
+              <span>
+                Pronto para ativar com{" "}
+                <span className="font-mono text-white/80">
+                  {defaults.fromName ?? "—"}
+                </span>{" "}
+                <span className="text-white/45">&lt;</span>
+                <span className="font-mono text-white/80">
+                  {defaults.fromEmail ?? "—"}
+                </span>
+                <span className="text-white/45">&gt;</span>
+                {defaults.footerImageDataUrl && (
+                  <span className="text-white/55"> · rodapé do seu perfil</span>
+                )}
+              </span>
+            </div>
+          )}
         </div>
       </label>
 

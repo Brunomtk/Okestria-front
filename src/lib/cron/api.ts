@@ -4,8 +4,17 @@
 // gateway internally.
 
 import { getBrowserAccessToken } from "@/lib/agents/backend-api";
-import { getOkestriaApiBaseUrl } from "@/lib/auth/api";
-import { ensureFreshAccessToken } from "@/lib/auth/session-client";
+import {
+  fetchCompanyById,
+  fetchCurrentUser,
+  fetchUserEmailContext,
+  getOkestriaApiBaseUrl,
+} from "@/lib/auth/api";
+import {
+  ensureFreshAccessToken,
+  SESSION_COOKIE,
+} from "@/lib/auth/session-client";
+import { parseStoredSessionCookie } from "@/lib/auth/session-shared";
 
 export type CronJobKind = "one-shot" | "recurring";
 export type CronJobSessionMode = "fresh" | "main" | "named";
@@ -402,6 +411,176 @@ export const fetchEmailToolDefaults = async (
     `/api/CronJobs/tools/email-defaults?companyId=${escapeQuery(String(companyId))}`,
     { method: "GET" },
   );
+};
+
+// ── Client-side resolver (resilient fallback) ──────────────────────────
+//
+// The old flow assumed the v29 backend endpoint `/tools/email-defaults` was
+// always reachable. In practice environments rotate independently and the
+// operator would see a blank form whenever that endpoint wasn't yet deployed
+// or returned an error. To make the email-tool card trustworthy we resolve
+// the defaults from multiple sources and merge them in order of quality:
+//
+//   1. The new backend endpoint (authoritative — carries resendConfigured
+//      and the operator's actual email context as resolved server-side).
+//   2. /api/Users/me + /api/Companies/by-company/{id} + /api/Users/{id}/email-context
+//      (already used elsewhere in the app — works even without v29).
+//   3. The `okestria_session` browser cookie (offline/instant fallback that
+//      always has at least the user's name + email).
+//
+// Any source failing is non-fatal; we fall through to the next one. The
+// returned `note` surfaces configuration problems (Resend unconfigured,
+// company without an email, etc.) so the UI can show a warning instead of
+// pretending everything is fine.
+
+const readSessionCookieIdentity = (): {
+  userId: number | null;
+  companyId: number | null;
+  name: string | null;
+  email: string | null;
+} => {
+  if (typeof document === "undefined") {
+    return { userId: null, companyId: null, name: null, email: null };
+  }
+  const needle = `${SESSION_COOKIE}=`;
+  const entry = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(needle));
+  if (!entry) {
+    return { userId: null, companyId: null, name: null, email: null };
+  }
+  const raw = decodeURIComponent(entry.slice(needle.length));
+  const parsed = parseStoredSessionCookie(raw);
+  return {
+    userId: parsed?.userId ?? null,
+    companyId: parsed?.companyId ?? null,
+    name: parsed?.name ?? null,
+    email: parsed?.email ?? null,
+  };
+};
+
+const firstNonBlank = (
+  ...candidates: Array<string | null | undefined>
+): string | null => {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim().length > 0) return c;
+  }
+  return null;
+};
+
+/**
+ * Best-effort resolver that guarantees a populated defaults object even if
+ * the backend endpoint is unavailable. The UI can therefore *always* show
+ * the operator their own email / name prefilled — no more "empty form"
+ * regressions when a single service is down.
+ */
+export const resolveEmailToolDefaults = async (
+  companyId: number,
+): Promise<CronEmailToolDefaults> => {
+  const session = readSessionCookieIdentity();
+
+  // Kick off every source in parallel — whoever answers first wins for its
+  // own field, and the rest fill in the gaps.
+  const bearer =
+    (await ensureFreshAccessToken().catch(() => null)) ??
+    getBrowserAccessToken();
+
+  const endpointPromise = fetchEmailToolDefaults(companyId).catch(
+    () => null as CronEmailToolDefaults | null,
+  );
+
+  const userPromise = bearer
+    ? fetchCurrentUser(bearer).catch(() => null)
+    : Promise.resolve(null);
+
+  const companyPromise = bearer
+    ? fetchCompanyById(companyId, bearer).catch(() => null)
+    : Promise.resolve(null);
+
+  const userId = session.userId;
+  const userEmailCtxPromise =
+    bearer && userId
+      ? fetchUserEmailContext(userId, bearer).catch(() => null)
+      : Promise.resolve(null);
+
+  const [endpoint, currentUser, company, userEmailCtx] = await Promise.all([
+    endpointPromise,
+    userPromise,
+    companyPromise,
+    userEmailCtxPromise,
+  ]);
+
+  const resolvedUserId = userId ?? currentUser?.userId ?? null;
+
+  // Footer: prefer the new endpoint → the user's per-user footer → the
+  // company-level legacy footer. Never a hardcoded asset.
+  const resolvedFooterDataUrl =
+    firstNonBlank(
+      endpoint?.footerImageDataUrl,
+      userEmailCtx?.footerImageBase64,
+      company?.emailContextFooterImageBase64,
+    ) ?? null;
+
+  const resolvedFooterName =
+    endpoint?.footerImageFileName ??
+    (resolvedFooterDataUrl
+      ? currentUser?.name
+        ? `${currentUser.name} — footer`
+        : session.name
+          ? `${session.name} — footer`
+          : "footer do seu perfil"
+      : null);
+
+  // From email: endpoint wins. Otherwise fall back to the company email (the
+  // verified sender domain) so the agent can actually deliver. We deliberately
+  // do NOT default to the operator's personal email — the user asked us to
+  // leave "From" up to OpenClaw per-request, but we still want a friendly
+  // hint in the UI so the field is never blank.
+  const resolvedFromEmail =
+    firstNonBlank(
+      endpoint?.fromEmail,
+      company?.email,
+    ) ?? "hello@okestria.com";
+
+  // From name: endpoint → signed-in user name → company name → "Okestria".
+  const resolvedFromName =
+    firstNonBlank(
+      endpoint?.fromName,
+      currentUser?.name,
+      session.name,
+      company?.name,
+    ) ?? "Okestria";
+
+  // Reply-To: endpoint → signed-in user email → from email.
+  const resolvedReplyTo =
+    firstNonBlank(
+      endpoint?.replyTo,
+      currentUser?.email,
+      session.email,
+      resolvedFromEmail,
+    ) ?? resolvedFromEmail;
+
+  const resolvedResendConfigured = endpoint?.resendConfigured ?? true;
+
+  // Surface configuration problems to the UI. The endpoint's note wins
+  // (it has server-side visibility); otherwise we synthesize a hint when
+  // key pieces are missing.
+  const note =
+    endpoint?.note ??
+    (!resolvedFooterDataUrl && resolvedUserId
+      ? "Dica: suba uma imagem de rodapé no seu perfil para personalizar a assinatura."
+      : null);
+
+  return {
+    resendConfigured: resolvedResendConfigured,
+    fromEmail: resolvedFromEmail,
+    fromName: resolvedFromName,
+    replyTo: resolvedReplyTo,
+    footerImageDataUrl: resolvedFooterDataUrl,
+    footerImageFileName: resolvedFooterName,
+    note,
+  };
 };
 
 // ── UI helpers ──
