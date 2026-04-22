@@ -476,13 +476,47 @@ export function CronJobsModal({
     [loadJobs, loadJobDetail, selectedJobId],
   );
 
-  const canCreate =
-    !!companyId &&
-    formName.trim().length > 0 &&
-    formSystemEvent.trim().length > 0 &&
-    (formKind === "one-shot"
-      ? !!fromLocalDateTimeInput(formRunAt)
-      : formCron.trim().length > 0);
+  // v82 — surface *what* is blocking the Schedule button instead of silently
+  // greying it out. When any of these pieces are missing, `missingFields` is
+  // rendered as a helper line under the submit button so the operator knows
+  // exactly what to fix.
+  const missingFields = useMemo(() => {
+    const missing: string[] = [];
+    if (!companyId) missing.push("workspace (select a company)");
+    if (formName.trim().length === 0) missing.push("Name");
+    if (formSystemEvent.trim().length === 0) missing.push("System event");
+    if (formKind === "one-shot") {
+      if (!fromLocalDateTimeInput(formRunAt)) missing.push("Run at (date & time)");
+    } else if (formCron.trim().length === 0) {
+      missing.push("Cron expression");
+    }
+    if (
+      formSessionMode === "named" &&
+      formSessionKey.trim().length === 0
+    ) {
+      missing.push("Session key (named session mode)");
+    }
+    if (
+      formDelivery === "webhook" &&
+      formWebhookUrl.trim().length === 0
+    ) {
+      missing.push("Webhook URL (webhook delivery mode)");
+    }
+    return missing;
+  }, [
+    companyId,
+    formName,
+    formSystemEvent,
+    formKind,
+    formRunAt,
+    formCron,
+    formSessionMode,
+    formSessionKey,
+    formDelivery,
+    formWebhookUrl,
+  ]);
+
+  const canCreate = missingFields.length === 0;
 
   const handleCreate = useCallback(async () => {
     if (!companyId || !canCreate) return;
@@ -1265,31 +1299,50 @@ export function CronJobsModal({
                 disabled={createBusy}
               />
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetForm();
-                    setTab("jobs");
-                  }}
-                  className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCreate()}
-                  disabled={!canCreate || createBusy}
-                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
-                  style={{ backgroundColor: ACCENT }}
-                >
-                  {createBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Zap className="h-4 w-4" />
-                  )}
-                  Schedule job
-                </button>
+              <div className="flex flex-col gap-2 pt-2">
+                {missingFields.length > 0 && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      Complete the following before scheduling:{" "}
+                      <span className="font-semibold text-amber-50">
+                        {missingFields.join(", ")}
+                      </span>
+                      .
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetForm();
+                      setTab("jobs");
+                    }}
+                    className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCreate()}
+                    disabled={!canCreate || createBusy}
+                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{ backgroundColor: ACCENT }}
+                    title={
+                      missingFields.length > 0
+                        ? `Missing: ${missingFields.join(", ")}`
+                        : undefined
+                    }
+                  >
+                    {createBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Zap className="h-4 w-4" />
+                    )}
+                    Schedule job
+                  </button>
+                </div>
               </div>
             </div>
           )}
