@@ -962,14 +962,25 @@ export function CronJobsModal({
               </div>
 
               {formSessionMode === "named" && (
-                <Field label="Session key">
+                <Field
+                  label="Session key"
+                  hint="Prefixos aceitos pelo gateway: agent:, hook:, studio:, web:. Se você só digitar um identificador (ex.: daily-brief), o back normaliza automaticamente."
+                >
                   <input
                     type="text"
                     value={formSessionKey}
                     onChange={(e) => setFormSessionKey(e.target.value)}
-                    placeholder="session:daily-brief"
+                    placeholder="daily-brief ou hook:okestria-cron-daily-brief"
                     className={`${inputClass} font-mono`}
                   />
+                  {formSessionKey.trim() && (
+                    <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
+                      Gateway verá:{" "}
+                      <span className="text-white/70">
+                        {previewEffectiveSessionKey(formSessionKey)}
+                      </span>
+                    </div>
+                  )}
                 </Field>
               )}
 
@@ -1532,14 +1543,25 @@ function EditCronJobDialog({
           </div>
 
           {sessionMode === "named" && (
-            <Field label="Session key">
+            <Field
+              label="Session key"
+              hint="Prefixos aceitos pelo gateway: agent:, hook:, studio:, web:. Se você só digitar um identificador (ex.: daily-brief), o back normaliza automaticamente."
+            >
               <input
                 type="text"
                 value={sessionKey}
                 onChange={(e) => setSessionKey(e.target.value)}
-                placeholder="session:daily-brief"
+                placeholder="daily-brief ou hook:okestria-cron-daily-brief"
                 className={`${inputClass} font-mono`}
               />
+              {sessionKey.trim() && (
+                <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
+                  Gateway verá:{" "}
+                  <span className="text-white/70">
+                    {previewEffectiveSessionKey(sessionKey)}
+                  </span>
+                </div>
+              )}
             </Field>
           )}
 
@@ -1714,6 +1736,9 @@ function buildGatewayErrorHint(
     }
     return "Dica: endpoint não encontrado no gateway. Confira se os hooks estão publicados e se o token tem permissão.";
   }
+  if (lower.includes("sessionkey must start with")) {
+    return "Dica: o back v27 já normaliza a sessionKey para o prefixo hook:okestria-cron-… Se você ainda está vendo esse erro, atualize o backend para v27 ou acima.";
+  }
   if (lower.includes("no runtime agent id")) {
     return "Dica: este cron não tem um agentId conhecido pelo OpenClaw. Abra o agente e configure o gatewayAgentId no profile (ou garanta um slug válido).";
   }
@@ -1721,4 +1746,23 @@ function buildGatewayErrorHint(
     return "Dica: os hooks de runtime ainda não estão configurados. Quando OPENCLAW_HOOKS_BASE_URL e OPENCLAW_HOOKS_TOKEN forem definidos, este run será completado via webhook.";
   }
   return null;
+}
+
+/**
+ * Mirrors the backend v27 normalization (NormalizeNamedSessionKey) so the UI
+ * can show the operator the exact sessionKey that will be sent to the
+ * OpenClaw gateway for a "named" cron. Keys already using a valid prefix
+ * (agent: / hook: / studio: / web:) pass through untouched; anything else is
+ * wrapped under `hook:okestria-cron-…`.
+ */
+const ALLOWED_SESSION_KEY_PREFIXES = ["agent:", "hook:", "studio:", "web:"];
+
+function previewEffectiveSessionKey(rawKey: string): string {
+  const trimmed = rawKey.trim();
+  if (!trimmed) return "hook:okestria-cron-<job-id>";
+  const lower = trimmed.toLowerCase();
+  if (ALLOWED_SESSION_KEY_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
+    return trimmed;
+  }
+  return `hook:okestria-cron-${trimmed}`;
 }
