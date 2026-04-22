@@ -236,7 +236,12 @@ export function LeadOpsPanel({
         if (email) {
           setCompanyBrandEmail(email);
           setEmailSenderAddress((c) => (c.trim() ? c : email));
-          setEmailReplyTo((c) => (c.trim() ? c : email));
+          // NOTE: we intentionally do NOT seed Reply-To from company.email.
+          // The company record often holds the admin's personal inbox
+          // (e.g. brunomendestk@gmail.com), and silently routing every
+          // reply there leaks the wrong identity. Leave it blank — the
+          // user can type one, or OpenClaw falls back to the verified
+          // From address at dispatch time.
         }
       } catch {
         // ignore
@@ -490,7 +495,9 @@ export function LeadOpsPanel({
         title: `Outreach batch · ${selectedJob.title}`,
         senderName: emailSenderName.trim() || effectiveCompanyName,
         senderEmail: emailSenderAddress.trim() || effectiveCompanyEmail,
-        replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
+        // Reply-To: only send what the operator explicitly typed.
+        // Blank → let OpenClaw default it to the verified From at dispatch.
+        replyTo: emailReplyTo.trim() || undefined,
         subjectTemplate: emailSubjectTemplate.trim(),
         introText: emailIntroText.trim() || undefined,
       });
@@ -562,7 +569,9 @@ export function LeadOpsPanel({
         toEmail: singleLeadRecipient.trim() || undefined,
         subject: singleLeadSubject.trim() || undefined,
         introText: emailIntroText.trim() || undefined,
-        replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
+        // Reply-To: only send what the operator explicitly typed.
+        // Blank → let OpenClaw default it to the verified From at dispatch.
+        replyTo: emailReplyTo.trim() || undefined,
         generateInsightsIfMissing: true,
         forceRegenerateInsights: false,
         preferredModel: selectedModel,

@@ -556,15 +556,20 @@ export const resolveEmailToolDefaults = async (
       company?.name,
     ) ?? "Okestria";
 
-  // Reply-To: endpoint → signed-in user email → company email. Safe to
-  // prefill with the operator's personal email — it only controls where
-  // replies land, not who the email appears to come from.
+  // Reply-To: endpoint → signed-in user email (JWT/session identity).
+  //
+  // We DELIBERATELY skip `company.email` here for the same reason we skip
+  // it on `resolvedFromEmail`: the company record frequently holds the
+  // admin's personal address (e.g. brunomendestk@gmail.com) and silently
+  // prefilling that as the Reply-To default would route every reply to
+  // the wrong inbox. If neither the endpoint nor the logged-in user
+  // provides an email we return null so OpenClaw can pick the right
+  // reply address at dispatch time (usually the verified From sender).
   const resolvedReplyTo =
     firstNonBlank(
       endpoint?.replyTo,
       currentUser?.email,
       session.email,
-      company?.email,
     ) ?? null;
 
   const resolvedResendConfigured = endpoint?.resendConfigured ?? true;
