@@ -2280,9 +2280,10 @@ function EmailToolCard({
             <span className="font-mono text-white/75">resend_email</span>{" "}
             capability on every run. The{" "}
             <span className="font-semibold">API key stays on the server</span>{" "}
-            — here you only set the sender name, default subject and footer
-            banner. The <span className="font-semibold">From email</span>{" "}
-            is chosen by OpenClaw per request, so you can leave it blank.
+            — here you only set the sender, default subject and footer banner.
+            We prefill the <span className="font-semibold">From email</span>{" "}
+            with your signed-in address; OpenClaw may still override it with a
+            verified sender at dispatch time.
           </p>
           {!enabled && defaults && (defaults.fromName || defaults.footerImageDataUrl) && (
             <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
@@ -2297,10 +2298,19 @@ function EmailToolCard({
                 <span className="font-mono text-white/80">
                   {defaults.fromName ?? "—"}
                 </span>
+                {defaults.fromEmail && (
+                  <>
+                    {" "}
+                    <span className="text-white/45">·</span>{" "}
+                    <span className="font-mono text-white/80">
+                      {defaults.fromEmail}
+                    </span>
+                  </>
+                )}
                 {defaults.footerImageDataUrl && (
                   <span className="text-white/55"> · with your profile footer</span>
                 )}
-                <span className="text-white/45"> · From picked by OpenClaw</span>
+                <span className="text-white/45"> · OpenClaw may override</span>
               </span>
             </div>
           )}
@@ -2333,6 +2343,15 @@ function EmailToolCard({
                   <span className="font-mono text-white/85">
                     {defaults.fromName ?? "—"}
                   </span>
+                  {defaults.fromEmail && (
+                    <>
+                      {" "}
+                      <span className="text-white/55">·</span>{" "}
+                      <span className="font-mono text-white/85">
+                        {defaults.fromEmail}
+                      </span>
+                    </>
+                  )}
                   {defaults.replyTo && (
                     <>
                       {" "}
@@ -2345,7 +2364,7 @@ function EmailToolCard({
                   {defaults.footerImageDataUrl && (
                     <span className="text-white/55"> · personal footer</span>
                   )}
-                  <span className="text-white/55"> · From picked by OpenClaw</span>
+                  <span className="text-white/55"> · OpenClaw may override</span>
                   {!defaults.resendConfigured && (
                     <span className="ml-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
                       Resend off
@@ -2374,13 +2393,17 @@ function EmailToolCard({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field
               label="From email"
-              hint="Leave blank — OpenClaw picks a verified sender per request."
+              hint={
+                defaults?.fromEmail
+                  ? `Blank uses: ${defaults.fromEmail} (OpenClaw may override).`
+                  : "Blank lets OpenClaw pick a verified sender per request."
+              }
             >
               <input
                 type="email"
                 value={fromEmail}
                 onChange={(e) => onFromEmailChange(e.target.value)}
-                placeholder="(OpenClaw decides automatically)"
+                placeholder={defaults?.fromEmail ?? "you@yourdomain.com"}
                 disabled={disabled}
                 className={`${inputClass} font-mono`}
               />

@@ -532,15 +532,20 @@ export const resolveEmailToolDefaults = async (
           : "Your profile footer"
       : null);
 
-  // From email: DELIBERATELY LEFT NULL.
+  // From email: endpoint → signed-in user email (JWT/session identity).
   //
-  // The operator asked that the "From" address be chosen by OpenClaw per
-  // request (each call picks the most appropriate verified sender). If we
-  // prefilled this from `company.email` the UI would look like the user
-  // hand-picked that address — including cases where the company email
-  // happens to be the operator's personal email. So we return null and let
-  // the UI render an explicit "OpenClaw sets this per request" placeholder.
-  const resolvedFromEmail: string | null = null;
+  // We DELIBERATELY skip `company.email` here. The company record frequently
+  // holds the admin's personal address (e.g. brunomendestk@gmail.com) and
+  // surfacing that as the "From" default would leak the wrong identity on
+  // the outgoing message. If neither the endpoint nor the logged-in user
+  // provides an email we return null so OpenClaw can pick a verified sender
+  // at dispatch time.
+  const resolvedFromEmail =
+    firstNonBlank(
+      endpoint?.fromEmail,
+      currentUser?.email,
+      session.email,
+    ) ?? null;
 
   // From name: endpoint → signed-in user name → company name → "Okestria".
   const resolvedFromName =
