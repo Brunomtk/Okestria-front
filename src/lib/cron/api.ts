@@ -529,19 +529,18 @@ export const resolveEmailToolDefaults = async (
         ? `${currentUser.name} — footer`
         : session.name
           ? `${session.name} — footer`
-          : "footer do seu perfil"
+          : "Your profile footer"
       : null);
 
-  // From email: endpoint wins. Otherwise fall back to the company email (the
-  // verified sender domain) so the agent can actually deliver. We deliberately
-  // do NOT default to the operator's personal email — the user asked us to
-  // leave "From" up to OpenClaw per-request, but we still want a friendly
-  // hint in the UI so the field is never blank.
-  const resolvedFromEmail =
-    firstNonBlank(
-      endpoint?.fromEmail,
-      company?.email,
-    ) ?? "hello@okestria.com";
+  // From email: DELIBERATELY LEFT NULL.
+  //
+  // The operator asked that the "From" address be chosen by OpenClaw per
+  // request (each call picks the most appropriate verified sender). If we
+  // prefilled this from `company.email` the UI would look like the user
+  // hand-picked that address — including cases where the company email
+  // happens to be the operator's personal email. So we return null and let
+  // the UI render an explicit "OpenClaw sets this per request" placeholder.
+  const resolvedFromEmail: string | null = null;
 
   // From name: endpoint → signed-in user name → company name → "Okestria".
   const resolvedFromName =
@@ -552,14 +551,16 @@ export const resolveEmailToolDefaults = async (
       company?.name,
     ) ?? "Okestria";
 
-  // Reply-To: endpoint → signed-in user email → from email.
+  // Reply-To: endpoint → signed-in user email → company email. Safe to
+  // prefill with the operator's personal email — it only controls where
+  // replies land, not who the email appears to come from.
   const resolvedReplyTo =
     firstNonBlank(
       endpoint?.replyTo,
       currentUser?.email,
       session.email,
-      resolvedFromEmail,
-    ) ?? resolvedFromEmail;
+      company?.email,
+    ) ?? null;
 
   const resolvedResendConfigured = endpoint?.resendConfigured ?? true;
 
@@ -569,7 +570,7 @@ export const resolveEmailToolDefaults = async (
   const note =
     endpoint?.note ??
     (!resolvedFooterDataUrl && resolvedUserId
-      ? "Dica: suba uma imagem de rodapé no seu perfil para personalizar a assinatura."
+      ? "Tip: upload a footer image in your profile to personalize the email signature."
       : null);
 
   return {

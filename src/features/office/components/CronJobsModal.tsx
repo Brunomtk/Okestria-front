@@ -287,7 +287,7 @@ export function CronJobsModal({
       current
         ? current
         : emailDefaults.footerImageDataUrl
-          ? emailDefaults.footerImageFileName || "footer do seu perfil"
+          ? emailDefaults.footerImageFileName || "Your profile footer"
           : null,
     );
   }, [emailDefaults]);
@@ -860,24 +860,24 @@ export function CronJobsModal({
                                       </span>
                                     </div>
                                     <div>
-                                      <span className="text-white/40">Nome: </span>
+                                      <span className="text-white/40">Name: </span>
                                       <span className="text-white/85">
                                         {selectedJob.toolsSummary.emailFromName ??
                                           "—"}
                                       </span>
                                     </div>
                                     <div className="col-span-2">
-                                      <span className="text-white/40">Rodapé: </span>
+                                      <span className="text-white/40">Footer: </span>
                                       <span className="text-white/85">
                                         {selectedJob.toolsSummary.hasFooterImage
-                                          ? "imagem personalizada"
-                                          : "padrão do autor"}
+                                          ? "custom image"
+                                          : "author default"}
                                       </span>
                                     </div>
                                     {selectedJob.tools?.email?.subjectTemplate && (
                                       <div className="col-span-2">
                                         <span className="text-white/40">
-                                          Assunto padrão:{" "}
+                                          Default subject:{" "}
                                         </span>
                                         <span className="text-white/85">
                                           {selectedJob.tools.email.subjectTemplate}
@@ -1121,18 +1121,18 @@ export function CronJobsModal({
               {formSessionMode === "named" && (
                 <Field
                   label="Session key"
-                  hint="Prefixos aceitos pelo gateway: agent:, hook:, studio:, web:. Se você só digitar um identificador (ex.: daily-brief), o back normaliza automaticamente."
+                  hint="Prefixes accepted by the gateway: agent:, hook:, studio:, web:. If you only type an identifier (e.g. daily-brief) the backend normalizes it automatically."
                 >
                   <input
                     type="text"
                     value={formSessionKey}
                     onChange={(e) => setFormSessionKey(e.target.value)}
-                    placeholder="daily-brief ou hook:okestria-cron-daily-brief"
+                    placeholder="daily-brief or hook:okestria-cron-daily-brief"
                     className={`${inputClass} font-mono`}
                   />
                   {formSessionKey.trim() && (
                     <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
-                      Gateway verá:{" "}
+                      Gateway will see:{" "}
                       <span className="text-white/70">
                         {previewEffectiveSessionKey(formSessionKey)}
                       </span>
@@ -1259,7 +1259,7 @@ export function CronJobsModal({
                   setFormEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
                   setFormEmailFooterName(
                     emailDefaults.footerImageDataUrl
-                      ? emailDefaults.footerImageFileName || "footer do seu perfil"
+                      ? emailDefaults.footerImageFileName || "Your profile footer"
                       : null,
                   );
                 }}
@@ -1517,7 +1517,7 @@ function EditCronJobDialog({
       current
         ? current
         : emailDefaults.footerImageDataUrl
-          ? emailDefaults.footerImageFileName || "footer do seu perfil"
+          ? emailDefaults.footerImageFileName || "Your profile footer"
           : null,
     );
   }, [emailDefaults]);
@@ -1821,18 +1821,18 @@ function EditCronJobDialog({
           {sessionMode === "named" && (
             <Field
               label="Session key"
-              hint="Prefixos aceitos pelo gateway: agent:, hook:, studio:, web:. Se você só digitar um identificador (ex.: daily-brief), o back normaliza automaticamente."
+              hint="Prefixes accepted by the gateway: agent:, hook:, studio:, web:. If you only type an identifier (e.g. daily-brief) the backend normalizes it automatically."
             >
               <input
                 type="text"
                 value={sessionKey}
                 onChange={(e) => setSessionKey(e.target.value)}
-                placeholder="daily-brief ou hook:okestria-cron-daily-brief"
+                placeholder="daily-brief or hook:okestria-cron-daily-brief"
                 className={`${inputClass} font-mono`}
               />
               {sessionKey.trim() && (
                 <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
-                  Gateway verá:{" "}
+                  Gateway will see:{" "}
                   <span className="text-white/70">
                     {previewEffectiveSessionKey(sessionKey)}
                   </span>
@@ -1947,7 +1947,7 @@ function EditCronJobDialog({
               setEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
               setEmailFooterName(
                 emailDefaults.footerImageDataUrl
-                  ? emailDefaults.footerImageFileName || "footer do seu perfil"
+                  ? emailDefaults.footerImageFileName || "Your profile footer"
                   : null,
               );
             }}
@@ -2043,18 +2043,18 @@ function buildGatewayErrorHint(
   const lower = errorMessage.toLowerCase();
   if (httpStatus === 404 || lower.includes("404")) {
     if (lower.includes("/hooks/agent") || lower.includes("host=")) {
-      return "Dica: verifique OPENCLAW_HOOKS_BASE_URL / OPENCLAW_HOOKS_TOKEN e confirme que o agente está registrado no OpenClaw com o mesmo agentId.";
+      return "Tip: check OPENCLAW_HOOKS_BASE_URL / OPENCLAW_HOOKS_TOKEN and confirm the agent is registered in OpenClaw with the same agentId.";
     }
-    return "Dica: endpoint não encontrado no gateway. Confira se os hooks estão publicados e se o token tem permissão.";
+    return "Tip: endpoint not found on the gateway. Check that the hooks are published and the token has permission.";
   }
   if (lower.includes("sessionkey must start with")) {
-    return "Dica: o back v27 já normaliza a sessionKey para o prefixo hook:okestria-cron-… Se você ainda está vendo esse erro, atualize o backend para v27 ou acima.";
+    return "Tip: back v27 already normalizes the sessionKey to the hook:okestria-cron-… prefix. If you're still seeing this error, upgrade the backend to v27 or above.";
   }
   if (lower.includes("no runtime agent id")) {
-    return "Dica: este cron não tem um agentId conhecido pelo OpenClaw. Abra o agente e configure o gatewayAgentId no profile (ou garanta um slug válido).";
+    return "Tip: this cron doesn't have an agentId known to OpenClaw. Open the agent and set gatewayAgentId in its profile (or make sure it has a valid slug).";
   }
   if (lower.includes("runtime hooks not configured")) {
-    return "Dica: os hooks de runtime ainda não estão configurados. Quando OPENCLAW_HOOKS_BASE_URL e OPENCLAW_HOOKS_TOKEN forem definidos, este run será completado via webhook.";
+    return "Tip: runtime hooks aren't configured yet. Once OPENCLAW_HOOKS_BASE_URL and OPENCLAW_HOOKS_TOKEN are set, this run will complete via webhook.";
   }
   return null;
 }
@@ -2210,18 +2210,18 @@ function EmailToolCard({
         return;
       }
       if (!file.type.startsWith("image/")) {
-        setFooterError("O rodapé precisa ser uma imagem (PNG ou JPG).");
+        setFooterError("The footer must be an image (PNG or JPG).");
         return;
       }
       if (file.size > FOOTER_IMAGE_MAX_BYTES) {
-        setFooterError("A imagem tem mais de 2MB — comprima antes de subir.");
+        setFooterError("The image is larger than 2MB — compress it before uploading.");
         return;
       }
       try {
         const dataUrl = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+          reader.onerror = () => reject(new Error("Failed to read the file."));
           reader.readAsDataURL(file);
         });
         onFooterChange(dataUrl, file.name);
@@ -2271,18 +2271,20 @@ function EmailToolCard({
                   color: ACCENT,
                 }}
               >
-                Ativo
+                Active
               </span>
             )}
           </div>
           <p className="mt-1 text-[11px] leading-5 text-white/50">
-            Quando habilitado, o OpenClaw recebe a capability{" "}
-            <span className="font-mono text-white/75">resend_email</span> em cada
-            disparo. A <span className="font-semibold">API key fica no servidor</span>
-            {" "}— aqui você só define o remetente, assunto padrão e banner de
-            rodapé. Os campos são pré-preenchidos com os seus dados de perfil.
+            When enabled, OpenClaw receives the{" "}
+            <span className="font-mono text-white/75">resend_email</span>{" "}
+            capability on every run. The{" "}
+            <span className="font-semibold">API key stays on the server</span>{" "}
+            — here you only set the sender name, default subject and footer
+            banner. The <span className="font-semibold">From email</span>{" "}
+            is chosen by OpenClaw per request, so you can leave it blank.
           </p>
-          {!enabled && defaults && (defaults.fromName || defaults.fromEmail) && (
+          {!enabled && defaults && (defaults.fromName || defaults.footerImageDataUrl) && (
             <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
               <span
                 className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
@@ -2291,18 +2293,14 @@ function EmailToolCard({
                 i
               </span>
               <span>
-                Pronto para ativar com{" "}
+                Ready to enable as{" "}
                 <span className="font-mono text-white/80">
                   {defaults.fromName ?? "—"}
-                </span>{" "}
-                <span className="text-white/45">&lt;</span>
-                <span className="font-mono text-white/80">
-                  {defaults.fromEmail ?? "—"}
                 </span>
-                <span className="text-white/45">&gt;</span>
                 {defaults.footerImageDataUrl && (
-                  <span className="text-white/55"> · rodapé do seu perfil</span>
+                  <span className="text-white/55"> · with your profile footer</span>
                 )}
+                <span className="text-white/45"> · From picked by OpenClaw</span>
               </span>
             </div>
           )}
@@ -2330,19 +2328,24 @@ function EmailToolCard({
                 </span>
                 <div className="leading-5">
                   <span className="font-semibold text-white/80">
-                    Usando seus dados de perfil:
+                    Using your profile:
                   </span>{" "}
                   <span className="font-mono text-white/85">
                     {defaults.fromName ?? "—"}
-                  </span>{" "}
-                  <span className="text-white/55">&lt;</span>
-                  <span className="font-mono text-white/85">
-                    {defaults.fromEmail ?? "—"}
                   </span>
-                  <span className="text-white/55">&gt;</span>
-                  {defaults.footerImageDataUrl && (
-                    <span className="text-white/55"> · rodapé pessoal</span>
+                  {defaults.replyTo && (
+                    <>
+                      {" "}
+                      <span className="text-white/55">· reply-to</span>{" "}
+                      <span className="font-mono text-white/85">
+                        {defaults.replyTo}
+                      </span>
+                    </>
                   )}
+                  {defaults.footerImageDataUrl && (
+                    <span className="text-white/55"> · personal footer</span>
+                  )}
+                  <span className="text-white/55"> · From picked by OpenClaw</span>
                   {!defaults.resendConfigured && (
                     <span className="ml-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
                       Resend off
@@ -2357,7 +2360,7 @@ function EmailToolCard({
                   disabled={disabled}
                   className="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Usar meus dados
+                  Use my data
                 </button>
               )}
             </div>
@@ -2371,17 +2374,13 @@ function EmailToolCard({
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field
               label="From email"
-              hint={
-                defaults?.fromEmail
-                  ? `Em branco usa: ${defaults.fromEmail}`
-                  : "Em branco = email da empresa."
-              }
+              hint="Leave blank — OpenClaw picks a verified sender per request."
             >
               <input
                 type="email"
                 value={fromEmail}
                 onChange={(e) => onFromEmailChange(e.target.value)}
-                placeholder={defaults?.fromEmail ?? "ops@ptxgroup.us"}
+                placeholder="(OpenClaw decides automatically)"
                 disabled={disabled}
                 className={`${inputClass} font-mono`}
               />
@@ -2390,8 +2389,8 @@ function EmailToolCard({
               label="From name"
               hint={
                 defaults?.fromName
-                  ? `Em branco usa: ${defaults.fromName}`
-                  : "Nome amigável do remetente."
+                  ? `Blank uses: ${defaults.fromName}`
+                  : "Friendly sender name."
               }
             >
               <input
@@ -2407,11 +2406,11 @@ function EmailToolCard({
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field
-              label="Reply-To (opcional)"
+              label="Reply-To (optional)"
               hint={
                 defaults?.replyTo
-                  ? `Em branco usa: ${defaults.replyTo}`
-                  : "Em branco reusa o From email."
+                  ? `Blank uses: ${defaults.replyTo}`
+                  : "Where replies will land. Blank reuses the From address."
               }
             >
               <input
@@ -2424,14 +2423,14 @@ function EmailToolCard({
               />
             </Field>
             <Field
-              label="Assunto padrão"
-              hint="O agente pode sobrescrever por envio."
+              label="Default subject"
+              hint="The agent can override this per email."
             >
               <input
                 type="text"
                 value={subjectTemplate}
                 onChange={(e) => onSubjectTemplateChange(e.target.value)}
-                placeholder="PTX · Update diário"
+                placeholder="PTX · Daily update"
                 disabled={disabled}
                 className={inputClass}
               />
@@ -2440,7 +2439,7 @@ function EmailToolCard({
 
           <div>
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/50">
-              Imagem de rodapé
+              Footer image
             </div>
             <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">
               {footerDataUrl ? (
@@ -2456,7 +2455,7 @@ function EmailToolCard({
                       {footerName ?? "footer"}
                     </div>
                     <div className="text-[10px] text-white/45">
-                      Aparece no fim de cada email enviado pelo agente.
+                      Appended to every email the agent sends.
                     </div>
                   </div>
                   <button
@@ -2465,13 +2464,13 @@ function EmailToolCard({
                     disabled={disabled}
                     className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Remover
+                    Remove
                   </button>
                 </div>
               ) : (
                 <label className="flex cursor-pointer flex-col items-start gap-1">
                   <span className="text-[11px] text-white/55">
-                    PNG ou JPG · até 2MB · largura sugerida 600px
+                    PNG or JPG · up to 2MB · suggested width 600px
                   </span>
                   <input
                     type="file"
@@ -2494,13 +2493,13 @@ function EmailToolCard({
           </div>
 
           <Field
-            label="Instruções extras para o agente"
-            hint="Texto livre enviado no bloco [OKESTRIA_CRON_TOOLS]. Ex.: “Assine sempre como Lucas.”"
+            label="Extra instructions for the agent"
+            hint="Free-form text sent inside [OKESTRIA_CRON_TOOLS]. e.g. &ldquo;Always sign as Lucas.&rdquo;"
           >
             <textarea
               value={instructionsHint}
               onChange={(e) => onInstructionsHintChange(e.target.value)}
-              placeholder="Assine sempre como Lucas / PTX. Mantenha o tom formal."
+              placeholder="Always sign as Lucas / PTX. Keep the tone formal."
               rows={2}
               disabled={disabled}
               className={`${inputClass} resize-none`}
@@ -2534,8 +2533,8 @@ function ToolsBadge({
       }}
       title={
         summary.hasFooterImage
-          ? "Email tool ativo · com rodapé personalizado"
-          : "Email tool ativo"
+          ? "Email tool active · with custom footer"
+          : "Email tool active"
       }
     >
       <Mail className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
