@@ -850,7 +850,7 @@ export function CronJobsModal({
                                 >
                                   <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/55">
                                     <Mail className="h-3 w-3" style={{ color: ACCENT }} />
-                                    Tools · Email (Resend)
+                                    Tools · Email (Resend) · Custom overrides
                                   </div>
                                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-white/75">
                                     <div>
@@ -2258,7 +2258,7 @@ function EmailToolCard({
             <span className="text-sm font-semibold text-white">
               Email tool (Resend)
             </span>
-            {enabled && (
+            {enabled ? (
               <span
                 className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
                 style={{
@@ -2266,22 +2266,43 @@ function EmailToolCard({
                   backgroundColor: `${ACCENT}20`,
                   color: ACCENT,
                 }}
+                title="Custom sender/subject/footer for this job"
               >
-                Active
+                Custom
               </span>
-            )}
+            ) : defaults?.resendConfigured !== false ? (
+              <span
+                className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-200"
+                title="Resend is configured on the platform — the agent can send email on every run"
+              >
+                Always on
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 text-[11px] leading-5 text-white/50">
-            When enabled, OpenClaw receives the{" "}
-            <span className="font-mono text-white/75">resend_email</span>{" "}
-            capability on every run. The{" "}
-            <span className="font-semibold">API key stays on the server</span>{" "}
-            — here you only set the sender, default subject and footer banner.
-            We prefill the <span className="font-semibold">From email</span>{" "}
-            with your signed-in address; OpenClaw may still override it with a
-            verified sender at dispatch time.
+            The <span className="font-mono text-white/75">resend_email</span>{" "}
+            capability ships with every cron run automatically — the platform's
+            Resend key is{" "}
+            <span className="font-semibold">already on the server</span>. Toggle
+            this on only if you want to override the default sender, subject
+            or footer banner for this specific job. Leave it off to send with
+            your profile defaults.
           </p>
-          {!enabled && defaults && (defaults.fromName || defaults.footerImageDataUrl) && (
+          {!enabled && defaults?.resendConfigured === false && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
+              <span
+                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400/25 text-amber-200"
+                style={{ fontSize: 9, fontWeight: 700 }}
+              >
+                !
+              </span>
+              <span>
+                Resend is not configured on the platform — the agent won't be
+                able to send email until the admin connects it.
+              </span>
+            </div>
+          )}
+          {!enabled && defaults?.resendConfigured !== false && (defaults?.fromName || defaults?.footerImageDataUrl) && (
             <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
               <span
                 className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
@@ -2290,11 +2311,11 @@ function EmailToolCard({
                 i
               </span>
               <span>
-                Ready to enable as{" "}
+                Defaults active — sending as{" "}
                 <span className="font-mono text-white/80">
-                  {defaults.fromName ?? "—"}
+                  {defaults?.fromName ?? "—"}
                 </span>
-                {defaults.fromEmail && (
+                {defaults?.fromEmail && (
                   <>
                     {" "}
                     <span className="text-white/45">·</span>{" "}
@@ -2303,10 +2324,9 @@ function EmailToolCard({
                     </span>
                   </>
                 )}
-                {defaults.footerImageDataUrl && (
+                {defaults?.footerImageDataUrl && (
                   <span className="text-white/55"> · with your profile footer</span>
                 )}
-                <span className="text-white/45"> · OpenClaw may override</span>
               </span>
             </div>
           )}
@@ -2518,25 +2538,35 @@ function ToolsBadge({
   summary: { emailEnabled: boolean; hasFooterImage: boolean } | null;
   compact?: boolean;
 }) {
-  if (!summary?.emailEnabled) return null;
+  // In v31 the resend_email tool ships with every dispatch when the
+  // platform has Resend configured, so a missing `emailEnabled` flag
+  // no longer means the agent can't email — it just means the operator
+  // didn't set any overrides for this job. The badge reflects that:
+  // - no summary at all → don't show anything (older cron jobs / non-cron)
+  // - emailEnabled true → "EMAIL · Custom" (operator overrides live)
+  // - emailEnabled false → "EMAIL" (platform defaults)
+  if (!summary) return null;
+  const isCustom = summary.emailEnabled;
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border font-semibold tracking-wider ${
         compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"
       }`}
       style={{
-        borderColor: `${ACCENT}40`,
-        backgroundColor: `${ACCENT}15`,
-        color: ACCENT,
+        borderColor: isCustom ? `${ACCENT}40` : "rgba(255,255,255,0.15)",
+        backgroundColor: isCustom ? `${ACCENT}15` : "rgba(255,255,255,0.04)",
+        color: isCustom ? ACCENT : "rgba(255,255,255,0.65)",
       }}
       title={
-        summary.hasFooterImage
-          ? "Email tool active · with custom footer"
-          : "Email tool active"
+        isCustom
+          ? summary.hasFooterImage
+            ? "Email tool · custom sender + footer for this job"
+            : "Email tool · custom sender for this job"
+          : "Email tool available via the platform's Resend — defaults from your profile"
       }
     >
       <Mail className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-      EMAIL
+      {isCustom ? "EMAIL · CUSTOM" : "EMAIL"}
     </span>
   );
 }
