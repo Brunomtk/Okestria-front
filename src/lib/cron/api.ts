@@ -413,6 +413,41 @@ export const fetchEmailToolDefaults = async (
   );
 };
 
+/**
+ * UI-safe view of the platform-level Resend configuration. The backend
+ * endpoint (`GET /api/CronJobs/tools/resend-config`) also returns the raw
+ * `apiKey` so the OpenClaw gateway can call Resend directly, but the key
+ * MUST NOT surface in a browser component — we strip it at the network
+ * boundary and only hand the UI the `enabled` / `baseUrl` pair.
+ */
+export type ResendPlatformStatus = {
+  enabled: boolean;
+  baseUrl: string;
+};
+
+/**
+ * Fetches the platform's live Resend status (enabled + baseUrl) from
+ * `GET /api/CronJobs/tools/resend-config`. The raw API key that the
+ * backend ALSO returns on this endpoint is intentionally dropped before
+ * the value is handed to the UI — only OpenClaw (server-to-server) should
+ * ever see it, and this helper exists solely so the modal can render a
+ * trustworthy "Resend configured" badge without guessing.
+ */
+export const fetchResendPlatformStatus = async (): Promise<ResendPlatformStatus> => {
+  const raw = await requestBackendJson<{
+    enabled?: boolean;
+    baseUrl?: string;
+    // The backend also returns `apiKey` here — we ignore it on purpose.
+  }>(`/api/CronJobs/tools/resend-config`, { method: "GET" });
+  return {
+    enabled: Boolean(raw?.enabled),
+    baseUrl:
+      typeof raw?.baseUrl === "string" && raw.baseUrl.trim().length > 0
+        ? raw.baseUrl.trim()
+        : "https://api.resend.com",
+  };
+};
+
 // ── Client-side resolver (resilient fallback) ──────────────────────────
 //
 // The old flow assumed the v29 backend endpoint `/tools/email-defaults` was
@@ -490,6 +525,16 @@ export const resolveEmailToolDefaults = async (
     () => null as CronEmailToolDefaults | null,
   );
 
+  // Authoritative "is Resend wired on the server?" signal. The
+  // email-defaults endpoint also exposes a `resendConfigured` flag, but
+  // the dedicated status endpoint is the source of truth — it reads the
+  // platform settings directly on every call instead of deriving the
+  // answer from a user/company row. We silently fall back to the
+  // defaults-endpoint flag when this call fails.
+  const resendStatusPromise = fetchResendPlatformStatus().catch(
+    () => null as ResendPlatformStatus | null,
+  );
+
   const userPromise = bearer
     ? fetchCurrentUser(bearer).catch(() => null)
     : Promise.resolve(null);
@@ -504,12 +549,14 @@ export const resolveEmailToolDefaults = async (
       ? fetchUserEmailContext(userId, bearer).catch(() => null)
       : Promise.resolve(null);
 
-  const [endpoint, currentUser, company, userEmailCtx] = await Promise.all([
-    endpointPromise,
-    userPromise,
-    companyPromise,
-    userEmailCtxPromise,
-  ]);
+  const [endpoint, resendStatus, currentUser, company, userEmailCtx] =
+    await Promise.all([
+      endpointPromise,
+      resendStatusPromise,
+      userPromise,
+      companyPromise,
+      userEmailCtxPromise,
+    ]);
 
   const resolvedUserId = userId ?? currentUser?.userId ?? null;
 
@@ -556,23 +603,18 @@ export const resolveEmailToolDefaults = async (
       company?.name,
     ) ?? "Okestria";
 
-  // Reply-To: endpoint → signed-in user email (JWT/session identity).
-  //
-  // We DELIBERATELY skip `company.email` here for the same reason we skip
-  // it on `resolvedFromEmail`: the company record frequently holds the
-  // admin's personal address (e.g. brunomendestk@gmail.com) and silently
-  // prefilling that as the Reply-To default would route every reply to
-  // the wrong inbox. If neither the endpoint nor the logged-in user
-  // provides an email we return null so OpenClaw can pick the right
-  // reply address at dispatch time (usually the verified From sender).
-  const resolvedReplyTo =
-    firstNonBlank(
-      endpoint?.replyTo,
-      currentUser?.email,
-      session.email,
-    ) ?? null;
+  // Reply-To is no longer an operator-editable field. OpenClaw resolves
+  // it at dispatch from the verified Resend sender, so we pass `null`
+  // through the defaults payload — the UI does not read it, and any
+  // downstream consumer that still inspects the field will correctly
+  // treat "null" as "use whatever the backend decides".
+  const resolvedReplyTo: string | null = null;
 
-  const resolvedResendConfigured = endpoint?.resendConfigured ?? true;
+  // Authoritative Resend status: prefer the dedicated status endpoint;
+  // fall back to the email-defaults flag; otherwise stay optimistic so
+  // we don't block the form on a transient network hiccup.
+  const resolvedResendConfigured =
+    resendStatus?.enabled ?? endpoint?.resendConfigured ?? true;
 
   // Surface configuration problems to the UI. The endpoint's note wins
   // (it has server-side visibility); otherwise we synthesize a hint when
