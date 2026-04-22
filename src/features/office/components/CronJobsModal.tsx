@@ -710,6 +710,14 @@ export function CronJobsModal({
                                       : "never run"
                                   }
                                 />
+                                <DetailRow
+                                  label="Gateway sync"
+                                  value={
+                                    selectedJob.openClawJobId
+                                      ? `mirrored · ${selectedJob.openClawJobId}`
+                                      : "local only"
+                                  }
+                                />
                               </div>
 
                               {selectedJob.systemEvent && (
@@ -1649,19 +1657,68 @@ function RunRow({ run }: { run: CronJobRun }) {
         : status === "running" || status === "queued"
           ? "#22d3ee"
           : "#94a3b8";
+
+  const hint = buildGatewayErrorHint(run.errorMessage ?? null, run.httpStatus ?? null);
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2 text-[11px]">
-      <span
-        className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color }}
-      />
-      <span className="w-8 shrink-0 text-white/35">#{run.runNumber}</span>
-      <span className="shrink-0 font-semibold uppercase tracking-wider" style={{ color }}>
-        {status}
-      </span>
-      <span className="ml-auto text-white/40">
-        {formatRelativeTime(run.startedAtUtc ?? run.createdDate)}
-      </span>
+    <div className="flex flex-col gap-1 px-3 py-2 text-[11px]">
+      <div className="flex items-center gap-3">
+        <span
+          className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color }}
+        />
+        <span className="w-8 shrink-0 text-white/35">#{run.runNumber}</span>
+        <span
+          className="shrink-0 font-semibold uppercase tracking-wider"
+          style={{ color }}
+        >
+          {status}
+        </span>
+        {typeof run.httpStatus === "number" && run.httpStatus > 0 && (
+          <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-white/55">
+            HTTP {run.httpStatus}
+          </span>
+        )}
+        <span className="ml-auto text-white/40">
+          {formatRelativeTime(run.startedAtUtc ?? run.createdDate)}
+        </span>
+      </div>
+      {run.errorMessage && (
+        <div className="ml-5 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1.5 text-[10px] leading-4 text-red-100">
+          <div className="whitespace-pre-wrap break-words">{run.errorMessage}</div>
+          {hint && (
+            <div className="mt-1 border-t border-red-400/20 pt-1 text-red-200/80">
+              {hint}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Turns the verbose backend dispatch error into an actionable hint (in PT-BR
+ * so it's understandable for the operator). Recognizes the v26 "Gateway
+ * responded 404 at /hooks/agent" and the missing-runtime-agent-id case.
+ */
+function buildGatewayErrorHint(
+  errorMessage: string | null,
+  httpStatus: number | null,
+): string | null {
+  if (!errorMessage) return null;
+  const lower = errorMessage.toLowerCase();
+  if (httpStatus === 404 || lower.includes("404")) {
+    if (lower.includes("/hooks/agent") || lower.includes("host=")) {
+      return "Dica: verifique OPENCLAW_HOOKS_BASE_URL / OPENCLAW_HOOKS_TOKEN e confirme que o agente está registrado no OpenClaw com o mesmo agentId.";
+    }
+    return "Dica: endpoint não encontrado no gateway. Confira se os hooks estão publicados e se o token tem permissão.";
+  }
+  if (lower.includes("no runtime agent id")) {
+    return "Dica: este cron não tem um agentId conhecido pelo OpenClaw. Abra o agente e configure o gatewayAgentId no profile (ou garanta um slug válido).";
+  }
+  if (lower.includes("runtime hooks not configured")) {
+    return "Dica: os hooks de runtime ainda não estão configurados. Quando OPENCLAW_HOOKS_BASE_URL e OPENCLAW_HOOKS_TOKEN forem definidos, este run será completado via webhook.";
+  }
+  return null;
 }
