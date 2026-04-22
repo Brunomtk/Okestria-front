@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleStop,
   Loader2,
+  Mail,
   Pause,
   Pencil,
   Play,
@@ -48,6 +49,8 @@ import {
   type CronJobWakeMode,
   type CreateCronJobInput,
   type UpdateCronJobInput,
+  type CronEmailToolConfig,
+  type CronJobToolsConfig,
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -144,6 +147,19 @@ export function CronJobsModal({
   const [formAgentId, setFormAgentId] = useState<string>("");
   const [formSquadId, setFormSquadId] = useState<string>("");
   const [formDeleteAfterRun, setFormDeleteAfterRun] = useState(true);
+  // ── Tools (v28) ─────────────────────────────────────────────────────────
+  // The email tool lets the cron-driven agent send transactional emails via
+  // the company's Resend account. Credentials live on the server; the UI
+  // only captures the "shape" of the email (who it's from, default subject,
+  // optional footer banner).
+  const [formEmailEnabled, setFormEmailEnabled] = useState(false);
+  const [formEmailFrom, setFormEmailFrom] = useState("");
+  const [formEmailFromName, setFormEmailFromName] = useState("");
+  const [formEmailReplyTo, setFormEmailReplyTo] = useState("");
+  const [formEmailSubject, setFormEmailSubject] = useState("");
+  const [formEmailFooterDataUrl, setFormEmailFooterDataUrl] = useState<string | null>(null);
+  const [formEmailFooterName, setFormEmailFooterName] = useState<string | null>(null);
+  const [formEmailHint, setFormEmailHint] = useState("");
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -173,6 +189,14 @@ export function CronJobsModal({
     setFormAgentId("");
     setFormSquadId("");
     setFormDeleteAfterRun(true);
+    setFormEmailEnabled(false);
+    setFormEmailFrom("");
+    setFormEmailFromName("");
+    setFormEmailReplyTo("");
+    setFormEmailSubject("");
+    setFormEmailFooterDataUrl(null);
+    setFormEmailFooterName(null);
+    setFormEmailHint("");
     setContextValue({ leadId: null, leadGenerationJobId: null, attachments: [] });
     setCreateError(null);
   }, []);
@@ -432,6 +456,15 @@ export function CronJobsModal({
         leadGenerationJobId: contextValue.leadGenerationJobId,
         attachments:
           contextValue.attachments.length > 0 ? contextValue.attachments : null,
+        tools: buildToolsPayload({
+          emailEnabled: formEmailEnabled,
+          fromEmail: formEmailFrom,
+          fromName: formEmailFromName,
+          replyTo: formEmailReplyTo,
+          subjectTemplate: formEmailSubject,
+          footerImageDataUrl: formEmailFooterDataUrl,
+          instructionsHint: formEmailHint,
+        }),
       };
       await createCronJob(payload);
       resetForm();
@@ -462,6 +495,13 @@ export function CronJobsModal({
     formWake,
     formWebhookToken,
     formWebhookUrl,
+    formEmailEnabled,
+    formEmailFrom,
+    formEmailFromName,
+    formEmailReplyTo,
+    formEmailSubject,
+    formEmailFooterDataUrl,
+    formEmailHint,
     loadJobs,
     resetForm,
   ]);
@@ -624,6 +664,7 @@ export function CronJobsModal({
                             >
                               {STATUS_LABEL[job.status]}
                             </span>
+                            <ToolsBadge summary={job.toolsSummary} compact />
                           </div>
                           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/35">
                             <span>{KIND_LABEL[job.kind]}</span>
@@ -727,6 +768,55 @@ export function CronJobsModal({
                                   </div>
                                   <div className="whitespace-pre-wrap text-[12px] leading-5 text-white/85">
                                     {selectedJob.systemEvent}
+                                  </div>
+                                </div>
+                              )}
+
+                              {selectedJob.toolsSummary?.emailEnabled && (
+                                <div
+                                  className="rounded-lg border p-3"
+                                  style={{
+                                    borderColor: `${ACCENT}30`,
+                                    backgroundColor: `${ACCENT}0D`,
+                                  }}
+                                >
+                                  <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/55">
+                                    <Mail className="h-3 w-3" style={{ color: ACCENT }} />
+                                    Tools · Email (Resend)
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-white/75">
+                                    <div>
+                                      <span className="text-white/40">From: </span>
+                                      <span className="font-mono text-white/85">
+                                        {selectedJob.toolsSummary.emailFromEmail ??
+                                          "—"}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-white/40">Nome: </span>
+                                      <span className="text-white/85">
+                                        {selectedJob.toolsSummary.emailFromName ??
+                                          "—"}
+                                      </span>
+                                    </div>
+                                    <div className="col-span-2">
+                                      <span className="text-white/40">Rodapé: </span>
+                                      <span className="text-white/85">
+                                        {selectedJob.toolsSummary.hasFooterImage
+                                          ? "imagem personalizada"
+                                          : "padrão do autor"}
+                                      </span>
+                                    </div>
+                                    {selectedJob.tools?.email?.subjectTemplate && (
+                                      <div className="col-span-2">
+                                        <span className="text-white/40">
+                                          Assunto padrão:{" "}
+                                        </span>
+                                        <span className="text-white/85">
+                                          {selectedJob.tools.email.subjectTemplate}
+                                        </span>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               )}
@@ -1074,6 +1164,28 @@ export function CronJobsModal({
                 description="Pin a lead or mission so every firing of this cron sees the same briefing, and drop up to 6 files the agent can open at runtime (15MB each, 25MB total)."
               />
 
+              <EmailToolCard
+                enabled={formEmailEnabled}
+                onEnabledChange={setFormEmailEnabled}
+                fromEmail={formEmailFrom}
+                onFromEmailChange={setFormEmailFrom}
+                fromName={formEmailFromName}
+                onFromNameChange={setFormEmailFromName}
+                replyTo={formEmailReplyTo}
+                onReplyToChange={setFormEmailReplyTo}
+                subjectTemplate={formEmailSubject}
+                onSubjectTemplateChange={setFormEmailSubject}
+                footerDataUrl={formEmailFooterDataUrl}
+                footerName={formEmailFooterName}
+                onFooterChange={(dataUrl, name) => {
+                  setFormEmailFooterDataUrl(dataUrl);
+                  setFormEmailFooterName(name);
+                }}
+                instructionsHint={formEmailHint}
+                onInstructionsHintChange={setFormEmailHint}
+                disabled={createBusy}
+              />
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1275,6 +1387,32 @@ function EditCronJobDialog({
   const [squadId, setSquadId] = useState<string>(job.squadId ?? "");
   const [deleteAfterRun, setDeleteAfterRun] = useState(job.deleteAfterRun);
 
+  // Tools (v28) — seeded from job.tools.email, plus a flag tracking whether
+  // the operator touched any tools field (to decide between patch / no-op).
+  const initialEmail = job.tools?.email ?? null;
+  const [emailEnabled, setEmailEnabled] = useState<boolean>(
+    !!initialEmail?.enabled,
+  );
+  const [emailFrom, setEmailFrom] = useState<string>(initialEmail?.fromEmail ?? "");
+  const [emailFromName, setEmailFromName] = useState<string>(
+    initialEmail?.fromName ?? "",
+  );
+  const [emailReplyTo, setEmailReplyTo] = useState<string>(
+    initialEmail?.replyTo ?? "",
+  );
+  const [emailSubject, setEmailSubject] = useState<string>(
+    initialEmail?.subjectTemplate ?? "",
+  );
+  const [emailFooterDataUrl, setEmailFooterDataUrl] = useState<string | null>(
+    initialEmail?.footerImageDataUrl ?? null,
+  );
+  const [emailFooterName, setEmailFooterName] = useState<string | null>(
+    initialEmail?.footerImageDataUrl ? "footer atual" : null,
+  );
+  const [emailHint, setEmailHint] = useState<string>(
+    initialEmail?.instructionsHint ?? "",
+  );
+
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -1362,6 +1500,31 @@ function EditCronJobDialog({
         }
       }
 
+      // ── Tools (v28) ─────────────────────────────────────────────────
+      // Three scenarios:
+      //   1. Operator toggled the tool ON or changed any sub-field → send
+      //      the whole `tools` bundle.
+      //   2. Operator toggled OFF an existing tool → set `clearTools`.
+      //   3. Nothing changed → don't include `tools` in the payload at all
+      //      (avoids retransmitting the footer data-URL unnecessarily).
+      const nextTools = buildToolsPayload({
+        emailEnabled,
+        fromEmail: emailFrom,
+        fromName: emailFromName,
+        replyTo: emailReplyTo,
+        subjectTemplate: emailSubject,
+        footerImageDataUrl: emailFooterDataUrl,
+        instructionsHint: emailHint,
+      });
+      const previousTools = job.tools ?? null;
+      if (!toolsBundlesEqual(previousTools, nextTools)) {
+        if (nextTools === null && previousTools !== null) {
+          payload.clearTools = true;
+        } else {
+          payload.tools = nextTools;
+        }
+      }
+
       if (Object.keys(payload).length === 0) {
         // Nothing to do — just close.
         onSaved();
@@ -1382,6 +1545,13 @@ function EditCronJobDialog({
     deleteAfterRun,
     deliveryMode,
     description,
+    emailEnabled,
+    emailFooterDataUrl,
+    emailFrom,
+    emailFromName,
+    emailHint,
+    emailReplyTo,
+    emailSubject,
     job,
     name,
     onSaved,
@@ -1642,6 +1812,28 @@ function EditCronJobDialog({
               Delete the job automatically after it runs
             </label>
           )}
+
+          <EmailToolCard
+            enabled={emailEnabled}
+            onEnabledChange={setEmailEnabled}
+            fromEmail={emailFrom}
+            onFromEmailChange={setEmailFrom}
+            fromName={emailFromName}
+            onFromNameChange={setEmailFromName}
+            replyTo={emailReplyTo}
+            onReplyToChange={setEmailReplyTo}
+            subjectTemplate={emailSubject}
+            onSubjectTemplateChange={setEmailSubject}
+            footerDataUrl={emailFooterDataUrl}
+            footerName={emailFooterName}
+            onFooterChange={(dataUrl, nextName) => {
+              setEmailFooterDataUrl(dataUrl);
+              setEmailFooterName(nextName);
+            }}
+            instructionsHint={emailHint}
+            onInstructionsHintChange={setEmailHint}
+            disabled={busy}
+          />
         </div>
 
         {/* Footer */}
@@ -1765,4 +1957,368 @@ function previewEffectiveSessionKey(rawKey: string): string {
     return trimmed;
   }
   return `hook:okestria-cron-${trimmed}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Tools (v28) — email capability bundle
+//
+// The backend owns the credentials (Resend apiKey lives in server config)
+// and will splice them in at dispatch time. The UI only captures the
+// "shape" of the email: who it's from, default subject, an optional
+// footer banner (stored as a data-URL the server will forward verbatim),
+// and free-form guidance appended to the dispatch payload.
+//
+// `buildToolsPayload` returns `null` when nothing is configured so the
+// backend can treat "no tools" uniformly with "tools cleared".
+// ─────────────────────────────────────────────────────────────────────────
+
+type BuildToolsPayloadInput = {
+  emailEnabled: boolean;
+  fromEmail: string;
+  fromName: string;
+  replyTo: string;
+  subjectTemplate: string;
+  footerImageDataUrl: string | null;
+  instructionsHint: string;
+};
+
+function buildToolsPayload(
+  input: BuildToolsPayloadInput,
+): CronJobToolsConfig | null {
+  const email: CronEmailToolConfig | null = input.emailEnabled
+    ? {
+        enabled: true,
+        fromEmail: input.fromEmail.trim() || null,
+        fromName: input.fromName.trim() || null,
+        replyTo: input.replyTo.trim() || null,
+        subjectTemplate: input.subjectTemplate.trim() || null,
+        footerImageDataUrl: input.footerImageDataUrl || null,
+        instructionsHint: input.instructionsHint.trim() || null,
+      }
+    : null;
+
+  if (!email) return null;
+  return { email };
+}
+
+/**
+ * Detects whether the two tool bundles are materially different. Used by
+ * the edit dialog so we can skip the `tools` field entirely when the
+ * operator didn't touch anything — this also avoids accidentally
+ * resubmitting a data-URL footer that the server already has.
+ */
+function toolsBundlesEqual(
+  a: CronJobToolsConfig | null,
+  b: CronJobToolsConfig | null,
+): boolean {
+  const ae = a?.email ?? null;
+  const be = b?.email ?? null;
+  if (!ae && !be) return true;
+  if (!ae || !be) return false;
+  return (
+    (ae.enabled ?? false) === (be.enabled ?? false) &&
+    (ae.fromEmail ?? null) === (be.fromEmail ?? null) &&
+    (ae.fromName ?? null) === (be.fromName ?? null) &&
+    (ae.replyTo ?? null) === (be.replyTo ?? null) &&
+    (ae.subjectTemplate ?? null) === (be.subjectTemplate ?? null) &&
+    (ae.footerImageDataUrl ?? null) === (be.footerImageDataUrl ?? null) &&
+    (ae.instructionsHint ?? null) === (be.instructionsHint ?? null)
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// EmailToolCard
+//
+// Collapsible tool-bundle card. Visually mirrors the LeadContextAttachmentsSection
+// so the two sections sit side-by-side in the form without feeling alien.
+// Amber accent everywhere to match the modal's tone.
+// ─────────────────────────────────────────────────────────────────────────
+
+type EmailToolCardProps = {
+  enabled: boolean;
+  onEnabledChange: (next: boolean) => void;
+  fromEmail: string;
+  onFromEmailChange: (next: string) => void;
+  fromName: string;
+  onFromNameChange: (next: string) => void;
+  replyTo: string;
+  onReplyToChange: (next: string) => void;
+  subjectTemplate: string;
+  onSubjectTemplateChange: (next: string) => void;
+  footerDataUrl: string | null;
+  footerName: string | null;
+  onFooterChange: (dataUrl: string | null, name: string | null) => void;
+  instructionsHint: string;
+  onInstructionsHintChange: (next: string) => void;
+  disabled?: boolean;
+};
+
+// Approx. 2MB — Resend caps each attachment at ~25MB but this is a footer
+// banner, not an essay. Keeping it small protects the agent's context too.
+const FOOTER_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+
+function EmailToolCard({
+  enabled,
+  onEnabledChange,
+  fromEmail,
+  onFromEmailChange,
+  fromName,
+  onFromNameChange,
+  replyTo,
+  onReplyToChange,
+  subjectTemplate,
+  onSubjectTemplateChange,
+  footerDataUrl,
+  footerName,
+  onFooterChange,
+  instructionsHint,
+  onInstructionsHintChange,
+  disabled,
+}: EmailToolCardProps) {
+  const [footerError, setFooterError] = useState<string | null>(null);
+
+  const handleFooterPick = useCallback(
+    async (file: File | null) => {
+      setFooterError(null);
+      if (!file) {
+        onFooterChange(null, null);
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        setFooterError("O rodapé precisa ser uma imagem (PNG ou JPG).");
+        return;
+      }
+      if (file.size > FOOTER_IMAGE_MAX_BYTES) {
+        setFooterError("A imagem tem mais de 2MB — comprima antes de subir.");
+        return;
+      }
+      try {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+          reader.readAsDataURL(file);
+        });
+        onFooterChange(dataUrl, file.name);
+      } catch (err) {
+        setFooterError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [onFooterChange],
+  );
+
+  return (
+    <div
+      className="rounded-xl border px-4 py-3.5"
+      style={{
+        borderColor: enabled ? `${ACCENT}40` : "rgba(255,255,255,0.08)",
+        backgroundColor: enabled ? `${ACCENT}0D` : "rgba(255,255,255,0.02)",
+      }}
+    >
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={disabled}
+          onChange={(e) => onEnabledChange(e.target.checked)}
+          className="mt-1 h-3.5 w-3.5 accent-amber-400"
+        />
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
+              style={{
+                backgroundColor: `${ACCENT}20`,
+                border: `1px solid ${ACCENT}40`,
+              }}
+            >
+              <Mail className="h-3.5 w-3.5" style={{ color: ACCENT }} />
+            </span>
+            <span className="text-sm font-semibold text-white">
+              Email tool (Resend)
+            </span>
+            {enabled && (
+              <span
+                className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
+                style={{
+                  borderColor: `${ACCENT}50`,
+                  backgroundColor: `${ACCENT}20`,
+                  color: ACCENT,
+                }}
+              >
+                Ativo
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] leading-5 text-white/50">
+            Quando habilitado, o OpenClaw recebe a capability{" "}
+            <span className="font-mono text-white/75">resend_email</span> em cada
+            disparo. A <span className="font-semibold">API key fica no servidor</span>
+            {" "}— aqui você só define o remetente, assunto padrão e banner de
+            rodapé.
+          </p>
+        </div>
+      </label>
+
+      {enabled && (
+        <div className="mt-3 space-y-3 border-t border-white/[0.08] pt-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field
+              label="From email"
+              hint="Ex.: ops@ptxgroup.us. Em branco = email da empresa."
+            >
+              <input
+                type="email"
+                value={fromEmail}
+                onChange={(e) => onFromEmailChange(e.target.value)}
+                placeholder="ops@ptxgroup.us"
+                disabled={disabled}
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+            <Field
+              label="From name"
+              hint="Nome amigável do remetente. Em branco = nome do autor."
+            >
+              <input
+                type="text"
+                value={fromName}
+                onChange={(e) => onFromNameChange(e.target.value)}
+                placeholder="Lucas @ PTX"
+                disabled={disabled}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="Reply-To (opcional)">
+              <input
+                type="email"
+                value={replyTo}
+                onChange={(e) => onReplyToChange(e.target.value)}
+                placeholder="lucas@ptxgroup.us"
+                disabled={disabled}
+                className={`${inputClass} font-mono`}
+              />
+            </Field>
+            <Field
+              label="Assunto padrão"
+              hint="O agente pode sobrescrever por envio."
+            >
+              <input
+                type="text"
+                value={subjectTemplate}
+                onChange={(e) => onSubjectTemplateChange(e.target.value)}
+                placeholder="PTX · Update diário"
+                disabled={disabled}
+                className={inputClass}
+              />
+            </Field>
+          </div>
+
+          <div>
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/50">
+              Imagem de rodapé
+            </div>
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">
+              {footerDataUrl ? (
+                <div className="flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={footerDataUrl}
+                    alt={footerName ?? "Email footer"}
+                    className="h-12 max-w-[220px] rounded border border-white/10 bg-black/30 object-contain"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[11px] font-semibold text-white/85">
+                      {footerName ?? "footer"}
+                    </div>
+                    <div className="text-[10px] text-white/45">
+                      Aparece no fim de cada email enviado pelo agente.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onFooterChange(null, null)}
+                    disabled={disabled}
+                    className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ) : (
+                <label className="flex cursor-pointer flex-col items-start gap-1">
+                  <span className="text-[11px] text-white/55">
+                    PNG ou JPG · até 2MB · largura sugerida 600px
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={disabled}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] ?? null;
+                      void handleFooterPick(file);
+                      // Reset so picking the same file twice re-triggers
+                      e.target.value = "";
+                    }}
+                    className="block text-[11px] text-white/60 file:mr-2 file:rounded-md file:border-0 file:bg-amber-500/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-amber-100 hover:file:bg-amber-500/30"
+                  />
+                </label>
+              )}
+              {footerError && (
+                <div className="mt-2 text-[10px] text-red-200">{footerError}</div>
+              )}
+            </div>
+          </div>
+
+          <Field
+            label="Instruções extras para o agente"
+            hint="Texto livre enviado no bloco [OKESTRIA_CRON_TOOLS]. Ex.: “Assine sempre como Lucas.”"
+          >
+            <textarea
+              value={instructionsHint}
+              onChange={(e) => onInstructionsHintChange(e.target.value)}
+              placeholder="Assine sempre como Lucas / PTX. Mantenha o tom formal."
+              rows={2}
+              disabled={disabled}
+              className={`${inputClass} resize-none`}
+            />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Tools badge used in the jobs list + detail drawer so the operator can see
+// at a glance that a job has the email tool wired up.
+function ToolsBadge({
+  summary,
+  compact = false,
+}: {
+  summary: { emailEnabled: boolean; hasFooterImage: boolean } | null;
+  compact?: boolean;
+}) {
+  if (!summary?.emailEnabled) return null;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border font-semibold tracking-wider ${
+        compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"
+      }`}
+      style={{
+        borderColor: `${ACCENT}40`,
+        backgroundColor: `${ACCENT}15`,
+        color: ACCENT,
+      }}
+      title={
+        summary.hasFooterImage
+          ? "Email tool ativo · com rodapé personalizado"
+          : "Email tool ativo"
+      }
+    >
+      <Mail className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+      EMAIL
+    </span>
+  );
 }

@@ -44,6 +44,44 @@ export type CronJobAttachment = {
   sizeBytes: number;
 };
 
+// ── Tools (v28) ──
+//
+// The "tools" bundle declares which capabilities the OpenClaw runner
+// should expose to the agent when the cron fires. The first supported
+// tool is `resend_email`: the backend splices in the live Resend API
+// key + sender identity + footer banner before dispatching.
+//
+// ⚠️  We never store credentials (apiKey) on the cron row. The client
+// only sends flags + per-job overrides; the backend fills in the key
+// from server config at dispatch time.
+
+export type CronEmailToolConfig = {
+  enabled: boolean;
+  /** Sender address (Resend `from`). Blank = fall back to company email. */
+  fromEmail?: string | null;
+  /** Display name rendered before the `from` address. Blank = fall back to the cron author. */
+  fromName?: string | null;
+  /** Reply-To header. Blank = reuse `from`. */
+  replyTo?: string | null;
+  /** Default subject line template (the agent may override per email). */
+  subjectTemplate?: string | null;
+  /** Full data URL (data:image/png;base64,…) for the footer banner. Blank = reuse the author's personal footer. */
+  footerImageDataUrl?: string | null;
+  /** Free-form guidance appended to the tool payload (e.g. "Always sign as Lucas"). */
+  instructionsHint?: string | null;
+};
+
+export type CronJobToolsConfig = {
+  email?: CronEmailToolConfig | null;
+};
+
+export type CronJobToolsSummary = {
+  emailEnabled: boolean;
+  emailFromEmail: string | null;
+  emailFromName: string | null;
+  hasFooterImage: boolean;
+};
+
 export type CronJob = {
   id: number;
   companyId: number;
@@ -77,6 +115,10 @@ export type CronJob = {
   leadGenerationJobId: number | null;
   leadContextJson: string | null;
   attachmentsJson: string | null;
+  /** v28: capabilities bundle. Credentials are never echoed back by the server. */
+  tools: CronJobToolsConfig | null;
+  /** Compact summary rendered as a badge in the list / detail drawer. */
+  toolsSummary: CronJobToolsSummary | null;
   createdDate: string;
   updatedDate: string | null;
 };
@@ -102,6 +144,8 @@ export type CronJobListItem = {
   leadId: number | null;
   leadGenerationJobId: number | null;
   hasAttachments: boolean;
+  /** v28: present when the job has at least one tool configured. */
+  toolsSummary: CronJobToolsSummary | null;
   createdDate: string;
   updatedDate: string | null;
 };
@@ -155,6 +199,8 @@ export type CreateCronJobInput = {
   leadContextJson?: string | null;
   /** Max 6 files / 15MB each / 25MB total. */
   attachments?: CronJobAttachment[] | null;
+  /** v28: tools bundle. Null/undefined = no tools requested. */
+  tools?: CronJobToolsConfig | null;
 };
 
 export type UpdateCronJobInput = {
@@ -177,6 +223,9 @@ export type UpdateCronJobInput = {
   clearAgent?: boolean;
   clearSquad?: boolean;
   clearWebhookToken?: boolean;
+  /** v28: tools patch. Null/undefined leaves the current config untouched; clearTools wipes it. */
+  tools?: CronJobToolsConfig | null;
+  clearTools?: boolean;
 };
 
 export type RunCronJobInput = {
