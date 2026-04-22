@@ -28,6 +28,7 @@ import {
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
+  fetchEmailToolDefaults,
   formatCronDate,
   formatRelativeTime,
   KIND_LABEL,
@@ -51,6 +52,7 @@ import {
   type UpdateCronJobInput,
   type CronEmailToolConfig,
   type CronJobToolsConfig,
+  type CronEmailToolDefaults,
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -172,6 +174,14 @@ export function CronJobsModal({
   const [contextLeads, setContextLeads] = useState<LeadSummary[]>([]);
   const [contextMissions, setContextMissions] = useState<LeadGenerationJob[]>([]);
 
+  // Email-tool defaults (back v29). Lazily fetched the first time the "new"
+  // tab is opened so the operator sees their real email / name / footer
+  // before even toggling the tool on. Re-used by the edit dialog too.
+  const [emailDefaults, setEmailDefaults] = useState<CronEmailToolDefaults | null>(
+    null,
+  );
+  const [emailDefaultsLoaded, setEmailDefaultsLoaded] = useState(false);
+
   const resetForm = useCallback(() => {
     setFormName("");
     setFormDescription("");
@@ -224,6 +234,60 @@ export function CronJobsModal({
       cancelled = true;
     };
   }, [open, tab, companyId]);
+
+  // Fetch the email-tool defaults once per modal lifecycle. We do it on any
+  // first open (not only when "new" is selected) because the edit dialog
+  // also consumes them — the user might open a job and want to see their
+  // name/email prefilled there too.
+  useEffect(() => {
+    if (!open || !companyId || emailDefaultsLoaded) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const defaults = await fetchEmailToolDefaults(companyId);
+        if (cancelled) return;
+        setEmailDefaults(defaults);
+      } catch {
+        // Non-fatal. The form just doesn't auto-fill.
+        if (!cancelled) setEmailDefaults(null);
+      } finally {
+        if (!cancelled) setEmailDefaultsLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, companyId, emailDefaultsLoaded]);
+
+  // Reset the "loaded" latch when the modal closes so a second open (for
+  // example after editing the user profile) re-fetches fresh defaults.
+  useEffect(() => {
+    if (!open) {
+      setEmailDefaultsLoaded(false);
+      setEmailDefaults(null);
+    }
+  }, [open]);
+
+  // Auto-populate the create form's email fields the first time the operator
+  // flips the tool on — but only for fields they haven't typed into yet,
+  // so we don't clobber anything. The edit dialog does the same thing
+  // internally using its own state.
+  useEffect(() => {
+    if (!formEmailEnabled || !emailDefaults) return;
+    setFormEmailFrom((current) => current || emailDefaults.fromEmail || "");
+    setFormEmailFromName((current) => current || emailDefaults.fromName || "");
+    setFormEmailReplyTo((current) => current || emailDefaults.replyTo || "");
+    setFormEmailFooterDataUrl((current) =>
+      current ? current : emailDefaults.footerImageDataUrl || null,
+    );
+    setFormEmailFooterName((current) =>
+      current
+        ? current
+        : emailDefaults.footerImageDataUrl
+          ? emailDefaults.footerImageFileName || "footer do seu perfil"
+          : null,
+    );
+  }, [formEmailEnabled, emailDefaults]);
 
   const leadOptions = useMemo(
     () =>
@@ -1183,6 +1247,19 @@ export function CronJobsModal({
                 }}
                 instructionsHint={formEmailHint}
                 onInstructionsHintChange={setFormEmailHint}
+                defaults={emailDefaults}
+                onResetToDefaults={() => {
+                  if (!emailDefaults) return;
+                  setFormEmailFrom(emailDefaults.fromEmail ?? "");
+                  setFormEmailFromName(emailDefaults.fromName ?? "");
+                  setFormEmailReplyTo(emailDefaults.replyTo ?? "");
+                  setFormEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
+                  setFormEmailFooterName(
+                    emailDefaults.footerImageDataUrl
+                      ? emailDefaults.footerImageFileName || "footer do seu perfil"
+                      : null,
+                  );
+                }}
                 disabled={createBusy}
               />
 
@@ -1223,6 +1300,7 @@ export function CronJobsModal({
           job={editingJob}
           agents={agents}
           squads={squads}
+          emailDefaults={emailDefaults}
           onClose={() => setEditingJob(null)}
           onSaved={() => void handleEditSaved(editingJob.id)}
         />
@@ -1345,6 +1423,7 @@ type EditCronJobDialogProps = {
   job: CronJob;
   agents: CronAgentOption[];
   squads: CronSquadOption[];
+  emailDefaults: CronEmailToolDefaults | null;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -1363,6 +1442,7 @@ function EditCronJobDialog({
   job,
   agents,
   squads,
+  emailDefaults,
   onClose,
   onSaved,
 }: EditCronJobDialogProps) {
@@ -1415,6 +1495,26 @@ function EditCronJobDialog({
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // If the operator flips the email tool ON while editing a job that never
+  // had it, prefill the fields from the fetched defaults — same behavior
+  // as the create form. We don't clobber user-typed values.
+  useEffect(() => {
+    if (!emailEnabled || !emailDefaults) return;
+    setEmailFrom((current) => current || emailDefaults.fromEmail || "");
+    setEmailFromName((current) => current || emailDefaults.fromName || "");
+    setEmailReplyTo((current) => current || emailDefaults.replyTo || "");
+    setEmailFooterDataUrl((current) =>
+      current ? current : emailDefaults.footerImageDataUrl || null,
+    );
+    setEmailFooterName((current) =>
+      current
+        ? current
+        : emailDefaults.footerImageDataUrl
+          ? emailDefaults.footerImageFileName || "footer do seu perfil"
+          : null,
+    );
+  }, [emailEnabled, emailDefaults]);
 
   const canSave =
     name.trim().length > 0 &&
@@ -1832,6 +1932,19 @@ function EditCronJobDialog({
             }}
             instructionsHint={emailHint}
             onInstructionsHintChange={setEmailHint}
+            defaults={emailDefaults}
+            onResetToDefaults={() => {
+              if (!emailDefaults) return;
+              setEmailFrom(emailDefaults.fromEmail ?? "");
+              setEmailFromName(emailDefaults.fromName ?? "");
+              setEmailReplyTo(emailDefaults.replyTo ?? "");
+              setEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
+              setEmailFooterName(
+                emailDefaults.footerImageDataUrl
+                  ? emailDefaults.footerImageFileName || "footer do seu perfil"
+                  : null,
+              );
+            }}
             disabled={busy}
           />
         </div>
@@ -2050,6 +2163,10 @@ type EmailToolCardProps = {
   onFooterChange: (dataUrl: string | null, name: string | null) => void;
   instructionsHint: string;
   onInstructionsHintChange: (next: string) => void;
+  /** Resolved defaults from the backend — drives the "Usar meus dados" button
+   *  and the subtle placeholder text that hints at the fallback values. */
+  defaults?: CronEmailToolDefaults | null;
+  onResetToDefaults?: () => void;
   disabled?: boolean;
 };
 
@@ -2073,6 +2190,8 @@ function EmailToolCard({
   onFooterChange,
   instructionsHint,
   onInstructionsHintChange,
+  defaults,
+  onResetToDefaults,
   disabled,
 }: EmailToolCardProps) {
   const [footerError, setFooterError] = useState<string | null>(null);
@@ -2155,36 +2274,101 @@ function EmailToolCard({
             <span className="font-mono text-white/75">resend_email</span> em cada
             disparo. A <span className="font-semibold">API key fica no servidor</span>
             {" "}— aqui você só define o remetente, assunto padrão e banner de
-            rodapé.
+            rodapé. Os campos são pré-preenchidos com os seus dados de perfil.
           </p>
         </div>
       </label>
 
       {enabled && (
         <div className="mt-3 space-y-3 border-t border-white/[0.08] pt-3">
+          {/* Defaults banner — shows the resolved fallback chain + a quick
+             "restore my profile defaults" button so operators can revert
+             after experimenting with overrides. */}
+          {defaults && (
+            <div className="flex flex-col gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[11px] md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-2 text-white/65">
+                <span
+                  className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full"
+                  style={{
+                    backgroundColor: `${ACCENT}25`,
+                    color: ACCENT,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  i
+                </span>
+                <div className="leading-5">
+                  <span className="font-semibold text-white/80">
+                    Usando seus dados de perfil:
+                  </span>{" "}
+                  <span className="font-mono text-white/85">
+                    {defaults.fromName ?? "—"}
+                  </span>{" "}
+                  <span className="text-white/55">&lt;</span>
+                  <span className="font-mono text-white/85">
+                    {defaults.fromEmail ?? "—"}
+                  </span>
+                  <span className="text-white/55">&gt;</span>
+                  {defaults.footerImageDataUrl && (
+                    <span className="text-white/55"> · rodapé pessoal</span>
+                  )}
+                  {!defaults.resendConfigured && (
+                    <span className="ml-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
+                      Resend off
+                    </span>
+                  )}
+                </div>
+              </div>
+              {onResetToDefaults && (
+                <button
+                  type="button"
+                  onClick={onResetToDefaults}
+                  disabled={disabled}
+                  className="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Usar meus dados
+                </button>
+              )}
+            </div>
+          )}
+          {defaults?.note && (
+            <div className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100/90">
+              {defaults.note}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Field
               label="From email"
-              hint="Ex.: ops@ptxgroup.us. Em branco = email da empresa."
+              hint={
+                defaults?.fromEmail
+                  ? `Em branco usa: ${defaults.fromEmail}`
+                  : "Em branco = email da empresa."
+              }
             >
               <input
                 type="email"
                 value={fromEmail}
                 onChange={(e) => onFromEmailChange(e.target.value)}
-                placeholder="ops@ptxgroup.us"
+                placeholder={defaults?.fromEmail ?? "ops@ptxgroup.us"}
                 disabled={disabled}
                 className={`${inputClass} font-mono`}
               />
             </Field>
             <Field
               label="From name"
-              hint="Nome amigável do remetente. Em branco = nome do autor."
+              hint={
+                defaults?.fromName
+                  ? `Em branco usa: ${defaults.fromName}`
+                  : "Nome amigável do remetente."
+              }
             >
               <input
                 type="text"
                 value={fromName}
                 onChange={(e) => onFromNameChange(e.target.value)}
-                placeholder="Lucas @ PTX"
+                placeholder={defaults?.fromName ?? "Lucas @ PTX"}
                 disabled={disabled}
                 className={inputClass}
               />
@@ -2192,12 +2376,19 @@ function EmailToolCard({
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field label="Reply-To (opcional)">
+            <Field
+              label="Reply-To (opcional)"
+              hint={
+                defaults?.replyTo
+                  ? `Em branco usa: ${defaults.replyTo}`
+                  : "Em branco reusa o From email."
+              }
+            >
               <input
                 type="email"
                 value={replyTo}
                 onChange={(e) => onReplyToChange(e.target.value)}
-                placeholder="lucas@ptxgroup.us"
+                placeholder={defaults?.replyTo ?? "lucas@ptxgroup.us"}
                 disabled={disabled}
                 className={`${inputClass} font-mono`}
               />

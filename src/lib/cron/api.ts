@@ -233,6 +233,25 @@ export type RunCronJobInput = {
   systemEventOverride?: string;
 };
 
+/**
+ * Resolved email-tool defaults for the current user, returned by
+ * `GET /api/CronJobs/tools/email-defaults?companyId=…`. The UI calls this
+ * once when the operator first opens the "new cron" form so it can prefill
+ * the Email tool card with the teammate's real email / name / footer banner.
+ *
+ * Credentials (Resend apiKey) are never surfaced — only the `resendConfigured`
+ * flag so the UI can warn when the admin hasn't wired Resend yet.
+ */
+export type CronEmailToolDefaults = {
+  resendConfigured: boolean;
+  fromEmail: string | null;
+  fromName: string | null;
+  replyTo: string | null;
+  footerImageDataUrl: string | null;
+  footerImageFileName: string | null;
+  note: string | null;
+};
+
 const normalizeErrorText = async (response: Response) => {
   const text = (await response.text()).trim();
   return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
@@ -367,6 +386,20 @@ export const fetchCronJobRuns = async (
   const safeTake = Math.max(1, Math.min(200, Math.floor(take)));
   return requestBackendJson<CronJobRun[]>(
     `/api/CronJobs/${jobId}/runs?take=${escapeQuery(String(safeTake))}`,
+    { method: "GET" },
+  );
+};
+
+/**
+ * Fetches the resolved email-tool defaults for the current user scoped to
+ * `companyId`. Call this lazily — only when the operator flips the email
+ * tool on — so we don't burn a round-trip for every cron modal open.
+ */
+export const fetchEmailToolDefaults = async (
+  companyId: number,
+): Promise<CronEmailToolDefaults> => {
+  return requestBackendJson<CronEmailToolDefaults>(
+    `/api/CronJobs/tools/email-defaults?companyId=${escapeQuery(String(companyId))}`,
     { method: "GET" },
   );
 };
