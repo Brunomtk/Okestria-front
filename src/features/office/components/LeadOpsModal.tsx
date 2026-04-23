@@ -32,7 +32,11 @@ import {
   pauseLeadFollowUp,
   processDueLeadFollowUps,
   resumeLeadFollowUp,
+  scheduleLeadFollowUpsForGeneration,
   scheduleLeadFollowUpsForLead,
+  getBulkScheduleFollowUpsJobStatus,
+  getActiveBulkScheduleFollowUpsJob,
+  cancelBulkScheduleFollowUpsJob,
   sendLeadFollowUpNow,
   type LeadFollowUp,
   type LeadFollowUpOverview,
@@ -361,6 +365,11 @@ export function LeadOpsModal({
     etaSeconds: number | null;
   } | null>(null);
 
+  // The backend's job id for the current bulk-schedule run. Set by the
+  // kickoff call OR by the resume-on-open check. While non-null, a
+  // poll effect drives progress updates at 1.5s cadence.
+  const [bulkScheduleJobId, setBulkScheduleJobId] = useState<string | null>(null);
+
   const resetFeedback = useCallback(() => {
     setMessage(null);
     setError(null);
@@ -406,6 +415,101 @@ export function LeadOpsModal({
     resetFeedback();
     void loadFollowUpData();
   }, [open, topTab, loadFollowUpData, resetFeedback]);
+
+  // Resume-on-open: when the modal opens, check the backend for an
+  // in-flight bulk-schedule job tied to the authenticated user's company
+  // and attach the progress overlay to it. This is what turns "close the
+  // modal while generating" from a destructive action into a no-op.
+  useEffect(() => {
+    if (!open || topTab !== "followup") return;
+    let cancelled = false;
+    (async () => {
+      const active = await getActiveBulkScheduleFollowUpsJob();
+      if (cancelled || !active || !active.jobId) return;
+      if (active.status !== "running" && active.status !== "queued") return;
+
+      setBulkScheduleJobId(active.jobId);
+      setBusyAction("bulk");
+      setBulkScheduleProgress({
+        current: active.processed ?? 0,
+        total: active.total ?? 0,
+        currentName: active.currentLeadName ?? "",
+        succeeded: active.succeeded ?? 0,
+        failed: active.failed ?? 0,
+        cancelRequested: false,
+        startedAtMs: Date.now(),
+        etaSeconds: null,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [open, topTab]);
+
+  // Poll loop for the active bulk schedule job. Same shape as the
+  // insight poll in LeadOpsPanel — drives the progress overlay and
+  // tears itself down on terminal status.
+  useEffect(() => {
+    if (!bulkScheduleJobId) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const status = await getBulkScheduleFollowUpsJobStatus(bulkScheduleJobId);
+        if (cancelled) return;
+
+        setBulkScheduleProgress((prev) => {
+          if (!prev) return prev;
+          const elapsedSeconds = (Date.now() - prev.startedAtMs) / 1000;
+          const processed = status.processed ?? 0;
+          const total = status.total ?? prev.total;
+          const avg = processed > 0 ? elapsedSeconds / processed : 0;
+          const etaSeconds = avg > 0 ? Math.round(avg * Math.max(0, total - processed)) : null;
+          return {
+            ...prev,
+            current: processed,
+            total,
+            succeeded: status.succeeded ?? prev.succeeded,
+            failed: status.failed ?? prev.failed,
+            currentName: status.currentLeadName ?? prev.currentName,
+            etaSeconds,
+          };
+        });
+
+        if (
+          status.status === "completed" ||
+          status.status === "failed" ||
+          status.status === "cancelled"
+        ) {
+          setBusyAction(null);
+          setBulkScheduleProgress(null);
+          setBulkScheduleJobId(null);
+
+          const created = status.totalCreated ?? 0;
+          const succeeded = status.succeeded ?? 0;
+          const failed = status.failed ?? 0;
+          const parts: string[] = [];
+          if (succeeded > 0)
+            parts.push(`${created} follow-up(s) scheduled across ${succeeded} lead(s)`);
+          if (failed > 0) parts.push(`${failed} failed`);
+          const verb = status.status === "cancelled" ? "Cancelled" : "Done";
+          setMessage(
+            parts.length > 0
+              ? `${verb} · ${parts.join(" · ")}`
+              : `${verb} — no follow-ups were created.`,
+          );
+          await loadFollowUpData();
+        }
+      } catch {
+        // transient — next tick retries.
+      }
+    };
+
+    void tick();
+    const interval = setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [bulkScheduleJobId, loadFollowUpData]);
 
   // Load email context (best-effort) when the modal opens.
   useEffect(() => {
@@ -602,11 +706,16 @@ export function LeadOpsModal({
     }
   };
 
+  // Enqueues a bulk-schedule job on the backend and attaches the UI to
+  // it. The actual row inserts happen inside BulkScheduleWorker so the
+  // user can close the modal, come back later, and resume watching.
   const scheduleForFilteredLeads = async () => {
     if (!companyId) {
       setError("Company not identified.");
       return;
     }
+    if (busyAction === "bulk") return; // already running
+
     const targets = filteredLeads.filter((l) => Number.isFinite(l.id));
     if (!targets.length) {
       setError("No leads match the current filter. Adjust the filter and try again.");
@@ -620,7 +729,6 @@ export function LeadOpsModal({
 
     resetFeedback();
     setBusyAction("bulk");
-    const startedAt = Date.now();
     setBulkScheduleProgress({
       current: 0,
       total: targets.length,
@@ -628,101 +736,43 @@ export function LeadOpsModal({
       succeeded: 0,
       failed: 0,
       cancelRequested: false,
-      startedAtMs: startedAt,
+      startedAtMs: Date.now(),
       etaSeconds: null,
     });
 
-    // Parallel per-lead scheduling. The DB-side path is cheap (one
-    // AddRange + Save per lead) so a concurrency of 5 keeps things
-    // snappy without overwhelming anything. Every call is the same as
-    // "Schedule for selected lead" — small payload, no 502 risk.
-    const concurrency = 5;
-    let succeeded = 0;
-    let failed = 0;
-    let totalCreated = 0;
-    let completed = 0;
-    let cancelled = false;
-    const queue = [...targets];
-
-    const worker = async () => {
-      while (!cancelled) {
-        const lead = queue.shift();
-        if (!lead) return;
-
-        let shouldStop = false;
-        setBulkScheduleProgress((prev) => {
-          if (prev?.cancelRequested) shouldStop = true;
-          return prev
-            ? {
-                ...prev,
-                currentName:
-                  lead.businessName || lead.email || `Lead #${lead.id}`,
-              }
-            : prev;
-        });
-        if (shouldStop) {
-          cancelled = true;
-          return;
-        }
-
-        try {
-          const created = await scheduleLeadFollowUpsForLead(lead.id, payload);
-          totalCreated += created.length;
-          succeeded++;
-        } catch (cause) {
-          failed++;
-          console.warn(
-            `[bulk schedule] lead ${lead.id} failed:`,
-            cause instanceof Error ? cause.message : cause,
-          );
-        } finally {
-          completed++;
-          const elapsedSeconds = (Date.now() - startedAt) / 1000;
-          const avgPerItem = completed > 0 ? elapsedSeconds / completed : 0;
-          const remaining = Math.max(0, targets.length - completed);
-          const etaSeconds = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : null;
-
-          setBulkScheduleProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  current: completed,
-                  succeeded,
-                  failed,
-                  etaSeconds,
-                }
-              : prev,
-          );
-        }
-      }
-    };
-
     try {
-      await Promise.all(
-        Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()),
-      );
+      const result = await scheduleLeadFollowUpsForGeneration({
+        companyId,
+        jobId: missionFilter === "all" ? null : missionFilter,
+        leadIds: targets.map((l) => l.id),
+        replacePending,
+        steps: payload,
+      });
 
-      const parts: string[] = [];
-      if (succeeded > 0)
-        parts.push(
-          `${totalCreated} follow-up(s) scheduled across ${succeeded} lead(s)`,
-        );
-      if (failed > 0) parts.push(`${failed} failed`);
-      setMessage(
-        parts.length > 0
-          ? parts.join(" · ")
-          : "No follow-ups were created. Check the cadence fields and try again.",
+      if (!result.jobId) {
+        throw new Error("Server did not return a job id.");
+      }
+      setBulkScheduleJobId(result.jobId);
+      setBulkScheduleProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              total: result.total || prev.total,
+              current: result.processed || 0,
+              succeeded: result.succeeded || 0,
+              failed: result.failed || 0,
+              currentName: result.currentLeadName || prev.currentName,
+            }
+          : prev,
       );
-      await loadFollowUpData();
     } catch (cause) {
+      setBusyAction(null);
+      setBulkScheduleProgress(null);
       setError(
         cause instanceof Error
           ? cause.message
-          : "Failed to schedule follow-ups in bulk.",
+          : "Failed to start bulk schedule job.",
       );
-    } finally {
-      setBusyAction(null);
-      setBulkScheduleProgress(null);
     }
   };
 
@@ -730,7 +780,12 @@ export function LeadOpsModal({
     setBulkScheduleProgress((prev) =>
       prev ? { ...prev, cancelRequested: true } : prev,
     );
-  }, []);
+    if (bulkScheduleJobId) {
+      cancelBulkScheduleFollowUpsJob(bulkScheduleJobId).catch((e) =>
+        console.warn("[bulk schedule cancel] failed:", e),
+      );
+    }
+  }, [bulkScheduleJobId]);
 
   const handleItemAction = async (
     action: "pause" | "resume" | "cancel" | "send",

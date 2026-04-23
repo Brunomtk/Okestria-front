@@ -919,6 +919,15 @@ export const bulkGenerateInsights = async (payload: BulkGenerateInsightsPayload)
   });
 };
 
+// Ask the backend to stop a running bulk insights job. The worker checks
+// the flag between leads and exits gracefully, preserving whatever has
+// already been generated.
+export const cancelBulkInsightsJob = async (jobId: string): Promise<void> => {
+  await requestBackend<unknown>(`/api/Leads/bulk-generate-insights/${jobId}/cancel`, {
+    method: "POST",
+  });
+};
+
 export const getBulkInsightJobStatus = async (jobId: string): Promise<BulkGenerateInsightsResult> => {
   return requestBackend<BulkGenerateInsightsResult>(`/api/Leads/bulk-generate-insights/${jobId}`);
 };
@@ -1078,14 +1087,43 @@ export const scheduleLeadFollowUpsForLead = async (leadId: number, steps: LeadFo
   return Array.isArray(payload) ? payload.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item)) : [];
 };
 
+// Bulk-schedule result shape returned by the new background worker (and
+// by the status-poll endpoint). Semantically identical to
+// BulkGenerateInsightsResult but for follow-ups: `totalCreated` is the
+// number of LeadFollowUp rows inserted across all leads in the job.
+export type BulkScheduleFollowUpsItem = {
+  leadId: number;
+  businessName?: string | null;
+  success: boolean;
+  followUpsCreated: number;
+  error?: string | null;
+};
+
+export type BulkScheduleFollowUpsResult = {
+  jobId: string;
+  // queued | running | completed | failed | cancelled
+  status: string;
+  total: number;
+  processed: number;
+  succeeded: number;
+  failed: number;
+  totalCreated: number;
+  currentLeadName?: string | null;
+  errorMessage?: string | null;
+  items: BulkScheduleFollowUpsItem[];
+};
+
+// Enqueue a bulk-schedule job. Returns immediately with a jobId — the
+// caller is expected to poll getBulkScheduleFollowUpsJobStatus(jobId)
+// until status !== "queued" and !== "running".
 export const scheduleLeadFollowUpsForGeneration = async (input: {
   companyId: number;
   jobId?: number | null;
   leadIds?: number[];
   replacePending?: boolean;
   steps: LeadFollowUpStepInput[];
-}): Promise<LeadFollowUp[]> => {
-  const payload = await requestBackend<unknown>(`/api/Leads/followups/bulk`, {
+}): Promise<BulkScheduleFollowUpsResult> => {
+  return requestBackend<BulkScheduleFollowUpsResult>(`/api/Leads/followups/bulk`, {
     method: "POST",
     body: JSON.stringify({
       companyId: input.companyId,
@@ -1095,7 +1133,34 @@ export const scheduleLeadFollowUpsForGeneration = async (input: {
       steps: input.steps,
     }),
   });
-  return Array.isArray(payload) ? payload.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item)) : [];
+};
+
+export const getBulkScheduleFollowUpsJobStatus = async (
+  jobId: string,
+): Promise<BulkScheduleFollowUpsResult> => {
+  return requestBackend<BulkScheduleFollowUpsResult>(
+    `/api/Leads/followups/bulk-jobs/${jobId}`,
+  );
+};
+
+// Returns null when the authenticated user's company has no active bulk
+// schedule job. Used on modal reopen to resume the progress UI if a
+// previous click is still running in the background.
+export const getActiveBulkScheduleFollowUpsJob = async (): Promise<BulkScheduleFollowUpsResult | null> => {
+  try {
+    const res = await requestBackend<BulkScheduleFollowUpsResult | null>(
+      `/api/Leads/followups/active-bulk-job`,
+    );
+    return res && typeof res === "object" && "jobId" in res ? res : null;
+  } catch {
+    return null;
+  }
+};
+
+export const cancelBulkScheduleFollowUpsJob = async (jobId: string): Promise<void> => {
+  await requestBackend<unknown>(`/api/Leads/followups/bulk-jobs/${jobId}/cancel`, {
+    method: "POST",
+  });
 };
 
 export const pauseLeadFollowUp = async (id: number): Promise<LeadFollowUp> => {

@@ -33,6 +33,10 @@ import {
 
 import type { AgentState } from "@/features/agents/state/store";
 import {
+  bulkGenerateInsights,
+  getBulkInsightJobStatus,
+  getActiveInsightJob,
+  cancelBulkInsightsJob,
   cancelLeadGenerationJob,
   cancelLeadEmailBatchJob,
   createLeadEmailBatchJob,
@@ -189,7 +193,11 @@ export function LeadOpsPanel({
   const [sendingBatch, setSendingBatch] = useState(false);
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
   const [chatPriming, setChatPriming] = useState<number | "job" | null>(null);
+  // True whenever the UI is attached to a running bulk-insight job (own
+  // click OR resumed from the server on mount). Drives button disabled
+  // state + inline "Generating N/M" label + overlay visibility.
   const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkInsightJobId, setBulkInsightJobId] = useState<string | null>(null);
   const [bulkProgress, setBulkProgress] = useState<{
     current: number;
     total: number;
@@ -198,8 +206,9 @@ export function LeadOpsPanel({
     skipped: number;
     failed: number;
     cancelRequested: boolean;
-    // Drives the ETA label in the progress overlay. Populated once the
-    // first item completes so the estimate is grounded in real latency.
+    // Drives the ETA label. startedAtMs is set the first time we attach
+    // to a job (either by our own click or by a resume from the server
+    // on mount).
     startedAtMs: number;
     etaSeconds: number | null;
   } | null>(null);
@@ -379,6 +388,129 @@ export function LeadOpsPanel({
     const timer = setInterval(() => setRefreshTick((t) => t + 1), 2000);
     return () => clearInterval(timer);
   }, [jobs]);
+
+  // Resume-on-mount: if the backend already has a bulk insight job
+  // running for the authenticated user's company, attach the UI to it
+  // so closing the modal mid-generation doesn't hide the progress.
+  useEffect(() => {
+    if (!companyId) return;
+    let cancelled = false;
+    (async () => {
+      const active = await getActiveInsightJob(companyId);
+      if (cancelled || !active || !active.jobId) return;
+      if (active.status !== "running" && active.status !== "queued") return;
+
+      setBulkInsightJobId(active.jobId);
+      setBulkGenerating(true);
+      setBulkProgress({
+        current: active.processed ?? 0,
+        total: active.total ?? 0,
+        currentName: active.currentLeadName ?? "",
+        succeeded: active.succeeded ?? 0,
+        skipped: active.skipped ?? 0,
+        failed: active.failed ?? 0,
+        cancelRequested: false,
+        startedAtMs: Date.now(),
+        etaSeconds: null,
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [companyId]);
+
+  // Poll loop for the active bulk insight job. Runs at 1.5s while the
+  // job is in flight and tears itself down the moment status flips to a
+  // terminal state (completed / failed / cancelled). Uses a ref-guarded
+  // dedupe so back-to-back renders can't spawn two intervals.
+  useEffect(() => {
+    if (!bulkInsightJobId) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const status = await getBulkInsightJobStatus(bulkInsightJobId);
+        if (cancelled) return;
+
+        setBulkProgress((prev) => {
+          if (!prev) return prev;
+          const elapsedSeconds = (Date.now() - prev.startedAtMs) / 1000;
+          const processed = status.processed ?? 0;
+          const total = status.total ?? prev.total;
+          const avg = processed > 0 ? elapsedSeconds / processed : 0;
+          const etaSeconds = avg > 0 ? Math.round(avg * Math.max(0, total - processed)) : null;
+          return {
+            ...prev,
+            current: processed,
+            total,
+            succeeded: status.succeeded ?? prev.succeeded,
+            failed: status.failed ?? prev.failed,
+            skipped: status.skipped ?? prev.skipped,
+            currentName: status.currentLeadName ?? prev.currentName,
+            etaSeconds,
+          };
+        });
+
+        // Patch freshly-generated leads back into the grid as the
+        // worker finishes each one.
+        if (status.items && status.items.length > 0) {
+          const freshIds = status.items
+            .filter((i) => i.success && i.usedAi)
+            .map((i) => i.leadId);
+          if (freshIds.length > 0) {
+            await Promise.all(
+              freshIds.slice(-3).map(async (leadId) => {
+                try {
+                  const fresh = await getLeadById(leadId);
+                  if (fresh) {
+                    setJobLeads((current) =>
+                      current.map((l) => (l.id === leadId ? { ...l, ...fresh } : l)),
+                    );
+                    setSelectedLeadDetail((prev) =>
+                      prev && prev.id === leadId ? { ...prev, ...fresh } : prev,
+                    );
+                  }
+                } catch {
+                  // non-fatal
+                }
+              }),
+            );
+          }
+        }
+
+        if (
+          status.status === "completed" ||
+          status.status === "failed" ||
+          status.status === "cancelled"
+        ) {
+          setBulkGenerating(false);
+          setBulkProgress(null);
+          setBulkInsightJobId(null);
+
+          const parts: string[] = [];
+          if ((status.succeeded ?? 0) > 0) parts.push(`${status.succeeded} generated`);
+          if ((status.skipped ?? 0) > 0) parts.push(`${status.skipped} already ready`);
+          if ((status.failed ?? 0) > 0) parts.push(`${status.failed} failed`);
+          const summary = parts.length > 0 ? parts.join(" · ") : "no changes";
+          const verb = status.status === "cancelled" ? "Cancelled" : "Done";
+          const msg = `${verb} for ${status.total ?? 0} lead(s): ${summary}.`;
+          setError(msg);
+          setTimeout(
+            () => setError((c) => (c === msg ? null : c)),
+            5000,
+          );
+          setRefreshTick((t) => t + 1);
+        }
+      } catch {
+        // Transient errors are fine — next tick retries.
+      }
+    };
+
+    void tick();
+    const interval = setInterval(() => void tick(), 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [bulkInsightJobId]);
 
   // Load leads for the current company, with job-specific fallback when needed.
   // `refreshTick` is in the dep list so bumping it (e.g. after a bulk insight
@@ -648,11 +780,16 @@ export function LeadOpsPanel({
    * invisibly in the background. Frontend-driven sequencing is slower
    * but the per-lead feedback is worth it.
    */
+  // Fires the bulk insight job on the backend and attaches the UI to
+  // it. The actual work runs inside BulkInsightWorker server-side, so
+  // the user can close the modal / tab and come back — we re-attach via
+  // the active-insight-job endpoint on mount.
   const handleBulkGenerateInsights = useCallback(async () => {
     if (!companyId) return;
+    if (bulkGenerating) return; // idempotent — already running
 
-    // Operate on whatever the user is looking at right now — same scope
-    // as the search/filter they already applied.
+    // Optimistic UI: if the current filter scope selects zero leads we
+    // don't bother poking the server.
     const targets = filteredLeads.filter((lead) => Number.isFinite(lead.id));
     if (targets.length === 0) {
       setError("No leads to generate — adjust the filter first.");
@@ -660,7 +797,6 @@ export function LeadOpsPanel({
     }
 
     setBulkGenerating(true);
-    const startedAt = Date.now();
     setBulkProgress({
       current: 0,
       total: targets.length,
@@ -669,119 +805,56 @@ export function LeadOpsPanel({
       skipped: 0,
       failed: 0,
       cancelRequested: false,
-      startedAtMs: startedAt,
+      startedAtMs: Date.now(),
       etaSeconds: null,
     });
 
-    // Run the individual endpoint with a bounded concurrency. Each call
-    // IS the individual button's request, so three in flight is safe —
-    // the backend endpoint is idempotent and has its own cross-provider
-    // fallback. Keeping concurrency low also respects the AI provider
-    // rate limits.
-    const concurrency = 3;
-    let completed = 0;
-    let succeeded = 0;
-    let skipped = 0;
-    let failed = 0;
-    let cancelled = false;
-    const queue = [...targets];
+    try {
+      const response = await bulkGenerateInsights({
+        companyId,
+        // Scope to the currently selected mission when there is one;
+        // otherwise the worker uses the whole company.
+        jobId: selectedJobId ?? undefined,
+        forceRegenerate: true,
+        preferredModel: selectedModel?.trim() || null,
+      });
 
-    const worker = async () => {
-      while (!cancelled) {
-        const lead = queue.shift();
-        if (!lead) return;
-
-        // Read cancel flag and bump "current lead" label at the same time.
-        let shouldStop = false;
-        setBulkProgress((prev) => {
-          if (prev?.cancelRequested) shouldStop = true;
-          return prev
-            ? {
-                ...prev,
-                currentName: lead.businessName || lead.email || `Lead #${lead.id}`,
-              }
-            : prev;
-        });
-        if (shouldStop) {
-          cancelled = true;
-          return;
-        }
-
-        try {
-          // Same call as the individual button — forceRegenerate=true.
-          await generateLeadInsights(lead.id, null, {
-            forceRegenerate: true,
-            preferredModel: selectedModel?.trim() || null,
-          });
-
-          // Pull the fresh lead so the grid + detail modal reflect the
-          // new outreach text the moment the request finishes.
-          const fresh = await getLeadById(lead.id);
-          if (fresh) {
-            setJobLeads((current) =>
-              current.map((l) => (l.id === lead.id ? { ...l, ...fresh } : l)),
-            );
-            setSelectedLeadDetail((prev) =>
-              prev && prev.id === lead.id ? { ...prev, ...fresh } : prev,
-            );
-          }
-          succeeded++;
-        } catch (e) {
-          failed++;
-          console.warn(`[bulk generate] lead ${lead.id} failed:`, e);
-        } finally {
-          completed++;
-
-          // Update progress + ETA based on the real elapsed time so the
-          // number shrinks as we go.
-          const elapsedSeconds = (Date.now() - startedAt) / 1000;
-          const avgPerItem = completed > 0 ? elapsedSeconds / completed : 0;
-          const remaining = Math.max(0, targets.length - completed);
-          const etaSeconds = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : null;
-
-          setBulkProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  current: completed,
-                  succeeded,
-                  skipped,
-                  failed,
-                  etaSeconds,
-                }
-              : prev,
-          );
-        }
+      if (!response.jobId) {
+        throw new Error("Server did not return a job id.");
       }
-    };
+      setBulkInsightJobId(response.jobId);
+      // Seed state from whatever progress the server already has (>0
+      // when we just resumed an existing job).
+      setBulkProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              total: response.total || prev.total,
+              current: response.processed || 0,
+              succeeded: response.succeeded || 0,
+              failed: response.failed || 0,
+              skipped: response.skipped || 0,
+              currentName: response.currentLeadName || prev.currentName,
+            }
+          : prev,
+      );
+    } catch (e) {
+      setBulkGenerating(false);
+      setBulkProgress(null);
+      setError(e instanceof Error ? e.message : "Failed to start bulk insights job.");
+    }
+  }, [bulkGenerating, companyId, filteredLeads, selectedJobId, selectedModel]);
 
-    await Promise.all(
-      Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()),
-    );
-
-    setBulkGenerating(false);
-    setBulkProgress(null);
-
-    const parts: string[] = [];
-    if (succeeded > 0) parts.push(`${succeeded} generated`);
-    if (skipped > 0) parts.push(`${skipped} already ready`);
-    if (failed > 0) parts.push(`${failed} failed`);
-    const summary = parts.length > 0 ? parts.join(" · ") : "no changes";
-    const message = `Done for ${targets.length} lead(s): ${summary}.`;
-    setError(message);
-    setTimeout(() => {
-      setError((current) => (current === message ? null : current));
-    }, 5000);
-
-    // Hard refresh: bumping refreshTick re-runs the list load effect
-    // (now depends on refreshTick) so the grid reflects backend truth
-    // one more time, in case any per-lead patch got stale.
-    setRefreshTick((t) => t + 1);
-  }, [companyId, filteredLeads, selectedModel]);
-
+  // Cancel — asks the backend to stop after the current lead. Keeps
+  // optimistic state in sync so the overlay says "stopping…" right away.
   const cancelBulkGenerate = useCallback(() => {
     setBulkProgress((prev) => (prev ? { ...prev, cancelRequested: true } : prev));
-  }, []);
+    if (bulkInsightJobId) {
+      cancelBulkInsightsJob(bulkInsightJobId).catch((e) =>
+        console.warn("[bulk cancel] failed:", e),
+      );
+    }
+  }, [bulkInsightJobId]);
 
   const handleBulkDelete = useCallback(async () => {
     const leadIds = filteredLeads.map((l) => l.id);
