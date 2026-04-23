@@ -93,7 +93,7 @@ const DEFAULT_STEPS: DraftStep[] = [
     introText:
       "Open the conversation with a short, consultative, value-first email. Use the freshest lead insight available.",
     delayDays: 0,
-    preferredModel: "anthropic/claude-sonnet-4-6",
+    preferredModel: "claude-sonnet-4-5-20250929",
     notes: "Human tone, direct, no hint of an automated sequence.",
   },
   {
@@ -103,7 +103,7 @@ const DEFAULT_STEPS: DraftStep[] = [
     introText:
       "Write a different email from the first one — bring a new value angle and reinforce credibility.",
     delayDays: 2,
-    preferredModel: "anthropic/claude-sonnet-4-6",
+    preferredModel: "claude-sonnet-4-5-20250929",
     notes: "Do not reuse the same CTA or phrases from the first email.",
   },
   {
@@ -113,7 +113,7 @@ const DEFAULT_STEPS: DraftStep[] = [
     introText:
       "Write an elegant, short, respectful last attempt with a light CTA.",
     delayDays: 5,
-    preferredModel: "anthropic/claude-haiku-3-5",
+    preferredModel: "claude-haiku-4-5-20251001",
     notes: "Hint at urgency without pressuring.",
   },
 ];
@@ -505,7 +505,7 @@ export function LeadOpsModal({
         introText:
           "Write a short, human, respectful touch that brings a fresh angle. Do not repeat earlier phrases.",
         delayDays: nextDelay,
-        preferredModel: last?.preferredModel || "anthropic/claude-sonnet-4-6",
+        preferredModel: last?.preferredModel || "claude-sonnet-4-5-20250929",
         notes: "",
       };
       setExpandedStep(nextNumber); // open the newly added step for editing
@@ -1397,7 +1397,7 @@ function ScheduleTab({
                           onChange={(e) =>
                             onUpdateStep(index, { preferredModel: e.target.value })
                           }
-                          placeholder="anthropic/claude-sonnet-4-6"
+                          placeholder="claude-sonnet-4-5-20250929"
                           className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-white/25"
                         />
                       </Field>

@@ -868,6 +868,16 @@ export type BulkGenerateInsightsPayload = {
   preferredModel?: string | null;
 };
 
+export type BulkGenerateInsightsItem = {
+  leadId: number;
+  businessName?: string | null;
+  success: boolean;
+  usedAi?: boolean;
+  usedFallback?: boolean;
+  status?: string | null;
+  error?: string | null;
+};
+
 export type BulkGenerateInsightsResult = {
   total: number;
   succeeded: number;
@@ -875,9 +885,17 @@ export type BulkGenerateInsightsResult = {
   skipped: number;
   processed: number;
   jobId?: string | null;
+  /**
+   * Possible values emitted by the backend:
+   *  - "completed"       — every lead in the request was processed inline.
+   *  - "partial_running" — inline batch processed; the rest is queued on
+   *                        the background worker. Poll the jobId endpoint.
+   *  - "queued" / "running" / "failed" — returned by the GET status poll.
+   */
   status?: string | null;
   currentLeadName?: string | null;
   errorMessage?: string | null;
+  items?: BulkGenerateInsightsItem[] | null;
 };
 
 export const bulkGenerateInsights = async (payload: BulkGenerateInsightsPayload): Promise<BulkGenerateInsightsResult> => {
@@ -887,7 +905,12 @@ export const bulkGenerateInsights = async (payload: BulkGenerateInsightsPayload)
       companyId: payload.companyId,
       jobId: payload.jobId ?? null,
       forceRegenerate: payload.forceRegenerate ?? false,
-      preferredModel: payload.preferredModel ?? "gpt-5.4-nano",
+      // Intentionally no default model — let the backend pick the
+      // configured AI__OpenAI__Model / AI__Claude__Model. Hard-coding
+      // "gpt-5.4-nano" here broke generation because that model name
+      // doesn't exist on OpenAI; the backend now has cross-provider
+      // fallback but we don't want to force a bad value at all.
+      preferredModel: payload.preferredModel ?? null,
     }),
   });
 };

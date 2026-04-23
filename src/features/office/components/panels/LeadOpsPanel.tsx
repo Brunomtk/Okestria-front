@@ -159,7 +159,11 @@ export function LeadOpsPanel({
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
   // AI Model selection
-  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250514");
+  // Default AI model for the bulk/single insight buttons. Dated snapshot
+  // so we don't depend on a moving alias. Users can still pick another
+  // value from the dropdown below — the backend's AiProviderService has
+  // cross-provider fallback if the chosen model is unavailable.
+  const [selectedModel, setSelectedModel] = useState("claude-sonnet-4-5-20250929");
 
   // Error & refresh
   const [error, setError] = useState<string | null>(null);
@@ -574,12 +578,36 @@ export function LeadOpsPanel({
     if (!companyId) return;
     setBulkGenerating(true);
     try {
-      await bulkGenerateInsights({ companyId, preferredModel: selectedModel });
-      setError("Bulk insight generation started — leads will update shortly.");
-      setTimeout(() => setError((c) => (c === "Bulk insight generation started — leads will update shortly." ? null : c)), 3500);
+      // Backend v42.3 runs the bulk loop inline (first 50 leads) and
+      // returns a populated result. Overflow is queued to the background
+      // worker — in that case the status is "partial_running".
+      const result = await bulkGenerateInsights({
+        companyId,
+        // Only send a model when the user actually chose a non-default one
+        // so the backend is free to pick its own configured default.
+        preferredModel: selectedModel?.trim() || null,
+      });
+
+      const counts = [
+        `${result.succeeded} generated`,
+        result.skipped > 0 ? `${result.skipped} already ready` : null,
+        result.failed > 0 ? `${result.failed} failed` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      const message =
+        result.status === "partial_running"
+          ? `AI is generating ${result.total} leads. ${counts} so far — the remaining batch keeps running in the background.`
+          : `Done for ${result.total} lead(s): ${counts}.`;
+
+      setError(message);
+      setTimeout(() => {
+        setError((current) => (current === message ? null : current));
+      }, 5000);
       setRefreshTick((t) => t + 1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start bulk insight generation.");
+      setError(e instanceof Error ? e.message : "Failed to generate insights in bulk.");
     } finally {
       setBulkGenerating(false);
     }
@@ -1078,17 +1106,20 @@ export function LeadOpsPanel({
               </button>
             </div>
 
-            {/* Model Selector */}
+            {/* Model Selector. Options list only contains real models —
+                "gpt-5.4-nano" was removed because it does not exist on
+                OpenAI and the backend silently fell back to template text
+                every time it was chosen. */}
             <select
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               className="rounded-lg bg-white/5 px-2.5 py-2 text-xs text-white/80 outline-none ring-1 ring-white/10 transition focus:ring-cyan-500/50 [&>option]:bg-slate-900 [&>option]:text-white"
+              title="AI model used for outreach + insight generation"
             >
-              <option value="claude-sonnet-4-5-20250514">Claude Sonnet 4.5</option>
-              <option value="claude-opus-4-0-20250514">Claude Opus 4</option>
-              <option value="claude-haiku-3-5-20241022">Claude Haiku 3.5</option>
+              <option value="claude-sonnet-4-5-20250929">Claude Sonnet 4.5</option>
+              <option value="claude-opus-4-5-20250929">Claude Opus 4.5</option>
+              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
               <option value="gpt-4o">GPT-4o</option>
-              <option value="gpt-5.4-nano">GPT-5.4 Nano</option>
               <option value="gpt-4o-mini">GPT-4o Mini</option>
             </select>
 
