@@ -11,6 +11,7 @@ import {
   Mail,
   Pause,
   Play,
+  Plus,
   RefreshCcw,
   Search,
   Send,
@@ -480,6 +481,64 @@ export function LeadOpsModal({
     );
   };
 
+  /**
+   * Appends a new cadence step to the end of the list. The new step gets
+   * sensible defaults derived from the previous step so the operator just
+   * has to tweak the copy, not set up timing from scratch.
+   */
+  const addStep = () => {
+    setSteps((current) => {
+      const last = current[current.length - 1];
+      const nextNumber = current.length + 1;
+      // Keep a gentle cadence ladder: each new step lands 3 days after
+      // the previous one's delay. Stops growing past 30 days so we never
+      // silently schedule a follow-up a month out without the operator
+      // noticing.
+      const nextDelay = Math.min((last?.delayDays ?? 0) + 3, 30);
+      const newStep: DraftStep = {
+        sequenceNumber: nextNumber,
+        name: `Follow-up ${nextNumber}`,
+        subjectTemplate:
+          nextNumber <= 2
+            ? `Quick check-in about {{businessName}}`
+            : `Last note about {{businessName}} — should I close the loop?`,
+        introText:
+          "Write a short, human, respectful touch that brings a fresh angle. Do not repeat earlier phrases.",
+        delayDays: nextDelay,
+        preferredModel: last?.preferredModel || "anthropic/claude-sonnet-4-6",
+        notes: "",
+      };
+      setExpandedStep(nextNumber); // open the newly added step for editing
+      return [...current, newStep];
+    });
+  };
+
+  /**
+   * Removes a step by index. Keeps at least one step — the backend rejects
+   * an empty cadence (see ValidateFollowUpSteps on the server). After
+   * removing we re-number the remaining steps so sequenceNumber stays 1..N
+   * contiguous.
+   */
+  const removeStep = (index: number) => {
+    setSteps((current) => {
+      if (current.length <= 1) return current;
+      const next = current
+        .filter((_, i) => i !== index)
+        .map((step, i) => ({ ...step, sequenceNumber: i + 1 }));
+      // If the removed step was the one open for editing, collapse.
+      setExpandedStep((openSeq) => {
+        const removed = current[index];
+        if (removed && openSeq === removed.sequenceNumber) return null;
+        // Re-map openSeq through the renumbering so the same step stays open.
+        const remainingIndex = current.findIndex(
+          (_, i) => i !== index && current[i].sequenceNumber === openSeq,
+        );
+        return remainingIndex >= 0 ? remainingIndex + 1 : openSeq;
+      });
+      return next;
+    });
+  };
+
   const scheduleForSelectedLead = async () => {
     if (!selectedLead) {
       setError("Pick a lead to schedule an individual cadence.");
@@ -834,6 +893,8 @@ export function LeadOpsModal({
                     }
                     onUpdateStep={updateStep}
                     onResetSteps={() => setSteps(DEFAULT_STEPS)}
+                    onAddStep={addStep}
+                    onRemoveStep={removeStep}
                     busyAction={busyAction}
                     canScheduleLead={Boolean(selectedLeadId)}
                     canScheduleBulk={filteredLeads.length > 0}
@@ -1056,6 +1117,8 @@ function ScheduleTab({
   onToggleStep,
   onUpdateStep,
   onResetSteps,
+  onAddStep,
+  onRemoveStep,
   busyAction,
   canScheduleLead,
   canScheduleBulk,
@@ -1082,6 +1145,8 @@ function ScheduleTab({
   onToggleStep: (index: number) => void;
   onUpdateStep: (index: number, patch: Partial<DraftStep>) => void;
   onResetSteps: () => void;
+  onAddStep: () => void;
+  onRemoveStep: (index: number) => void;
   busyAction: string | null;
   canScheduleLead: boolean;
   canScheduleBulk: boolean;
@@ -1202,21 +1267,46 @@ function ScheduleTab({
           userContext={userContext}
         />
 
-        <div className="mb-3 mt-5 flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-white">Cadence</div>
-            <div className="text-[11px] text-white/40">
+        <div className="mb-3 mt-5 flex flex-wrap items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-white">Cadence</span>
+              <span
+                className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+                style={{ backgroundColor: `${ACCENT}25`, color: ACCENT }}
+              >
+                {steps.length}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[11px] text-white/40">
               Each step generates a different email — the AI agent adapts the copy
               to the lead&apos;s context.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onResetSteps}
-            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
-          >
-            Reset to default
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onAddStep}
+              className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+              style={{
+                backgroundColor: `${ACCENT}20`,
+                borderColor: `${ACCENT}50`,
+                color: "white",
+              }}
+              title="Add a new step to the end of the cadence"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add step
+            </button>
+            <button
+              type="button"
+              onClick={onResetSteps}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
+              title="Restore the 3-step default cadence"
+            >
+              Reset to default
+            </button>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -1231,40 +1321,63 @@ function ScheduleTab({
                     : "border-white/[0.06] bg-white/[0.02] hover:border-white/15"
                 }`}
               >
-                <button
-                  type="button"
-                  onClick={() => onToggleStep(step.sequenceNumber)}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                >
-                  <span className="text-white/30">
-                    {expanded ? (
-                      <ChevronDown className="h-4 w-4" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4" />
-                    )}
-                  </span>
-                  <div
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold"
-                    style={{
-                      backgroundColor: `${ACCENT}20`,
-                      color: ACCENT,
-                      border: `1px solid ${ACCENT}30`,
-                    }}
+                <div className="flex w-full items-center gap-2 pr-2">
+                  {/* The main clickable area — expands/collapses the step.
+                      Uses flex-1 so the delete button can sit flush on the
+                      right without getting captured by the toggle click. */}
+                  <button
+                    type="button"
+                    onClick={() => onToggleStep(step.sequenceNumber)}
+                    className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
                   >
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-white">
-                      {step.name || `Step ${index + 1}`}
+                    <span className="text-white/30">
+                      {expanded ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </span>
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold"
+                      style={{
+                        backgroundColor: `${ACCENT}20`,
+                        color: ACCENT,
+                        border: `1px solid ${ACCENT}30`,
+                      }}
+                    >
+                      {index + 1}
                     </div>
-                    <div className="mt-0.5 truncate text-[11px] text-white/40">
-                      {step.subjectTemplate || "No subject yet"}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">
+                        {step.name || `Step ${index + 1}`}
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-white/40">
+                        {step.subjectTemplate || "No subject yet"}
+                      </div>
                     </div>
-                  </div>
-                  <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
-                    D+{step.delayDays}
-                  </span>
-                </button>
+                    <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                      D+{step.delayDays}
+                    </span>
+                  </button>
+
+                  {/* Remove step — hidden when only one step is left because
+                      the backend rejects an empty cadence. Sits outside the
+                      toggle button so clicking it doesn't collapse/expand. */}
+                  {steps.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRemoveStep(index);
+                      }}
+                      title="Remove this step"
+                      aria-label={`Remove step ${index + 1}`}
+                      className="shrink-0 rounded-lg border border-white/10 bg-white/[0.02] p-1.5 text-white/40 transition hover:border-rose-400/40 hover:bg-rose-500/10 hover:text-rose-200"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 {expanded && (
                   <div className="space-y-3 border-t border-white/10 px-4 py-4">
@@ -1338,6 +1451,18 @@ function ScheduleTab({
               </div>
             );
           })}
+
+          {/* Friendly secondary "Add step" row at the bottom of the list —
+              mirrors the button in the header so the control stays reachable
+              after the user scrolls through a long cadence. */}
+          <button
+            type="button"
+            onClick={onAddStep}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/[0.02] py-3 text-xs font-medium text-white/55 transition hover:border-fuchsia-400/40 hover:bg-fuchsia-500/[0.05] hover:text-white"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add another step
+          </button>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2 border-t border-white/10 pt-4">
