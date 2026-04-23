@@ -119,6 +119,20 @@ const DEFAULT_STEPS: DraftStep[] = [
 
 /* ───────────────────── Helpers ───────────────────── */
 
+// Turns a "time remaining" seconds count into a chat-friendly label.
+// Shared shape with LeadOpsPanel.formatEtaLabel — duplicated here to
+// keep the modal file self-contained.
+const formatEtaLabel = (seconds: number): string => {
+  if (seconds <= 5) return "a few seconds";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes === 1) return "1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours}h ${rest}m` : `${hours}h`;
+};
+
 const fmtDate = (value?: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
@@ -343,6 +357,8 @@ export function LeadOpsModal({
     succeeded: number;
     failed: number;
     cancelRequested: boolean;
+    startedAtMs: number;
+    etaSeconds: number | null;
   } | null>(null);
 
   const resetFeedback = useCallback(() => {
@@ -604,6 +620,7 @@ export function LeadOpsModal({
 
     resetFeedback();
     setBusyAction("bulk");
+    const startedAt = Date.now();
     setBulkScheduleProgress({
       current: 0,
       total: targets.length,
@@ -611,53 +628,79 @@ export function LeadOpsModal({
       succeeded: 0,
       failed: 0,
       cancelRequested: false,
+      startedAtMs: startedAt,
+      etaSeconds: null,
     });
 
-    // Loop the per-lead endpoint instead of a single /followups/bulk
-    // call. Each iteration mirrors the "Schedule for selected lead"
-    // button, which is known-good. Small per-request payload means no
-    // 502 timeouts and we can show live progress.
+    // Parallel per-lead scheduling. The DB-side path is cheap (one
+    // AddRange + Save per lead) so a concurrency of 5 keeps things
+    // snappy without overwhelming anything. Every call is the same as
+    // "Schedule for selected lead" — small payload, no 502 risk.
+    const concurrency = 5;
     let succeeded = 0;
     let failed = 0;
     let totalCreated = 0;
+    let completed = 0;
+    let cancelled = false;
+    const queue = [...targets];
 
-    try {
-      for (let i = 0; i < targets.length; i++) {
-        const lead = targets[i];
+    const worker = async () => {
+      while (!cancelled) {
+        const lead = queue.shift();
+        if (!lead) return;
 
-        // Cancellation check — reads latest state via setter.
         let shouldStop = false;
         setBulkScheduleProgress((prev) => {
           if (prev?.cancelRequested) shouldStop = true;
           return prev
             ? {
                 ...prev,
-                current: i + 1,
                 currentName:
                   lead.businessName || lead.email || `Lead #${lead.id}`,
               }
             : prev;
         });
-        if (shouldStop) break;
+        if (shouldStop) {
+          cancelled = true;
+          return;
+        }
 
         try {
           const created = await scheduleLeadFollowUpsForLead(lead.id, payload);
           totalCreated += created.length;
           succeeded++;
-          setBulkScheduleProgress((prev) =>
-            prev ? { ...prev, succeeded } : prev,
-          );
         } catch (cause) {
           failed++;
-          setBulkScheduleProgress((prev) =>
-            prev ? { ...prev, failed } : prev,
-          );
           console.warn(
             `[bulk schedule] lead ${lead.id} failed:`,
             cause instanceof Error ? cause.message : cause,
           );
+        } finally {
+          completed++;
+          const elapsedSeconds = (Date.now() - startedAt) / 1000;
+          const avgPerItem = completed > 0 ? elapsedSeconds / completed : 0;
+          const remaining = Math.max(0, targets.length - completed);
+          const etaSeconds = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : null;
+
+          setBulkScheduleProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  current: completed,
+                  succeeded,
+                  failed,
+                  etaSeconds,
+                }
+              : prev,
+          );
         }
       }
+    };
+
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()),
+      );
 
       const parts: string[] = [];
       if (succeeded > 0)
@@ -846,10 +889,12 @@ export function LeadOpsModal({
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
-            <div className="text-[11px] text-white/40">
+            <div className="text-[11px] text-white/45">
               {bulkScheduleProgress.cancelRequested
                 ? "Stopping after the current lead…"
-                : "The window stays open until every lead is done."}
+                : bulkScheduleProgress.etaSeconds !== null && bulkScheduleProgress.etaSeconds > 0
+                  ? `Running 5 in parallel · ~${formatEtaLabel(bulkScheduleProgress.etaSeconds)} left`
+                  : "Running 5 in parallel · estimating time…"}
             </div>
             <button
               type="button"

@@ -90,6 +90,42 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 };
 
+// Turns a "time remaining" seconds count into a chat-friendly label for
+// the bulk progress overlays. Used by both the "Generate All" loop and
+// the "Schedule for all filtered leads" loop so the wording matches.
+const formatEtaLabel = (seconds: number): string => {
+  if (seconds <= 5) return "a few seconds";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes === 1) return "1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest > 0 ? `${hours}h ${rest}m` : `${hours}h`;
+};
+
+// Friendly, human-readable label for the backend's CurrentStage values.
+// Keep this in sync with the strings UpdateJob writes in
+// LeadGenerationJobService.ProcessJob on the backend.
+const prettyStageLabel = (stage?: string | null): string => {
+  if (!stage) return "Preparing…";
+  const key = stage.trim().toLowerCase();
+  switch (key) {
+    case "queued": return "Waiting in queue…";
+    case "starting": return "Starting mission…";
+    case "apify-running": return "Calling Apify to collect leads…";
+    case "normalizing": return "Normalizing results…";
+    case "enriching-emails": return "Scraping websites for emails (parallel)…";
+    case "persisting": return "Saving leads to your vault…";
+    case "finalizing": return "Wrapping up…";
+    case "completed": return "Mission complete.";
+    case "failed": return "Mission failed.";
+    case "cancelled": return "Mission cancelled.";
+    case "provider-timeout": return "Apify timed out. Try a smaller region.";
+    default: return stage;
+  }
+};
+
 type LeadAgentOption = {
   backendAgentId: number;
   gatewayAgentId?: string | null;
@@ -162,6 +198,10 @@ export function LeadOpsPanel({
     skipped: number;
     failed: number;
     cancelRequested: boolean;
+    // Drives the ETA label in the progress overlay. Populated once the
+    // first item completes so the estimate is grounded in real latency.
+    startedAtMs: number;
+    etaSeconds: number | null;
   } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -214,6 +254,14 @@ export function LeadOpsPanel({
     const withPhone = filteredLeads.filter((l) => !!l.phone).length;
     return { total: filteredLeads.length, highFit, withEmail, withPhone };
   }, [filteredLeads]);
+
+  // The currently-running (or queued) mission, if any. Drives the live
+  // progress banner under the stats so users always see what's happening
+  // without having to hunt for the job in the list.
+  const activeJob = useMemo(
+    () => jobs.find((j) => j.status === "queued" || j.status === "running") ?? null,
+    [jobs],
+  );
 
   const globalStats = useMemo(() => {
     return jobs.reduce(
@@ -322,11 +370,13 @@ export function LeadOpsPanel({
 
   useEffect(() => { void refreshJobs(); }, [refreshJobs, refreshTick]);
 
-  // Auto-refresh for active jobs
+  // Auto-refresh for active jobs. Polling cadence was 7s which made the
+  // progress bar feel laggy — missions now often finish in 30-60s total
+  // so we drop to 2s while anything is running. Idle polling stays off.
   useEffect(() => {
     const hasActive = jobs.some((j) => j.status === "queued" || j.status === "running");
     if (!hasActive) return;
-    const timer = setInterval(() => setRefreshTick((t) => t + 1), 7000);
+    const timer = setInterval(() => setRefreshTick((t) => t + 1), 2000);
     return () => clearInterval(timer);
   }, [jobs]);
 
@@ -610,6 +660,7 @@ export function LeadOpsPanel({
     }
 
     setBulkGenerating(true);
+    const startedAt = Date.now();
     setBulkProgress({
       current: 0,
       total: targets.length,
@@ -618,70 +669,95 @@ export function LeadOpsPanel({
       skipped: 0,
       failed: 0,
       cancelRequested: false,
+      startedAtMs: startedAt,
+      etaSeconds: null,
     });
 
+    // Run the individual endpoint with a bounded concurrency. Each call
+    // IS the individual button's request, so three in flight is safe —
+    // the backend endpoint is idempotent and has its own cross-provider
+    // fallback. Keeping concurrency low also respects the AI provider
+    // rate limits.
+    const concurrency = 3;
+    let completed = 0;
     let succeeded = 0;
     let skipped = 0;
     let failed = 0;
+    let cancelled = false;
+    const queue = [...targets];
 
-    for (let index = 0; index < targets.length; index++) {
-      const lead = targets[index];
+    const worker = async () => {
+      while (!cancelled) {
+        const lead = queue.shift();
+        if (!lead) return;
 
-      // Read the latest cancel flag from state via the setter so we don't
-      // get stale closure values.
-      let shouldStop = false;
-      setBulkProgress((prev) => {
-        if (prev?.cancelRequested) shouldStop = true;
-        return prev
-          ? {
-              ...prev,
-              current: index + 1,
-              currentName: lead.businessName || lead.email || `Lead #${lead.id}`,
-            }
-          : prev;
-      });
-      if (shouldStop) break;
-
-      // IMPORTANT: we deliberately do NOT skip leads that already have
-      // insights. Clicking "Generate All" with `forceRegenerate: true`
-      // is meant to produce a brand-new AI pass on every lead, identical
-      // to clicking the individual "Generate" button on each card. The
-      // backend's own skip (when forceRegenerate=false) is the one that
-      // protects against redundant AI calls; the frontend trusts the
-      // user's click here.
-
-      try {
-        // 1. Run the generate call — identical to the individual button.
-        await generateLeadInsights(lead.id, null, {
-          forceRegenerate: true,
-          preferredModel: selectedModel?.trim() || null,
+        // Read cancel flag and bump "current lead" label at the same time.
+        let shouldStop = false;
+        setBulkProgress((prev) => {
+          if (prev?.cancelRequested) shouldStop = true;
+          return prev
+            ? {
+                ...prev,
+                currentName: lead.businessName || lead.email || `Lead #${lead.id}`,
+              }
+            : prev;
         });
-
-        // 2. Re-fetch the lead from the backend so the version we patch
-        //    into state is exactly what the DB has (including the fresh
-        //    outreach body + insights). This is the same shape the detail
-        //    modal loads via getLeadById, so opening the modal right after
-        //    shows the new copy without needing a manual re-click.
-        const fresh = await getLeadById(lead.id);
-        if (fresh) {
-          setJobLeads((current) =>
-            current.map((l) => (l.id === lead.id ? { ...l, ...fresh } : l)),
-          );
-          // If the user already had this lead's detail modal open while
-          // the loop ticks, keep it in sync too.
-          setSelectedLeadDetail((prev) =>
-            prev && prev.id === lead.id ? { ...prev, ...fresh } : prev,
-          );
+        if (shouldStop) {
+          cancelled = true;
+          return;
         }
 
-        succeeded++;
-        setBulkProgress((prev) => (prev ? { ...prev, succeeded } : prev));
-      } catch (e) {
-        failed++;
-        setBulkProgress((prev) => (prev ? { ...prev, failed } : prev));
-        console.warn(`[bulk generate] lead ${lead.id} failed:`, e);
+        try {
+          // Same call as the individual button — forceRegenerate=true.
+          await generateLeadInsights(lead.id, null, {
+            forceRegenerate: true,
+            preferredModel: selectedModel?.trim() || null,
+          });
+
+          // Pull the fresh lead so the grid + detail modal reflect the
+          // new outreach text the moment the request finishes.
+          const fresh = await getLeadById(lead.id);
+          if (fresh) {
+            setJobLeads((current) =>
+              current.map((l) => (l.id === lead.id ? { ...l, ...fresh } : l)),
+            );
+            setSelectedLeadDetail((prev) =>
+              prev && prev.id === lead.id ? { ...prev, ...fresh } : prev,
+            );
+          }
+          succeeded++;
+        } catch (e) {
+          failed++;
+          console.warn(`[bulk generate] lead ${lead.id} failed:`, e);
+        } finally {
+          completed++;
+
+          // Update progress + ETA based on the real elapsed time so the
+          // number shrinks as we go.
+          const elapsedSeconds = (Date.now() - startedAt) / 1000;
+          const avgPerItem = completed > 0 ? elapsedSeconds / completed : 0;
+          const remaining = Math.max(0, targets.length - completed);
+          const etaSeconds = avgPerItem > 0 ? Math.round(avgPerItem * remaining) : null;
+
+          setBulkProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  current: completed,
+                  succeeded,
+                  skipped,
+                  failed,
+                  etaSeconds,
+                }
+              : prev,
+          );
+        }
       }
-    }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, targets.length) }, () => worker()),
+    );
 
     setBulkGenerating(false);
     setBulkProgress(null);
@@ -829,6 +905,58 @@ export function LeadOpsPanel({
             <StatCard icon={<Search className="h-4 w-4" />} label="Found" value={globalStats.found} accent="white" />
             <StatCard icon={<UserRound className="h-4 w-4" />} label="Saved" value={globalStats.saved} accent="emerald" />
           </div>
+
+          {/* Live mission progress banner. Visible whenever any job is
+              queued or running — polls every 2s via the auto-refresh
+              effect and surfaces the current backend stage so users
+              aren't staring at a static modal wondering if anything is
+              happening. Unmounts as soon as the job transitions to
+              completed / failed / cancelled. */}
+          {activeJob ? (
+            <div className="overflow-hidden rounded-2xl border border-cyan-500/25 bg-gradient-to-br from-cyan-500/[0.08] via-slate-900/40 to-slate-950 p-5 shadow-[0_8px_30px_rgba(34,211,238,.08)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 ring-1 ring-cyan-500/30">
+                    <Loader2 className="h-5 w-5 animate-spin text-cyan-300" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-300/80">
+                      <Sparkles className="h-3 w-3" />
+                      Mission running
+                    </div>
+                    <div className="mt-1 truncate text-base font-semibold text-white">
+                      {activeJob.title}
+                    </div>
+                    <div className="mt-1 text-sm text-white/75">
+                      {prettyStageLabel(activeJob.currentStage)}
+                    </div>
+                    {(activeJob.totalFound > 0 || activeJob.totalInserted > 0) && (
+                      <div className="mt-1 text-xs text-white/45">
+                        {activeJob.totalFound} collected · {activeJob.totalInserted} saved
+                        {activeJob.totalDuplicates > 0 ? ` · ${activeJob.totalDuplicates} duplicates` : ""}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                    Progress
+                  </div>
+                  <div className="mt-0.5 text-xl font-semibold text-cyan-200">
+                    {Math.min(100, Math.max(0, activeJob.progressPercent || 0))}%
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-cyan-500 transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, Math.max(3, activeJob.progressPercent || 0))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {/* Error */}
           {error && (
@@ -1151,12 +1279,17 @@ export function LeadOpsPanel({
                 </div>
               </div>
 
-              {/* Cancel — takes effect after the in-flight request finishes */}
+              {/* ETA + cancel. Displays the estimated time remaining once
+                  the first lead has completed so the user knows whether to
+                  wait or go grab a coffee. Falls back to a neutral string
+                  before the first estimate is grounded. */}
               <div className="flex items-center justify-between gap-2 pt-1">
-                <div className="text-[11px] text-white/40">
+                <div className="text-[11px] text-white/45">
                   {bulkProgress.cancelRequested
                     ? "Stopping after the current lead…"
-                    : "The window stays open until every lead is done."}
+                    : bulkProgress.etaSeconds !== null && bulkProgress.etaSeconds > 0
+                      ? `Running 3 in parallel · ~${formatEtaLabel(bulkProgress.etaSeconds)} left`
+                      : "Running 3 in parallel · estimating time…"}
                 </div>
                 <button
                   type="button"
