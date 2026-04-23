@@ -610,8 +610,19 @@ export function LeadOpsModal({
   /* ───────────────────── Render ───────────────────── */
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+    // Note: we intentionally avoid putting `backdrop-filter` on the
+    // outermost container, otherwise the sub-modals that LeadOpsPanel
+    // renders (New Mission, Lead Vault, Lead Detail, Email Batch,
+    // Single Email) would be trapped inside its containing block and
+    // fail to cover the full viewport. The blur now lives on the
+    // backdrop sibling, which is not an ancestor of the sub-modals,
+    // so `fixed inset-0` inside them escapes back to the viewport.
+    <div className="fixed inset-0 z-[95] flex items-center justify-center px-4 py-6">
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={onClose}
+        aria-hidden="true"
+      />
       <section
         className="relative z-10 flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
         style={{ borderColor: `${ACCENT}30` }}
@@ -714,13 +725,17 @@ export function LeadOpsModal({
         </div>
 
         {/* ── Body ── */}
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {topTab === "leadops" ? (
-            <div className="h-full min-h-0 overflow-hidden">
+            // The LeadOpsPanel owns its own scrollable body. We give it
+            // a flex column of flex-1 + min-h-0 so the inner overflow-y-auto
+            // works inside a nested flex layout.
+            <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
               <LeadOpsPanel
                 agents={agents}
                 companyName={companyName ?? undefined}
                 onSelectAgent={onSelectAgent}
+                embedded
               />
             </div>
           ) : (

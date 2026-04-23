@@ -103,10 +103,19 @@ export function LeadOpsPanel({
   agents,
   companyName,
   onSelectAgent,
+  embedded = false,
 }: {
   agents: AgentState[];
   companyName?: string | null;
   onSelectAgent: (agentId: string, options?: { sessionKey?: string | null; leadContext?: string | null; leadContextLabel?: string | null; draft?: string | null }) => void;
+  /**
+   * When true, the panel is being rendered inside a bigger modal shell
+   * (LeadOpsModal). We hide the panel's own header row — the outer modal
+   * already provides a title + tabs — and inject a compact toolbar at the
+   * top of the scrollable body instead. This keeps the action buttons
+   * reachable while avoiding a double-header visual.
+   */
+  embedded?: boolean;
 }) {
   const companyId = getBrowserCompanyId();
 
@@ -620,49 +629,77 @@ export function LeadOpsPanel({
     return { owner, fit, product, insight, script, emailHtml, subject, hasAi, needsInsights };
   }, [selectedLeadDetail, effectiveCompanyName, effectiveCompanyEmail]);
 
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setModalView("new-mission")}
+        className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        New Mission
+      </button>
+      <button
+        type="button"
+        onClick={() => void refreshJobs()}
+        className="rounded-lg bg-white/5 p-2 text-white/50 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+        title="Refresh"
+      >
+        <RefreshCw className="h-4 w-4" />
+      </button>
+      {selectedLeadAgent?.gatewayAgentId && (
+        <button
+          type="button"
+          onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId!)}
+          className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/60 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
+        >
+          <Bot className="h-3.5 w-3.5" />
+          Open Agent
+        </button>
+      )}
+    </div>
+  );
+
   return (
-    <section className="flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900">
-      {/* Header */}
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 px-5 py-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-cyan-400" />
-            <h1 className="text-sm font-semibold text-white">Lead Ops</h1>
+    <section
+      className={
+        embedded
+          ? "flex h-full min-h-0 flex-1 flex-col"
+          : "flex h-full min-h-0 flex-col bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900"
+      }
+    >
+      {/* Header — only when standalone. When embedded inside LeadOpsModal,
+          the outer modal already has a header so we skip this one and
+          surface the toolbar inside the scrollable body instead. */}
+      {!embedded && (
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <Target className="h-4 w-4 text-cyan-400" />
+              <h1 className="text-sm font-semibold text-white">Lead Ops</h1>
+            </div>
+            <p className="mt-1 text-xs text-white/40">Prospecting missions and outreach automation</p>
           </div>
-          <p className="mt-1 text-xs text-white/40">Prospecting missions and outreach automation</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setModalView("new-mission")}
-            className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New Mission
-          </button>
-          <button
-            type="button"
-            onClick={() => void refreshJobs()}
-            className="rounded-lg bg-white/5 p-2 text-white/50 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          {selectedLeadAgent?.gatewayAgentId && (
-            <button
-              type="button"
-              onClick={() => onSelectAgent(selectedLeadAgent.gatewayAgentId!)}
-              className="inline-flex items-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-xs text-white/60 ring-1 ring-white/10 transition hover:bg-white/10 hover:text-white"
-            >
-              <Bot className="h-3.5 w-3.5" />
-              Open Agent
-            </button>
-          )}
-        </div>
-      </header>
+          {toolbar}
+        </header>
+      )}
 
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto p-5">
         <div className="mx-auto max-w-5xl space-y-5">
+          {embedded && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] px-4 py-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white">
+                  Prospecting &amp; outreach
+                </div>
+                <div className="mt-0.5 text-[11px] text-white/40">
+                  Run missions, browse the lead vault and trigger outreach emails.
+                </div>
+              </div>
+              {toolbar}
+            </div>
+          )}
           {/* Stats Row */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <StatCard icon={<Play className="h-4 w-4" />} label="Active" value={globalStats.active} accent="cyan" />
