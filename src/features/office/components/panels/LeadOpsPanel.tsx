@@ -23,7 +23,15 @@ type LeadOpsPanelProps = {
   onRefresh?: () => Promise<void> | void;
   agents?: unknown[];
   companyName?: string | null;
-  onSelectAgent?: (agentId: string, options?: unknown) => void;
+  onSelectAgent?: (
+    agentId: string,
+    options?: {
+      sessionKey?: string | null;
+      leadContext?: string | null;
+      leadContextLabel?: string | null;
+      draft?: string | null;
+    },
+  ) => void;
 };
 
 type DraftStep = {
