@@ -642,21 +642,13 @@ export function LeadOpsPanel({
       });
       if (shouldStop) break;
 
-      // Mirror the individual button's skip rule so re-running "Generate
-      // All" doesn't burn AI credits on leads that already have complete
-      // outreach content.
-      const isAlreadyReady = Boolean(
-        lead.ptxFit &&
-          lead.suggestedProduct &&
-          lead.outreachInsight &&
-          lead.outreachScript &&
-          lead.outreachEmailHtml,
-      );
-      if (isAlreadyReady) {
-        skipped++;
-        setBulkProgress((prev) => (prev ? { ...prev, skipped } : prev));
-        continue;
-      }
+      // IMPORTANT: we deliberately do NOT skip leads that already have
+      // insights. Clicking "Generate All" with `forceRegenerate: true`
+      // is meant to produce a brand-new AI pass on every lead, identical
+      // to clicking the individual "Generate" button on each card. The
+      // backend's own skip (when forceRegenerate=false) is the one that
+      // protects against redundant AI calls; the frontend trusts the
+      // user's click here.
 
       try {
         // 1. Run the generate call — identical to the individual button.
