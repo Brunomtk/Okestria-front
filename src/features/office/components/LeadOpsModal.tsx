@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  FileText,
+  Image as ImageIcon,
   Loader2,
   Mail,
   Pause,
@@ -20,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   cancelLeadFollowUp,
+  getLeadFollowUpOverview,
   listLeadFollowUps,
   listLeadGenerationJobs,
   listLeadsByCompany,
@@ -31,10 +34,18 @@ import {
   scheduleLeadFollowUpsForLead,
   sendLeadFollowUpNow,
   type LeadFollowUp,
+  type LeadFollowUpOverview,
   type LeadFollowUpStepInput,
   type LeadGenerationJob,
   type LeadSummary,
 } from "@/lib/leads/lead-generation-api";
+import {
+  fetchCompanyEmailContext,
+  fetchUserEmailContext,
+  type OkestriaCompanyEmailContext,
+  type OkestriaUserEmailContext,
+} from "@/lib/auth/api";
+import { getBrowserAccessToken } from "@/lib/agents/backend-api";
 
 /* ───────────────────── Types & constants ───────────────────── */
 
@@ -62,33 +73,33 @@ const ACCENT = "#d946ef"; // fuchsia — Lead follow-up vibe
 const DEFAULT_STEPS: DraftStep[] = [
   {
     sequenceNumber: 1,
-    name: "Primeiro contato",
-    subjectTemplate: "{{businessName}} | Ideia rápida para gerar mais oportunidades",
+    name: "First touch",
+    subjectTemplate: "{{businessName}} | quick idea to unlock more opportunities",
     introText:
-      "Quero retomar o contato com uma mensagem curta, consultiva e objetiva, usando o contexto mais recente do lead.",
+      "Open the conversation with a short, consultative, value-first email. Use the freshest lead insight available.",
     delayDays: 0,
     preferredModel: "anthropic/claude-sonnet-4-6",
-    notes: "Tom humano, direto e sem parecer sequência automática.",
+    notes: "Human tone, direct, no hint of an automated sequence.",
   },
   {
     sequenceNumber: 2,
-    name: "Segundo follow-up",
-    subjectTemplate: "Posso te mostrar um caminho simples para {{businessName}}?",
+    name: "Second follow-up",
+    subjectTemplate: "Can I show you a simple path for {{businessName}}?",
     introText:
-      "Escreva um follow-up diferente do primeiro, citando novo ângulo de valor e reforçando credibilidade.",
+      "Write a different email from the first one — bring a new value angle and reinforce credibility.",
     delayDays: 2,
     preferredModel: "anthropic/claude-sonnet-4-6",
-    notes: "Evitar repetir CTA e frases do primeiro email.",
+    notes: "Do not reuse the same CTA or phrases from the first email.",
   },
   {
     sequenceNumber: 3,
-    name: "Última tentativa",
-    subjectTemplate: "Fecho por aqui ou faz sentido falar esta semana?",
+    name: "Final attempt",
+    subjectTemplate: "Should I close the loop or does this week still work?",
     introText:
-      "Escreva uma última tentativa elegante, curta e respeitosa, com CTA leve.",
+      "Write an elegant, short, respectful last attempt with a light CTA.",
     delayDays: 5,
     preferredModel: "anthropic/claude-haiku-3-5",
-    notes: "Mostrar urgência leve sem pressionar.",
+    notes: "Hint at urgency without pressuring.",
   },
 ];
 
@@ -98,7 +109,7 @@ const fmtDate = (value?: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("pt-BR", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
@@ -110,7 +121,7 @@ const relativeTime = (value?: string | null): string => {
   if (Number.isNaN(d.getTime())) return "";
   const diff = Date.now() - d.getTime();
   const sec = Math.floor(Math.max(diff, 0) / 1000);
-  if (sec < 45) return "agora";
+  if (sec < 45) return "just now";
   const min = Math.floor(sec / 60);
   if (min < 60) return `${min}m`;
   const hr = Math.floor(min / 60);
@@ -168,19 +179,37 @@ const toneByStatus = (status?: string | null) => {
 const labelByStatus = (status?: string | null) => {
   switch ((status ?? "").toLowerCase()) {
     case "sent":
-      return "Enviado";
+      return "Sent";
     case "paused":
-      return "Pausado";
+      return "Paused";
     case "failed":
-      return "Falhou";
+      return "Failed";
     case "cancelled":
-      return "Cancelado";
+      return "Cancelled";
     case "processing":
-      return "Processando";
+      return "Processing";
     case "pending":
-      return "Pendente";
+      return "Pending";
     default:
       return status ?? "—";
+  }
+};
+
+const readBrowserUserId = (): number | null => {
+  if (typeof document === "undefined") return null;
+  const entry = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("okestria_session="));
+  if (!entry) return null;
+  try {
+    const raw = decodeURIComponent(entry.slice("okestria_session=".length));
+    const parsed = JSON.parse(raw) as { userId?: number | null };
+    return typeof parsed.userId === "number" && Number.isFinite(parsed.userId)
+      ? parsed.userId
+      : null;
+  } catch {
+    return null;
   }
 };
 
@@ -271,12 +300,21 @@ export function LeadOpsModal({
   const [loading, setLoading] = useState(false);
   const [leads, setLeads] = useState<LeadSummary[]>([]);
   const [missions, setMissions] = useState<LeadGenerationJob[]>([]);
-  const [allFollowUps, setAllFollowUps] = useState<LeadFollowUp[]>([]);
+  const [overview, setOverview] = useState<LeadFollowUpOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Email context + footer previews (loaded once, read-only preview)
+  const [companyContext, setCompanyContext] =
+    useState<OkestriaCompanyEmailContext | null>(null);
+  const [userContext, setUserContext] = useState<OkestriaUserEmailContext | null>(
+    null,
+  );
 
   // Per-lead view state
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
-  const [selectedLeadFollowUps, setSelectedLeadFollowUps] = useState<LeadFollowUp[]>([]);
+  const [selectedLeadFollowUps, setSelectedLeadFollowUps] = useState<LeadFollowUp[]>(
+    [],
+  );
   const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
 
   // Scheduling form state
@@ -285,6 +323,7 @@ export function LeadOpsModal({
   const [missionFilter, setMissionFilter] = useState<number | "all">("all");
   const [leadSearch, setLeadSearch] = useState("");
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
+  const [contextPanelOpen, setContextPanelOpen] = useState(true);
 
   // Action state
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -300,44 +339,74 @@ export function LeadOpsModal({
 
   const loadCompanyData = useCallback(async () => {
     if (!companyId) {
-      setLoadError("Empresa não identificada. Faça login novamente para continuar.");
+      setLoadError("Company not identified. Please sign in again to continue.");
       return;
     }
     setLoading(true);
     setLoadError(null);
     try {
-      // Leads: if a mission is selected, pull scoped list from the mission's
-      // endpoint (back returns only that mission's leads); otherwise pull the
-      // full company list. Missions + all follow-ups always come from the
-      // company-level endpoints so the header stats stay global.
+      // Leads: if a mission is picked, fetch the mission-scoped list
+      // (server-side filter). Otherwise pull the full company list.
+      // Overview comes from the dedicated aggregate endpoint — the plain
+      // `GET /api/Leads/followups` route without a lead id returns 405 on
+      // the current backend, so we use the overview endpoint instead.
       const leadsPromise =
         missionFilter === "all"
           ? listLeadsByCompany(companyId)
           : listLeadsByJob(missionFilter);
-      const [leadsResult, missionsResult, followUpsResult] = await Promise.all([
+      const [leadsResult, missionsResult, overviewResult] = await Promise.all([
         leadsPromise,
         listLeadGenerationJobs(companyId),
-        listLeadFollowUps(null),
+        getLeadFollowUpOverview().catch(() => null),
       ]);
       setLeads(leadsResult);
       setMissions(missionsResult);
-      setAllFollowUps(followUpsResult);
+      setOverview(overviewResult);
     } catch (cause) {
       const detail =
         cause instanceof Error
           ? cause.message
-          : "Não foi possível carregar os dados da empresa.";
+          : "Failed to load company data.";
       setLoadError(detail);
     } finally {
       setLoading(false);
     }
   }, [companyId, missionFilter]);
 
+  // Kick off the load on open / filter change.
   useEffect(() => {
     if (!open) return;
     resetFeedback();
     void loadCompanyData();
   }, [open, loadCompanyData, resetFeedback]);
+
+  // Load email context + footer so users can see what the AI will use.
+  useEffect(() => {
+    if (!open || !companyId) return;
+    const token = getBrowserAccessToken();
+    if (!token) return;
+    let cancelled = false;
+    fetchCompanyEmailContext(companyId, token)
+      .then((ctx) => {
+        if (!cancelled) setCompanyContext(ctx);
+      })
+      .catch(() => {
+        /* best-effort */
+      });
+    const userId = readBrowserUserId();
+    if (userId) {
+      fetchUserEmailContext(userId, token)
+        .then((ctx) => {
+          if (!cancelled) setUserContext(ctx);
+        })
+        .catch(() => {
+          /* best-effort */
+        });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [open, companyId]);
 
   // Re-load follow-ups for the selected lead whenever selection changes.
   useEffect(() => {
@@ -363,7 +432,7 @@ export function LeadOpsModal({
         const detail =
           cause instanceof Error
             ? cause.message
-            : "Não foi possível carregar os follow-ups do lead.";
+            : "Failed to load this lead's follow-ups.";
         setError(detail);
       })
       .finally(() => {
@@ -376,36 +445,19 @@ export function LeadOpsModal({
 
   /* ──────────── Derived values ──────────── */
 
-  const overview = useMemo(() => {
-    const total = allFollowUps.length;
-    const counts = {
-      total,
-      pending: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "pending").length,
-      processing: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "processing").length,
-      sent: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "sent").length,
-      paused: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "paused").length,
-      failed: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "failed").length,
-      cancelled: allFollowUps.filter((f) => (f.status ?? "").toLowerCase() === "cancelled").length,
-    };
-    const nextScheduled = [...allFollowUps]
-      .filter((f) => ["pending", "processing"].includes((f.status ?? "").toLowerCase()))
-      .sort(
-        (a, b) =>
-          new Date(a.scheduledAtUtc).getTime() -
-          new Date(b.scheduledAtUtc).getTime(),
-      )[0]?.scheduledAtUtc;
-    return { ...counts, nextScheduled: nextScheduled ?? null };
-  }, [allFollowUps]);
-
-  const recentActivity = useMemo(() => {
-    return [...allFollowUps]
-      .sort((a, b) => {
-        const aDate = new Date(a.updatedDate ?? a.scheduledAtUtc).getTime();
-        const bDate = new Date(b.updatedDate ?? b.scheduledAtUtc).getTime();
-        return bDate - aDate;
-      })
-      .slice(0, 8);
-  }, [allFollowUps]);
+  const overviewSafe = useMemo(
+    () => ({
+      total: overview?.total ?? 0,
+      pending: overview?.pending ?? 0,
+      processing: overview?.processing ?? 0,
+      sent: overview?.sent ?? 0,
+      paused: overview?.paused ?? 0,
+      failed: overview?.failed ?? 0,
+      cancelled: overview?.cancelled ?? 0,
+      nextScheduled: overview?.nextScheduledAtUtc ?? null,
+    }),
+    [overview],
+  );
 
   const filteredLeads = useMemo(() => {
     // Mission filtering is already handled server-side by swapping endpoints
@@ -442,12 +494,12 @@ export function LeadOpsModal({
 
   const scheduleForSelectedLead = async () => {
     if (!selectedLead) {
-      setError("Selecione um lead para agendar a cadência individual.");
+      setError("Pick a lead to schedule an individual cadence.");
       return;
     }
     const payload = buildStepsPayload(steps);
     if (!payload.length) {
-      setError("Preencha pelo menos um assunto de follow-up.");
+      setError("Fill in at least one follow-up subject.");
       return;
     }
     resetFeedback();
@@ -455,7 +507,7 @@ export function LeadOpsModal({
     try {
       const created = await scheduleLeadFollowUpsForLead(selectedLead.id, payload);
       setMessage(
-        `${created.length} follow-up(s) agendado(s) para ${
+        `${created.length} follow-up(s) scheduled for ${
           selectedLead.businessName || selectedLead.email || `lead ${selectedLead.id}`
         }.`,
       );
@@ -464,7 +516,7 @@ export function LeadOpsModal({
       setError(
         cause instanceof Error
           ? cause.message
-          : "Não foi possível agendar o follow-up do lead.",
+          : "Failed to schedule the follow-up for this lead.",
       );
     } finally {
       setBusyAction(null);
@@ -473,17 +525,17 @@ export function LeadOpsModal({
 
   const scheduleForFilteredLeads = async () => {
     if (!companyId) {
-      setError("Empresa não identificada.");
+      setError("Company not identified.");
       return;
     }
     const leadIds = filteredLeads.map((l) => l.id).filter((n) => Number.isFinite(n));
     if (!leadIds.length) {
-      setError("Nenhum lead corresponde ao filtro atual. Ajuste o filtro e tente de novo.");
+      setError("No leads match the current filter. Adjust the filter and try again.");
       return;
     }
     const payload = buildStepsPayload(steps);
     if (!payload.length) {
-      setError("Preencha pelo menos um assunto de follow-up.");
+      setError("Fill in at least one follow-up subject.");
       return;
     }
     resetFeedback();
@@ -497,14 +549,14 @@ export function LeadOpsModal({
         steps: payload,
       });
       setMessage(
-        `${created.length} follow-up(s) agendado(s) para ${leadIds.length} lead(s).`,
+        `${created.length} follow-up(s) scheduled across ${leadIds.length} lead(s).`,
       );
       await loadCompanyData();
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Não foi possível agendar os follow-ups em lote.",
+          : "Failed to schedule follow-ups in bulk.",
       );
     } finally {
       setBusyAction(null);
@@ -522,7 +574,7 @@ export function LeadOpsModal({
       if (action === "resume") await resumeLeadFollowUp(followUp.id);
       if (action === "cancel") await cancelLeadFollowUp(followUp.id);
       if (action === "send") await sendLeadFollowUpNow(followUp.id);
-      setMessage(`Follow-up #${followUp.sequenceNumber} atualizado com sucesso.`);
+      setMessage(`Follow-up #${followUp.sequenceNumber} updated successfully.`);
       if (selectedLeadId) {
         const refreshed = await listLeadFollowUps(selectedLeadId);
         setSelectedLeadFollowUps(
@@ -538,7 +590,7 @@ export function LeadOpsModal({
       setError(
         cause instanceof Error
           ? cause.message
-          : "Não foi possível atualizar o follow-up.",
+          : "Failed to update the follow-up.",
       );
     } finally {
       setBusyAction(null);
@@ -551,14 +603,14 @@ export function LeadOpsModal({
     try {
       const result = await processDueLeadFollowUps();
       setMessage(
-        `Processados: ${result.checked}. Enviados: ${result.sent}. Falharam: ${result.failed}. Pulados: ${result.skipped}.`,
+        `Checked: ${result.checked}. Sent: ${result.sent}. Failed: ${result.failed}. Skipped: ${result.skipped}.`,
       );
       await loadCompanyData();
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Não foi possível processar os envios pendentes.",
+          : "Failed to process pending follow-ups.",
       );
     } finally {
       setBusyAction(null);
@@ -590,15 +642,15 @@ export function LeadOpsModal({
             </h2>
             <p className="text-xs text-white/40">
               {companyName
-                ? `Cadência inteligente de emails para ${companyName}.`
-                : "Cadência inteligente de emails com IA."}
+                ? `AI-driven email cadence for ${companyName}.`
+                : "AI-driven email cadence."}
             </p>
           </div>
           <button
             type="button"
             onClick={() => void loadCompanyData()}
             disabled={loading}
-            title="Recarregar"
+            title="Reload"
             className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -607,7 +659,7 @@ export function LeadOpsModal({
             type="button"
             onClick={onClose}
             className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
-            title="Fechar"
+            title="Close"
           >
             <X className="h-5 w-5" />
           </button>
@@ -617,11 +669,11 @@ export function LeadOpsModal({
         <div className="flex border-b border-white/10">
           {(
             [
-              { id: "overview" as const, label: "Panorama", count: overview.total },
-              { id: "schedule" as const, label: "Agendar", count: leads.length },
+              { id: "overview" as const, label: "Overview", count: overviewSafe.total },
+              { id: "schedule" as const, label: "Schedule", count: leads.length },
               {
                 id: "sessions" as const,
-                label: "Sessões",
+                label: "Sessions",
                 count: selectedLead ? selectedLeadFollowUps.length : null,
               },
             ]
@@ -667,17 +719,12 @@ export function LeadOpsModal({
           {tab === "overview" && (
             <OverviewTab
               loading={loading}
-              overview={overview}
-              recentActivity={recentActivity}
+              overview={overviewSafe}
               missions={missions}
               leadsCount={leads.length}
               busyAction={busyAction}
               onProcessDue={handleProcessDue}
               onJumpToSchedule={() => setTab("schedule")}
-              onOpenLead={(leadId) => {
-                setSelectedLeadId(leadId);
-                setTab("sessions");
-              }}
             />
           )}
 
@@ -706,6 +753,12 @@ export function LeadOpsModal({
               canScheduleBulk={filteredLeads.length > 0}
               onScheduleLead={() => void scheduleForSelectedLead()}
               onScheduleBulk={() => void scheduleForFilteredLeads()}
+              companyContext={companyContext}
+              userContext={userContext}
+              contextPanelOpen={contextPanelOpen}
+              onToggleContextPanel={() =>
+                setContextPanelOpen((current) => !current)
+              }
             />
           )}
 
@@ -744,13 +797,11 @@ export function LeadOpsModal({
 function OverviewTab({
   loading,
   overview,
-  recentActivity,
   missions,
   leadsCount,
   busyAction,
   onProcessDue,
   onJumpToSchedule,
-  onOpenLead,
 }: {
   loading: boolean;
   overview: {
@@ -763,19 +814,17 @@ function OverviewTab({
     cancelled: number;
     nextScheduled: string | null;
   };
-  recentActivity: LeadFollowUp[];
   missions: LeadGenerationJob[];
   leadsCount: number;
   busyAction: string | null;
   onProcessDue: () => void;
   onJumpToSchedule: () => void;
-  onOpenLead: (leadId: number) => void;
 }) {
   if (loading && overview.total === 0) {
     return (
       <div className="flex min-h-[400px] items-center justify-center text-sm text-white/40">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Carregando panorama...
+        Loading overview…
       </div>
     );
   }
@@ -785,31 +834,31 @@ function OverviewTab({
       {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Total agendado"
+          label="Total scheduled"
           value={overview.total}
-          helper="Todos os follow-ups da empresa"
+          helper="Every follow-up in this workspace"
           tone="accent"
         />
         <StatCard
-          label="Pendentes"
+          label="Pending"
           value={overview.pending + overview.processing}
           helper={
             overview.processing
-              ? `${overview.processing} em processamento`
-              : "Aguardando envio"
+              ? `${overview.processing} processing`
+              : "Awaiting send"
           }
           tone="warning"
         />
         <StatCard
-          label="Enviados"
+          label="Sent"
           value={overview.sent}
-          helper="Entregues com sucesso"
+          helper="Delivered successfully"
           tone="success"
         />
         <StatCard
-          label="Falharam"
+          label="Failed"
           value={overview.failed}
-          helper={overview.failed ? "Precisam de revisão" : "Nenhum erro"}
+          helper={overview.failed ? "Need review" : "No errors"}
           tone={overview.failed ? "danger" : "neutral"}
         />
       </div>
@@ -818,15 +867,15 @@ function OverviewTab({
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
-            Próximo envio
+            Next send
           </div>
           <div className="mt-1 text-sm font-semibold text-white">
-            {overview.nextScheduled ? fmtDate(overview.nextScheduled) : "Nada na fila"}
+            {overview.nextScheduled ? fmtDate(overview.nextScheduled) : "Nothing in the queue"}
           </div>
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
-            Leads na base
+            Leads in base
           </div>
           <div className="mt-1 text-sm font-semibold text-white">
             {leadsCount} lead{leadsCount === 1 ? "" : "s"}
@@ -834,10 +883,10 @@ function OverviewTab({
         </div>
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
-            Missões
+            Missions
           </div>
           <div className="mt-1 text-sm font-semibold text-white">
-            {missions.length} cadastrada{missions.length === 1 ? "" : "s"}
+            {missions.length} registered
           </div>
         </div>
       </div>
@@ -851,69 +900,53 @@ function OverviewTab({
           style={{ backgroundColor: `${ACCENT}25`, border: `1px solid ${ACCENT}50` }}
         >
           <Sparkles className="h-4 w-4" />
-          Nova cadência
+          New cadence
         </button>
         <button
           type="button"
           onClick={onProcessDue}
           disabled={busyAction === "process"}
           className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/20 disabled:opacity-50"
-          title="Dispara o worker para tentar enviar os follow-ups vencidos agora"
+          title="Trigger the worker to try sending all due follow-ups right now"
         >
           {busyAction === "process" ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
             <Zap className="h-4 w-4" />
           )}
-          Processar envios pendentes
+          Process pending sends
         </button>
       </div>
 
-      {/* Recent */}
+      {/* Status breakdown */}
       <div>
-        <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm font-semibold text-white">Atividade recente</div>
-          <div className="text-[11px] text-white/35">
-            Últimas {recentActivity.length} atualizações
+        <div className="mb-3 text-sm font-semibold text-white">Status breakdown</div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              Paused
+            </div>
+            <div className="mt-1 text-lg font-semibold text-amber-200">
+              {overview.paused}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              Processing
+            </div>
+            <div className="mt-1 text-lg font-semibold text-sky-200">
+              {overview.processing}
+            </div>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              Cancelled
+            </div>
+            <div className="mt-1 text-lg font-semibold text-white/60">
+              {overview.cancelled}
+            </div>
           </div>
         </div>
-        {recentActivity.length === 0 ? (
-          <EmptyState
-            icon={<Mail className="h-5 w-5" style={{ color: ACCENT }} />}
-            title="Nenhum follow-up ainda"
-            hint="Crie uma cadência para começar a nutrir os leads da empresa."
-          />
-        ) : (
-          <div className="space-y-2">
-            {recentActivity.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onOpenLead(item.leadId)}
-                className="flex w-full items-start gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-left transition hover:border-white/15 hover:bg-white/[0.05]"
-              >
-                <span
-                  className={`mt-0.5 inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${toneByStatus(item.status)}`}
-                >
-                  {labelByStatus(item.status)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-white">
-                    {item.leadBusinessName ||
-                      item.leadEmail ||
-                      `Lead #${item.leadId}`}
-                  </div>
-                  <div className="mt-0.5 truncate text-[11px] text-white/45">
-                    #{item.sequenceNumber} · {item.subjectTemplate || item.name}
-                  </div>
-                </div>
-                <div className="shrink-0 text-[11px] text-white/35">
-                  {relativeTime(item.updatedDate ?? item.scheduledAtUtc)}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -943,6 +976,10 @@ function ScheduleTab({
   canScheduleBulk,
   onScheduleLead,
   onScheduleBulk,
+  companyContext,
+  userContext,
+  contextPanelOpen,
+  onToggleContextPanel,
 }: {
   loading: boolean;
   missions: LeadGenerationJob[];
@@ -965,21 +1002,25 @@ function ScheduleTab({
   canScheduleBulk: boolean;
   onScheduleLead: () => void;
   onScheduleBulk: () => void;
+  companyContext: OkestriaCompanyEmailContext | null;
+  userContext: OkestriaUserEmailContext | null;
+  contextPanelOpen: boolean;
+  onToggleContextPanel: () => void;
 }) {
   return (
     <div className="grid gap-0 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
       {/* LEFT — Leads list with filters */}
       <aside className="border-white/10 p-6 lg:border-r">
         <div className="mb-3 flex items-center justify-between">
-          <div className="text-sm font-semibold text-white">Leads da empresa</div>
+          <div className="text-sm font-semibold text-white">Company leads</div>
           <span className="text-[11px] text-white/40">
-            {leads.length} visível{leads.length === 1 ? "" : "s"}
+            {leads.length} visible
           </span>
         </div>
 
         {/* Mission filter */}
         <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
-          Missão
+          Mission
         </label>
         <select
           value={missionFilter === "all" ? "all" : String(missionFilter)}
@@ -988,7 +1029,7 @@ function ScheduleTab({
           }
           className="mb-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-white/25"
         >
-          <option value="all">Todas as missões</option>
+          <option value="all">All missions</option>
           {missions.map((mission) => (
             <option key={mission.id} value={mission.id}>
               {mission.title || `Mission #${mission.id}`}
@@ -1001,7 +1042,7 @@ function ScheduleTab({
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
           <input
             type="search"
-            placeholder="Buscar lead, cidade, nicho..."
+            placeholder="Search lead, city, niche…"
             value={leadSearch}
             onChange={(e) => onLeadSearch(e.target.value)}
             className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-white/25"
@@ -1016,7 +1057,7 @@ function ScheduleTab({
             onChange={(e) => onReplacePendingChange(e.target.checked)}
             className="h-3.5 w-3.5 rounded border-white/20 bg-transparent"
           />
-          Substituir follow-ups pendentes existentes
+          Replace existing pending follow-ups
         </label>
 
         {/* Leads list */}
@@ -1024,13 +1065,13 @@ function ScheduleTab({
           {loading && leads.length === 0 ? (
             <div className="flex items-center justify-center py-10 text-sm text-white/40">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Carregando leads...
+              Loading leads…
             </div>
           ) : leads.length === 0 ? (
             <EmptyState
               icon={<Target className="h-5 w-5" style={{ color: ACCENT }} />}
-              title="Nenhum lead encontrado"
-              hint="Ajuste o filtro de missão ou rode uma nova geração de leads."
+              title="No leads found"
+              hint="Adjust the mission filter or run a new lead generation."
             />
           ) : (
             leads.map((lead) => {
@@ -1052,7 +1093,7 @@ function ScheduleTab({
                         {lead.businessName || lead.email || `Lead #${lead.id}`}
                       </div>
                       <div className="mt-0.5 truncate text-[11px] text-white/45">
-                        {lead.email || "Sem email"}
+                        {lead.email || "No email"}
                       </div>
                       {(lead.city || lead.state || lead.category) && (
                         <div className="mt-0.5 truncate text-[10px] text-white/35">
@@ -1075,12 +1116,20 @@ function ScheduleTab({
 
       {/* RIGHT — Cadence builder */}
       <div className="p-6">
-        <div className="mb-3 flex items-center justify-between">
+        {/* Email context + footer preview (what the AI will use) */}
+        <ContextPreview
+          open={contextPanelOpen}
+          onToggle={onToggleContextPanel}
+          companyContext={companyContext}
+          userContext={userContext}
+        />
+
+        <div className="mb-3 mt-5 flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold text-white">Cadência</div>
+            <div className="text-sm font-semibold text-white">Cadence</div>
             <div className="text-[11px] text-white/40">
-              Cada passo gera um email diferente — o agente de IA adapta o texto ao
-              contexto do lead.
+              Each step generates a different email — the AI agent adapts the copy
+              to the lead&apos;s context.
             </div>
           </div>
           <button
@@ -1088,7 +1137,7 @@ function ScheduleTab({
             onClick={onResetSteps}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
           >
-            Restaurar padrão
+            Reset to default
           </button>
         </div>
 
@@ -1128,10 +1177,10 @@ function ScheduleTab({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium text-white">
-                      {step.name || `Passo ${index + 1}`}
+                      {step.name || `Step ${index + 1}`}
                     </div>
                     <div className="mt-0.5 truncate text-[11px] text-white/40">
-                      {step.subjectTemplate || "Sem assunto definido"}
+                      {step.subjectTemplate || "No subject yet"}
                     </div>
                   </div>
                   <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
@@ -1142,7 +1191,7 @@ function ScheduleTab({
                 {expanded && (
                   <div className="space-y-3 border-t border-white/10 px-4 py-4">
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <Field label="Nome interno">
+                      <Field label="Internal name">
                         <input
                           value={step.name}
                           onChange={(e) =>
@@ -1151,7 +1200,7 @@ function ScheduleTab({
                           className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-white/25"
                         />
                       </Field>
-                      <Field label="Modelo de IA">
+                      <Field label="AI model">
                         <input
                           value={step.preferredModel}
                           onChange={(e) =>
@@ -1162,7 +1211,7 @@ function ScheduleTab({
                         />
                       </Field>
                     </div>
-                    <Field label="Assunto do email (suporta {{businessName}})">
+                    <Field label="Email subject (supports {{businessName}})">
                       <input
                         value={step.subjectTemplate}
                         onChange={(e) =>
@@ -1172,7 +1221,7 @@ function ScheduleTab({
                       />
                     </Field>
                     <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-                      <Field label="Instrução para a IA">
+                      <Field label="Instruction for the AI">
                         <textarea
                           value={step.introText}
                           onChange={(e) =>
@@ -1182,7 +1231,7 @@ function ScheduleTab({
                           className="w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-white/25"
                         />
                       </Field>
-                      <Field label="Atraso (dias)">
+                      <Field label="Delay (days)">
                         <input
                           type="number"
                           min={0}
@@ -1196,7 +1245,7 @@ function ScheduleTab({
                         />
                       </Field>
                     </div>
-                    <Field label="Observações internas">
+                    <Field label="Internal notes">
                       <textarea
                         value={step.notes}
                         onChange={(e) =>
@@ -1227,7 +1276,7 @@ function ScheduleTab({
             ) : (
               <Target className="h-4 w-4" />
             )}
-            Agendar para lead selecionado
+            Schedule for selected lead
           </button>
           <button
             type="button"
@@ -1240,10 +1289,186 @@ function ScheduleTab({
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            Agendar para todos os leads filtrados
+            Schedule for all filtered leads
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ───────────────────── Context preview (context + footer) ───────────────────── */
+
+function ContextPreview({
+  open,
+  onToggle,
+  companyContext,
+  userContext,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  companyContext: OkestriaCompanyEmailContext | null;
+  userContext: OkestriaUserEmailContext | null;
+}) {
+  const hasContext = Boolean(
+    companyContext &&
+      (companyContext.description ||
+        companyContext.products ||
+        companyContext.tone ||
+        companyContext.website ||
+        companyContext.phone ||
+        companyContext.extraNotes),
+  );
+  const footerImage = userContext?.footerImageBase64 || companyContext?.footerImageBase64 || "";
+
+  return (
+    <div
+      className={`overflow-hidden rounded-xl border transition ${
+        open ? "border-fuchsia-400/25 bg-white/[0.03]" : "border-white/[0.08] bg-white/[0.02]"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <span className="text-white/30">
+          {open ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </span>
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+          style={{
+            backgroundColor: `${ACCENT}15`,
+            color: ACCENT,
+            border: `1px solid ${ACCENT}25`,
+          }}
+        >
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-white">Email context &amp; footer</div>
+          <div className="mt-0.5 truncate text-[11px] text-white/45">
+            The AI will use the company context and your signature footer — same as before.
+          </div>
+        </div>
+        <span
+          className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider"
+          style={{
+            borderColor: `${ACCENT}40`,
+            color: ACCENT,
+            backgroundColor: `${ACCENT}10`,
+          }}
+        >
+          {hasContext ? "Context loaded" : "No context yet"}
+        </span>
+      </button>
+
+      {open && (
+        <div className="grid gap-3 border-t border-white/10 px-4 py-4 md:grid-cols-2">
+          {/* Company text context */}
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              <FileText className="h-3 w-3" />
+              Company context
+            </div>
+            {hasContext ? (
+              <dl className="space-y-2 text-xs text-white/70">
+                {companyContext?.description ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      About
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-white/75">
+                      {companyContext.description}
+                    </dd>
+                  </div>
+                ) : null}
+                {companyContext?.products ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      Products / services
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-white/75">
+                      {companyContext.products}
+                    </dd>
+                  </div>
+                ) : null}
+                {companyContext?.tone ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      Tone
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-white/75">
+                      {companyContext.tone}
+                    </dd>
+                  </div>
+                ) : null}
+                {companyContext?.website ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      Website
+                    </dt>
+                    <dd className="mt-0.5 text-white/75">{companyContext.website}</dd>
+                  </div>
+                ) : null}
+                {companyContext?.phone ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      Phone
+                    </dt>
+                    <dd className="mt-0.5 text-white/75">{companyContext.phone}</dd>
+                  </div>
+                ) : null}
+                {companyContext?.extraNotes ? (
+                  <div>
+                    <dt className="text-[10px] uppercase tracking-wider text-white/35">
+                      Extra notes
+                    </dt>
+                    <dd className="mt-0.5 whitespace-pre-wrap text-white/75">
+                      {companyContext.extraNotes}
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            ) : (
+              <div className="text-xs text-white/40">
+                No email context saved yet. Set it in <span className="text-white/70">Company profile → Email context</span>.
+              </div>
+            )}
+          </div>
+
+          {/* Footer image preview */}
+          <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              <ImageIcon className="h-3 w-3" />
+              Signature footer
+            </div>
+            {footerImage ? (
+              <div className="space-y-2">
+                <div className="overflow-hidden rounded-md border border-white/10 bg-white/5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={footerImage}
+                    alt="Email footer preview"
+                    className="block w-full object-contain"
+                  />
+                </div>
+                <div className="text-[11px] text-white/40">
+                  This banner is appended below every follow-up sent.
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-white/40">
+                No footer banner uploaded. Upload one in <span className="text-white/70">Company profile → Email context</span>.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1298,7 +1523,7 @@ function SessionsTab({
           {leads.length === 0 ? (
             <EmptyState
               icon={<Target className="h-5 w-5" style={{ color: ACCENT }} />}
-              title="Nenhum lead carregado"
+              title="No leads loaded"
             />
           ) : (
             leads.map((lead) => {
@@ -1318,7 +1543,7 @@ function SessionsTab({
                     {lead.businessName || lead.email || `Lead #${lead.id}`}
                   </div>
                   <div className="mt-0.5 truncate text-[11px] text-white/45">
-                    {lead.email || "Sem email"}
+                    {lead.email || "No email"}
                   </div>
                 </button>
               );
@@ -1332,13 +1557,13 @@ function SessionsTab({
         {!selectedLead ? (
           <EmptyState
             icon={<Mail className="h-5 w-5" style={{ color: ACCENT }} />}
-            title="Selecione um lead para ver a cadência"
-            hint="A lista ao lado mostra todos os leads da empresa."
+            title="Pick a lead to view the cadence"
+            hint="The list on the side shows every lead in the company."
           />
         ) : loading ? (
           <div className="flex min-h-[300px] items-center justify-center text-sm text-white/40">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Carregando cadência...
+            Loading cadence…
           </div>
         ) : (
           <>
@@ -1350,7 +1575,7 @@ function SessionsTab({
                     `Lead #${selectedLead.id}`}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-white/45">
-                  {selectedLead.email || "Sem email"}
+                  {selectedLead.email || "No email"}
                 </div>
               </div>
               <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/55">
@@ -1370,10 +1595,10 @@ function SessionsTab({
                   <Mail className="h-5 w-5" style={{ color: ACCENT }} />
                 </div>
                 <div className="text-sm font-medium text-white">
-                  Nenhum follow-up agendado ainda
+                  No follow-ups scheduled yet
                 </div>
                 <div className="mt-1 text-xs text-white/35">
-                  Crie uma cadência para começar a nutrir esse lead.
+                  Build a cadence to start nurturing this lead.
                 </div>
                 <button
                   type="button"
@@ -1385,7 +1610,7 @@ function SessionsTab({
                   }}
                 >
                   <Sparkles className="h-4 w-4" />
-                  Ir para agendar
+                  Go to Schedule
                 </button>
               </div>
             ) : (
@@ -1398,6 +1623,9 @@ function SessionsTab({
                     onAction={onAction}
                   />
                 ))}
+                <div className="pt-2 text-[10px] text-white/30">
+                  Last update: {relativeTime(followUps[followUps.length - 1]?.updatedDate ?? null)}
+                </div>
               </div>
             )}
           </>
@@ -1437,12 +1665,12 @@ function FollowUpRow({
             </span>
           </div>
           <div className="mt-1.5 truncate text-sm text-white/70">
-            {followUp.subjectTemplate || "Sem assunto"}
+            {followUp.subjectTemplate || "No subject"}
           </div>
           <div className="mt-2 grid gap-1 text-[11px] text-white/40 sm:grid-cols-3">
-            <div>Agendado: {fmtDate(followUp.scheduledAtUtc)}</div>
-            <div>Tentativa: {fmtDate(followUp.lastAttemptAtUtc)}</div>
-            <div>Enviado: {fmtDate(followUp.sentAtUtc)}</div>
+            <div>Scheduled: {fmtDate(followUp.scheduledAtUtc)}</div>
+            <div>Last attempt: {fmtDate(followUp.lastAttemptAtUtc)}</div>
+            <div>Sent: {fmtDate(followUp.sentAtUtc)}</div>
           </div>
           {followUp.errorMessage ? (
             <div className="mt-2 rounded-lg border border-rose-400/20 bg-rose-500/10 px-3 py-1.5 text-[11px] text-rose-100">
@@ -1457,7 +1685,7 @@ function FollowUpRow({
               type="button"
               onClick={() => onAction("send", followUp)}
               disabled={busyAction === `send-${followUp.id}`}
-              title="Enviar agora"
+              title="Send now"
               className="inline-flex items-center gap-1 rounded-lg border border-fuchsia-400/30 bg-fuchsia-500/10 px-2.5 py-1.5 text-[11px] font-medium text-fuchsia-100 transition hover:bg-fuchsia-500/20 disabled:opacity-50"
             >
               {busyAction === `send-${followUp.id}` ? (
@@ -1465,14 +1693,14 @@ function FollowUpRow({
               ) : (
                 <Send className="h-3 w-3" />
               )}
-              Enviar
+              Send
             </button>
             {status === "paused" ? (
               <button
                 type="button"
                 onClick={() => onAction("resume", followUp)}
                 disabled={busyAction === `resume-${followUp.id}`}
-                title="Retomar"
+                title="Resume"
                 className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 {busyAction === `resume-${followUp.id}` ? (
@@ -1480,14 +1708,14 @@ function FollowUpRow({
                 ) : (
                   <Play className="h-3 w-3" />
                 )}
-                Retomar
+                Resume
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => onAction("pause", followUp)}
                 disabled={busyAction === `pause-${followUp.id}`}
-                title="Pausar"
+                title="Pause"
                 className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10 disabled:opacity-50"
               >
                 {busyAction === `pause-${followUp.id}` ? (
@@ -1495,14 +1723,14 @@ function FollowUpRow({
                 ) : (
                   <Pause className="h-3 w-3" />
                 )}
-                Pausar
+                Pause
               </button>
             )}
             <button
               type="button"
               onClick={() => onAction("cancel", followUp)}
               disabled={busyAction === `cancel-${followUp.id}`}
-              title="Cancelar"
+              title="Cancel"
               className="inline-flex items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-medium text-rose-100 transition hover:bg-rose-500/20 disabled:opacity-50"
             >
               {busyAction === `cancel-${followUp.id}` ? (
@@ -1510,7 +1738,7 @@ function FollowUpRow({
               ) : (
                 <Trash2 className="h-3 w-3" />
               )}
-              Cancelar
+              Cancel
             </button>
           </div>
         )}
