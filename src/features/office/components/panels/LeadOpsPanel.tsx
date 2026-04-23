@@ -17,10 +17,13 @@ import {
 } from "@/lib/leads/lead-generation-api";
 
 type LeadOpsPanelProps = {
-  leads: LeadSummary[];
-  selectedLeadId: number | null;
-  onSelectLead: (leadId: number | null) => void;
+  leads?: LeadSummary[];
+  selectedLeadId?: number | null;
+  onSelectLead?: (leadId: number | null) => void;
   onRefresh?: () => Promise<void> | void;
+  agents?: unknown[];
+  companyName?: string | null;
+  onSelectAgent?: (agentId: string, options?: unknown) => void;
 };
 
 type DraftStep = {
@@ -126,7 +129,7 @@ const StatCard = ({ label, value, helper }: { label: string; value: string | num
   </div>
 );
 
-export function LeadOpsPanel({ leads, selectedLeadId, onSelectLead, onRefresh }: LeadOpsPanelProps) {
+export function LeadOpsPanel({ leads = [], selectedLeadId = null, onSelectLead, onRefresh }: LeadOpsPanelProps) {
   const selectedLead = useMemo(
     () => leads.find((lead) => lead.id === selectedLeadId) ?? null,
     [leads, selectedLeadId],
@@ -321,7 +324,7 @@ export function LeadOpsPanel({ leads, selectedLeadId, onSelectLead, onRefresh }:
                   <button
                     key={lead.id}
                     type="button"
-                    onClick={() => onSelectLead(isActive ? null : lead.id)}
+                    onClick={() => onSelectLead?.(isActive ? null : lead.id)}
                     className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
                       isActive
                         ? "border-fuchsia-400/50 bg-fuchsia-500/10"
