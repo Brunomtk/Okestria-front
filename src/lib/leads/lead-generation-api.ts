@@ -174,6 +174,63 @@ export type LeadChatPrimeResult = {
   title?: string | null;
 };
 
+
+export type LeadFollowUpStatus = "pending" | "processing" | "sent" | "paused" | "cancelled" | "failed";
+
+export type LeadFollowUp = {
+  id: number;
+  companyId: number;
+  leadId: number;
+  leadBusinessName?: string | null;
+  leadEmail?: string | null;
+  sequenceNumber: number;
+  name: string;
+  subjectTemplate: string;
+  introText?: string | null;
+  preferredModel?: string | null;
+  status: LeadFollowUpStatus | string;
+  scheduledAtUtc: string;
+  lastAttemptAtUtc?: string | null;
+  sentAtUtc?: string | null;
+  providerMessageId?: string | null;
+  errorMessage?: string | null;
+  notes?: string | null;
+  generateInsightsIfMissing?: boolean | null;
+  forceRegenerateInsights?: boolean | null;
+  createdDate?: string | null;
+  updatedDate?: string | null;
+};
+
+export type LeadFollowUpStepInput = {
+  sequenceNumber: number;
+  name?: string | null;
+  subjectTemplate?: string | null;
+  introText?: string | null;
+  preferredModel?: string | null;
+  scheduledAtUtc: string;
+  generateInsightsIfMissing?: boolean;
+  forceRegenerateInsights?: boolean;
+  notes?: string | null;
+};
+
+export type LeadFollowUpOverview = {
+  total: number;
+  pending: number;
+  processing: number;
+  paused: number;
+  sent: number;
+  failed: number;
+  cancelled: number;
+  nextScheduledAtUtc?: string | null;
+};
+
+export type LeadFollowUpProcessResult = {
+  checked: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  items: LeadFollowUp[];
+};
 export type LeadSummary = {
   id: number;
   companyId: number;
@@ -325,6 +382,41 @@ const normalizeJob = (value: unknown): LeadGenerationJob | null => {
       typeof pick(entry, "canSync", "CanSync") === "boolean"
         ? Boolean(pick(entry, "canSync", "CanSync"))
         : undefined,
+  };
+};
+
+
+const normalizeLeadFollowUp = (value: unknown): LeadFollowUp | null => {
+  if (!value || typeof value !== "object") return null;
+  const entry = value as Record<string, unknown>;
+  const id = parseNumber(pick(entry, "id", "Id"), Number.NaN);
+  if (!Number.isFinite(id)) return null;
+  return {
+    id,
+    companyId: parseNumber(pick(entry, "companyId", "CompanyId"), getBrowserCompanyId() ?? 0),
+    leadId: parseNumber(pick(entry, "leadId", "LeadId"), 0),
+    leadBusinessName: parseString(pick(entry, "leadBusinessName", "LeadBusinessName")),
+    leadEmail: parseString(pick(entry, "leadEmail", "LeadEmail")),
+    sequenceNumber: parseNumber(pick(entry, "sequenceNumber", "SequenceNumber"), 1),
+    name: parseString(pick(entry, "name", "Name")) ?? `Follow-up #${id}`,
+    subjectTemplate: parseString(pick(entry, "subjectTemplate", "SubjectTemplate")) ?? "",
+    introText: parseString(pick(entry, "introText", "IntroText")),
+    preferredModel: parseString(pick(entry, "preferredModel", "PreferredModel")),
+    status: (parseString(pick(entry, "status", "Status"))?.toLowerCase() as LeadFollowUpStatus) ?? "pending",
+    scheduledAtUtc: parseString(pick(entry, "scheduledAtUtc", "ScheduledAtUtc")) ?? new Date().toISOString(),
+    lastAttemptAtUtc: parseString(pick(entry, "lastAttemptAtUtc", "LastAttemptAtUtc")),
+    sentAtUtc: parseString(pick(entry, "sentAtUtc", "SentAtUtc")),
+    providerMessageId: parseString(pick(entry, "providerMessageId", "ProviderMessageId")),
+    errorMessage: parseString(pick(entry, "errorMessage", "ErrorMessage")),
+    notes: parseString(pick(entry, "notes", "Notes")),
+    generateInsightsIfMissing: typeof pick(entry, "generateInsightsIfMissing", "GenerateInsightsIfMissing") === "boolean"
+      ? Boolean(pick(entry, "generateInsightsIfMissing", "GenerateInsightsIfMissing"))
+      : null,
+    forceRegenerateInsights: typeof pick(entry, "forceRegenerateInsights", "ForceRegenerateInsights") === "boolean"
+      ? Boolean(pick(entry, "forceRegenerateInsights", "ForceRegenerateInsights"))
+      : null,
+    createdDate: parseString(pick(entry, "createdDate", "CreatedDate")),
+    updatedDate: parseString(pick(entry, "updatedDate", "UpdatedDate")),
   };
 };
 
@@ -924,5 +1016,100 @@ export const primeLeadGenerationJobChat = async (
     chatContext: ctx.chatContext,
     suggestedUserMessage: ctx.suggestedUserMessage,
     title: ctx.title,
+  };
+};
+
+
+export const listLeadFollowUps = async (leadId?: number | null): Promise<LeadFollowUp[]> => {
+  const path = typeof leadId === "number" && Number.isFinite(leadId)
+    ? `/api/Leads/${leadId}/followups`
+    : `/api/Leads/followups`;
+  const payload = await requestBackend<unknown>(path, { method: "GET" });
+  return Array.isArray(payload) ? payload.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item)) : [];
+};
+
+export const getLeadFollowUpOverview = async (): Promise<LeadFollowUpOverview> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/overview`, { method: "GET" });
+  const entry = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  return {
+    total: parseNumber(pick(entry, "total", "Total"), 0),
+    pending: parseNumber(pick(entry, "pending", "Pending"), 0),
+    processing: parseNumber(pick(entry, "processing", "Processing"), 0),
+    paused: parseNumber(pick(entry, "paused", "Paused"), 0),
+    sent: parseNumber(pick(entry, "sent", "Sent"), 0),
+    failed: parseNumber(pick(entry, "failed", "Failed"), 0),
+    cancelled: parseNumber(pick(entry, "cancelled", "Cancelled"), 0),
+    nextScheduledAtUtc: parseString(pick(entry, "nextScheduledAtUtc", "NextScheduledAtUtc")),
+  };
+};
+
+export const scheduleLeadFollowUpsForLead = async (leadId: number, steps: LeadFollowUpStepInput[]): Promise<LeadFollowUp[]> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/${leadId}/followups`, {
+    method: "POST",
+    body: JSON.stringify({ steps }),
+  });
+  return Array.isArray(payload) ? payload.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item)) : [];
+};
+
+export const scheduleLeadFollowUpsForGeneration = async (input: {
+  companyId: number;
+  jobId?: number | null;
+  leadIds?: number[];
+  replacePending?: boolean;
+  steps: LeadFollowUpStepInput[];
+}): Promise<LeadFollowUp[]> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/bulk`, {
+    method: "POST",
+    body: JSON.stringify({
+      companyId: input.companyId,
+      jobId: input.jobId ?? null,
+      leadIds: input.leadIds?.length ? input.leadIds : null,
+      replacePending: Boolean(input.replacePending),
+      steps: input.steps,
+    }),
+  });
+  return Array.isArray(payload) ? payload.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item)) : [];
+};
+
+export const pauseLeadFollowUp = async (id: number): Promise<LeadFollowUp> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/${id}/pause`, { method: "POST" });
+  const item = normalizeLeadFollowUp(payload);
+  if (!item) throw new Error("Invalid follow-up response.");
+  return item;
+};
+
+export const resumeLeadFollowUp = async (id: number): Promise<LeadFollowUp> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/${id}/resume`, { method: "POST" });
+  const item = normalizeLeadFollowUp(payload);
+  if (!item) throw new Error("Invalid follow-up response.");
+  return item;
+};
+
+export const cancelLeadFollowUp = async (id: number): Promise<LeadFollowUp> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/${id}/cancel`, { method: "POST" });
+  const item = normalizeLeadFollowUp(payload);
+  if (!item) throw new Error("Invalid follow-up response.");
+  return item;
+};
+
+export const sendLeadFollowUpNow = async (id: number): Promise<LeadFollowUp> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/${id}/send-now`, { method: "POST" });
+  const item = normalizeLeadFollowUp(payload);
+  if (!item) throw new Error("Invalid follow-up response.");
+  return item;
+};
+
+export const processDueLeadFollowUps = async (): Promise<LeadFollowUpProcessResult> => {
+  const payload = await requestBackend<unknown>(`/api/Leads/followups/process-due`, { method: "POST" });
+  const entry = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
+  const itemsValue = pick(entry, "items", "Items");
+  return {
+    checked: parseNumber(pick(entry, "checked", "Checked"), 0),
+    sent: parseNumber(pick(entry, "sent", "Sent"), 0),
+    failed: parseNumber(pick(entry, "failed", "Failed"), 0),
+    skipped: parseNumber(pick(entry, "skipped", "Skipped"), 0),
+    items: Array.isArray(itemsValue)
+      ? itemsValue.map(normalizeLeadFollowUp).filter((item): item is LeadFollowUp => Boolean(item))
+      : [],
   };
 };
