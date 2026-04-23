@@ -17,6 +17,7 @@ import {
   Sparkles,
   Target,
   Trash2,
+  Users,
   X,
   Zap,
 } from "lucide-react";
@@ -46,6 +47,8 @@ import {
   type OkestriaUserEmailContext,
 } from "@/lib/auth/api";
 import { getBrowserAccessToken } from "@/lib/agents/backend-api";
+import { LeadOpsPanel } from "@/features/office/components/panels/LeadOpsPanel";
+import type { AgentState } from "@/features/agents/state/store";
 
 /* ───────────────────── Types & constants ───────────────────── */
 
@@ -53,10 +56,21 @@ type LeadOpsModalProps = {
   open: boolean;
   companyId: number | null;
   companyName?: string | null;
+  agents: AgentState[];
+  onSelectAgent: (
+    agentId: string,
+    options?: {
+      sessionKey?: string | null;
+      leadContext?: string | null;
+      leadContextLabel?: string | null;
+      draft?: string | null;
+    },
+  ) => void;
   onClose: () => void;
 };
 
-type Tab = "overview" | "schedule" | "sessions";
+type TopTab = "leadops" | "followup";
+type FollowUpTab = "overview" | "schedule" | "sessions";
 
 type DraftStep = {
   sequenceNumber: number;
@@ -68,7 +82,7 @@ type DraftStep = {
   notes: string;
 };
 
-const ACCENT = "#d946ef"; // fuchsia — Lead follow-up vibe
+const ACCENT = "#d946ef"; // fuchsia — unifies the Lead Ops modal vibe
 
 const DEFAULT_STEPS: DraftStep[] = [
   {
@@ -113,22 +127,6 @@ const fmtDate = (value?: string | null) => {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
-};
-
-const relativeTime = (value?: string | null): string => {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  const diff = Date.now() - d.getTime();
-  const sec = Math.floor(Math.max(diff, 0) / 1000);
-  if (sec < 45) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h`;
-  const days = Math.floor(hr / 24);
-  if (days < 7) return `${days}d`;
-  return fmtDate(value);
 };
 
 const startOfTodayLocal = () => {
@@ -292,32 +290,33 @@ export function LeadOpsModal({
   open,
   companyId,
   companyName,
+  agents,
+  onSelectAgent,
   onClose,
 }: LeadOpsModalProps) {
-  const [tab, setTab] = useState<Tab>("overview");
+  const [topTab, setTopTab] = useState<TopTab>("leadops");
+  const [followUpTab, setFollowUpTab] = useState<FollowUpTab>("overview");
 
-  // Company data loaded from backend by companyId
-  const [loading, setLoading] = useState(false);
+  // Follow-up data (loaded only when the Follow-up tab is active so we
+  // don't pay for these calls when the user is doing lead generation).
+  const [followUpLoading, setFollowUpLoading] = useState(false);
   const [leads, setLeads] = useState<LeadSummary[]>([]);
   const [missions, setMissions] = useState<LeadGenerationJob[]>([]);
   const [overview, setOverview] = useState<LeadFollowUpOverview | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [followUpLoadError, setFollowUpLoadError] = useState<string | null>(null);
 
-  // Email context + footer previews (loaded once, read-only preview)
   const [companyContext, setCompanyContext] =
     useState<OkestriaCompanyEmailContext | null>(null);
   const [userContext, setUserContext] = useState<OkestriaUserEmailContext | null>(
     null,
   );
 
-  // Per-lead view state
   const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
   const [selectedLeadFollowUps, setSelectedLeadFollowUps] = useState<LeadFollowUp[]>(
     [],
   );
   const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
 
-  // Scheduling form state
   const [steps, setSteps] = useState<DraftStep[]>(DEFAULT_STEPS);
   const [replacePending, setReplacePending] = useState(false);
   const [missionFilter, setMissionFilter] = useState<number | "all">("all");
@@ -325,7 +324,6 @@ export function LeadOpsModal({
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
 
-  // Action state
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -335,21 +333,16 @@ export function LeadOpsModal({
     setError(null);
   }, []);
 
-  /* ──────────── Loading ──────────── */
+  /* ──────────── Loading (follow-up side) ──────────── */
 
-  const loadCompanyData = useCallback(async () => {
+  const loadFollowUpData = useCallback(async () => {
     if (!companyId) {
-      setLoadError("Company not identified. Please sign in again to continue.");
+      setFollowUpLoadError("Company not identified. Please sign in again to continue.");
       return;
     }
-    setLoading(true);
-    setLoadError(null);
+    setFollowUpLoading(true);
+    setFollowUpLoadError(null);
     try {
-      // Leads: if a mission is picked, fetch the mission-scoped list
-      // (server-side filter). Otherwise pull the full company list.
-      // Overview comes from the dedicated aggregate endpoint — the plain
-      // `GET /api/Leads/followups` route without a lead id returns 405 on
-      // the current backend, so we use the overview endpoint instead.
       const leadsPromise =
         missionFilter === "all"
           ? listLeadsByCompany(companyId)
@@ -366,21 +359,22 @@ export function LeadOpsModal({
       const detail =
         cause instanceof Error
           ? cause.message
-          : "Failed to load company data.";
-      setLoadError(detail);
+          : "Failed to load follow-up data.";
+      setFollowUpLoadError(detail);
     } finally {
-      setLoading(false);
+      setFollowUpLoading(false);
     }
   }, [companyId, missionFilter]);
 
-  // Kick off the load on open / filter change.
+  // Kick follow-up loads when that tab is opened (or its mission filter changes).
   useEffect(() => {
     if (!open) return;
+    if (topTab !== "followup") return;
     resetFeedback();
-    void loadCompanyData();
-  }, [open, loadCompanyData, resetFeedback]);
+    void loadFollowUpData();
+  }, [open, topTab, loadFollowUpData, resetFeedback]);
 
-  // Load email context + footer so users can see what the AI will use.
+  // Load email context (best-effort) when the modal opens.
   useEffect(() => {
     if (!open || !companyId) return;
     const token = getBrowserAccessToken();
@@ -390,27 +384,23 @@ export function LeadOpsModal({
       .then((ctx) => {
         if (!cancelled) setCompanyContext(ctx);
       })
-      .catch(() => {
-        /* best-effort */
-      });
+      .catch(() => {});
     const userId = readBrowserUserId();
     if (userId) {
       fetchUserEmailContext(userId, token)
         .then((ctx) => {
           if (!cancelled) setUserContext(ctx);
         })
-        .catch(() => {
-          /* best-effort */
-        });
+        .catch(() => {});
     }
     return () => {
       cancelled = true;
     };
   }, [open, companyId]);
 
-  // Re-load follow-ups for the selected lead whenever selection changes.
+  // Re-load follow-ups for the selected lead when selection changes.
   useEffect(() => {
-    if (!open || !selectedLeadId) {
+    if (!open || topTab !== "followup" || !selectedLeadId) {
       setSelectedLeadFollowUps([]);
       return;
     }
@@ -429,11 +419,11 @@ export function LeadOpsModal({
       })
       .catch((cause) => {
         if (cancelled) return;
-        const detail =
+        setError(
           cause instanceof Error
             ? cause.message
-            : "Failed to load this lead's follow-ups.";
-        setError(detail);
+            : "Failed to load this lead's follow-ups.",
+        );
       })
       .finally(() => {
         if (!cancelled) setSelectedLeadLoading(false);
@@ -441,7 +431,7 @@ export function LeadOpsModal({
     return () => {
       cancelled = true;
     };
-  }, [open, selectedLeadId]);
+  }, [open, topTab, selectedLeadId]);
 
   /* ──────────── Derived values ──────────── */
 
@@ -460,8 +450,6 @@ export function LeadOpsModal({
   );
 
   const filteredLeads = useMemo(() => {
-    // Mission filtering is already handled server-side by swapping endpoints
-    // in loadCompanyData. Here we only apply the client-side text search.
     const needle = leadSearch.trim().toLowerCase();
     if (!needle) return leads;
     return leads.filter((lead) => {
@@ -511,7 +499,7 @@ export function LeadOpsModal({
           selectedLead.businessName || selectedLead.email || `lead ${selectedLead.id}`
         }.`,
       );
-      await loadCompanyData();
+      await loadFollowUpData();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -551,7 +539,7 @@ export function LeadOpsModal({
       setMessage(
         `${created.length} follow-up(s) scheduled across ${leadIds.length} lead(s).`,
       );
-      await loadCompanyData();
+      await loadFollowUpData();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -585,7 +573,7 @@ export function LeadOpsModal({
           ),
         );
       }
-      await loadCompanyData();
+      await loadFollowUpData();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -605,7 +593,7 @@ export function LeadOpsModal({
       setMessage(
         `Checked: ${result.checked}. Sent: ${result.sent}. Failed: ${result.failed}. Skipped: ${result.skipped}.`,
       );
-      await loadCompanyData();
+      await loadFollowUpData();
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -625,7 +613,7 @@ export function LeadOpsModal({
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
       <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        className="relative z-10 flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
         style={{ borderColor: `${ACCENT}30` }}
       >
         {/* ── Header ── */}
@@ -634,27 +622,31 @@ export function LeadOpsModal({
             className="flex h-12 w-12 items-center justify-center rounded-xl"
             style={{ backgroundColor: `${ACCENT}20`, border: `1.5px solid ${ACCENT}50` }}
           >
-            <Mail className="h-5 w-5" style={{ color: ACCENT }} />
+            <Target className="h-5 w-5" style={{ color: ACCENT }} />
           </div>
           <div className="min-w-0 flex-1">
             <h2 className="truncate text-lg font-semibold text-white">
-              Lead follow-up
+              Lead Ops
             </h2>
             <p className="text-xs text-white/40">
               {companyName
-                ? `AI-driven email cadence for ${companyName}.`
-                : "AI-driven email cadence."}
+                ? `Prospecting, outreach and follow-up for ${companyName}.`
+                : "Prospecting, outreach and follow-up."}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadCompanyData()}
-            disabled={loading}
-            title="Reload"
-            className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+          {topTab === "followup" ? (
+            <button
+              type="button"
+              onClick={() => void loadFollowUpData()}
+              disabled={followUpLoading}
+              title="Reload follow-up data"
+              className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCcw
+                className={`h-4 w-4 ${followUpLoading ? "animate-spin" : ""}`}
+              />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -665,127 +657,209 @@ export function LeadOpsModal({
           </button>
         </div>
 
-        {/* ── Tabs ── */}
+        {/* ── Top-level tabs: Lead operations vs Follow-up ── */}
         <div className="flex border-b border-white/10">
           {(
             [
-              { id: "overview" as const, label: "Overview", count: overviewSafe.total },
-              { id: "schedule" as const, label: "Schedule", count: leads.length },
               {
-                id: "sessions" as const,
-                label: "Sessions",
-                count: selectedLead ? selectedLeadFollowUps.length : null,
+                id: "leadops" as const,
+                label: "Lead operations",
+                helper: "Generate, browse and send outreach",
+                icon: <Users className="h-4 w-4" />,
+              },
+              {
+                id: "followup" as const,
+                label: "Follow-up cadence",
+                helper: "Schedule AI-driven email sequences",
+                icon: <Mail className="h-4 w-4" />,
               },
             ]
           ).map((entry) => {
-            const active = tab === entry.id;
+            const active = topTab === entry.id;
             return (
               <button
                 key={entry.id}
                 type="button"
-                onClick={() => setTab(entry.id)}
-                className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
-                  active
-                    ? "border-b-2 text-white"
-                    : "text-white/40 hover:text-white/60"
+                onClick={() => setTopTab(entry.id)}
+                className={`group flex flex-1 flex-col items-center gap-0.5 py-3 text-center transition ${
+                  active ? "text-white" : "text-white/50 hover:text-white/80"
                 }`}
-                style={active ? { borderColor: ACCENT } : undefined}
+                style={
+                  active
+                    ? { borderBottom: `2px solid ${ACCENT}` }
+                    : { borderBottom: "2px solid transparent" }
+                }
               >
-                <span className="inline-flex items-center gap-1.5">
+                <span className="inline-flex items-center gap-2 text-sm font-semibold">
+                  <span
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-md"
+                    style={
+                      active
+                        ? {
+                            backgroundColor: `${ACCENT}20`,
+                            color: ACCENT,
+                            border: `1px solid ${ACCENT}40`,
+                          }
+                        : { color: "rgba(255,255,255,0.5)" }
+                    }
+                  >
+                    {entry.icon}
+                  </span>
                   {entry.label}
-                  {entry.count !== null && entry.count !== undefined ? (
-                    <span
-                      className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
-                      style={{ backgroundColor: `${ACCENT}25`, color: ACCENT }}
-                    >
-                      {entry.count}
-                    </span>
-                  ) : null}
                 </span>
+                <span className="text-[10px] text-white/35">{entry.helper}</span>
               </button>
             );
           })}
         </div>
 
         {/* ── Body ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loadError ? (
-            <div className="m-6 flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="leading-6">{loadError}</span>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {topTab === "leadops" ? (
+            <div className="h-full min-h-0 overflow-hidden">
+              <LeadOpsPanel
+                agents={agents}
+                companyName={companyName ?? undefined}
+                onSelectAgent={onSelectAgent}
+              />
             </div>
-          ) : null}
+          ) : (
+            <div className="flex h-full min-h-0 flex-col">
+              {/* Follow-up sub-tabs */}
+              <div className="flex border-b border-white/10 px-6">
+                {(
+                  [
+                    {
+                      id: "overview" as const,
+                      label: "Overview",
+                      count: overviewSafe.total,
+                    },
+                    {
+                      id: "schedule" as const,
+                      label: "Schedule",
+                      count: leads.length,
+                    },
+                    {
+                      id: "sessions" as const,
+                      label: "Sessions",
+                      count: selectedLead ? selectedLeadFollowUps.length : null,
+                    },
+                  ]
+                ).map((entry) => {
+                  const active = followUpTab === entry.id;
+                  return (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => setFollowUpTab(entry.id)}
+                      className={`px-3 py-2.5 text-xs font-medium tracking-wide transition ${
+                        active ? "text-white" : "text-white/40 hover:text-white/60"
+                      }`}
+                      style={
+                        active
+                          ? { borderBottom: `2px solid ${ACCENT}` }
+                          : { borderBottom: "2px solid transparent" }
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {entry.label}
+                        {entry.count !== null && entry.count !== undefined ? (
+                          <span
+                            className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
+                            style={{ backgroundColor: `${ACCENT}25`, color: ACCENT }}
+                          >
+                            {entry.count}
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-          {tab === "overview" && (
-            <OverviewTab
-              loading={loading}
-              overview={overviewSafe}
-              missions={missions}
-              leadsCount={leads.length}
-              busyAction={busyAction}
-              onProcessDue={handleProcessDue}
-              onJumpToSchedule={() => setTab("schedule")}
-            />
-          )}
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                {followUpLoadError ? (
+                  <div className="m-6 flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span className="leading-6">{followUpLoadError}</span>
+                  </div>
+                ) : null}
 
-          {tab === "schedule" && (
-            <ScheduleTab
-              loading={loading}
-              missions={missions}
-              leads={filteredLeads}
-              leadSearch={leadSearch}
-              onLeadSearch={setLeadSearch}
-              missionFilter={missionFilter}
-              onMissionFilter={setMissionFilter}
-              replacePending={replacePending}
-              onReplacePendingChange={setReplacePending}
-              selectedLeadId={selectedLeadId}
-              onSelectLead={setSelectedLeadId}
-              steps={steps}
-              expandedStep={expandedStep}
-              onToggleStep={(index) =>
-                setExpandedStep((current) => (current === index ? null : index))
-              }
-              onUpdateStep={updateStep}
-              onResetSteps={() => setSteps(DEFAULT_STEPS)}
-              busyAction={busyAction}
-              canScheduleLead={Boolean(selectedLeadId)}
-              canScheduleBulk={filteredLeads.length > 0}
-              onScheduleLead={() => void scheduleForSelectedLead()}
-              onScheduleBulk={() => void scheduleForFilteredLeads()}
-              companyContext={companyContext}
-              userContext={userContext}
-              contextPanelOpen={contextPanelOpen}
-              onToggleContextPanel={() =>
-                setContextPanelOpen((current) => !current)
-              }
-            />
-          )}
+                {followUpTab === "overview" && (
+                  <OverviewTab
+                    loading={followUpLoading}
+                    overview={overviewSafe}
+                    missions={missions}
+                    leadsCount={leads.length}
+                    busyAction={busyAction}
+                    onProcessDue={handleProcessDue}
+                    onJumpToSchedule={() => setFollowUpTab("schedule")}
+                  />
+                )}
 
-          {tab === "sessions" && (
-            <SessionsTab
-              loading={loading || selectedLeadLoading}
-              leads={leads}
-              selectedLead={selectedLead}
-              selectedLeadId={selectedLeadId}
-              onSelectLead={setSelectedLeadId}
-              followUps={selectedLeadFollowUps}
-              busyAction={busyAction}
-              onAction={handleItemAction}
-              onJumpToSchedule={() => setTab("schedule")}
-            />
-          )}
+                {followUpTab === "schedule" && (
+                  <ScheduleTab
+                    loading={followUpLoading}
+                    missions={missions}
+                    leads={filteredLeads}
+                    leadSearch={leadSearch}
+                    onLeadSearch={setLeadSearch}
+                    missionFilter={missionFilter}
+                    onMissionFilter={setMissionFilter}
+                    replacePending={replacePending}
+                    onReplacePendingChange={setReplacePending}
+                    selectedLeadId={selectedLeadId}
+                    onSelectLead={setSelectedLeadId}
+                    steps={steps}
+                    expandedStep={expandedStep}
+                    onToggleStep={(index) =>
+                      setExpandedStep((current) =>
+                        current === index ? null : index,
+                      )
+                    }
+                    onUpdateStep={updateStep}
+                    onResetSteps={() => setSteps(DEFAULT_STEPS)}
+                    busyAction={busyAction}
+                    canScheduleLead={Boolean(selectedLeadId)}
+                    canScheduleBulk={filteredLeads.length > 0}
+                    onScheduleLead={() => void scheduleForSelectedLead()}
+                    onScheduleBulk={() => void scheduleForFilteredLeads()}
+                    companyContext={companyContext}
+                    userContext={userContext}
+                    contextPanelOpen={contextPanelOpen}
+                    onToggleContextPanel={() =>
+                      setContextPanelOpen((current) => !current)
+                    }
+                  />
+                )}
 
-          {message ? (
-            <div className="sticky bottom-0 border-t border-emerald-400/20 bg-emerald-500/10 px-6 py-3 text-sm text-emerald-100 backdrop-blur">
-              {message}
+                {followUpTab === "sessions" && (
+                  <SessionsTab
+                    loading={followUpLoading || selectedLeadLoading}
+                    leads={leads}
+                    selectedLead={selectedLead}
+                    selectedLeadId={selectedLeadId}
+                    onSelectLead={setSelectedLeadId}
+                    followUps={selectedLeadFollowUps}
+                    busyAction={busyAction}
+                    onAction={handleItemAction}
+                    onJumpToSchedule={() => setFollowUpTab("schedule")}
+                  />
+                )}
+
+                {message ? (
+                  <div className="sticky bottom-0 border-t border-emerald-400/20 bg-emerald-500/10 px-6 py-3 text-sm text-emerald-100 backdrop-blur">
+                    {message}
+                  </div>
+                ) : null}
+                {error ? (
+                  <div className="sticky bottom-0 border-t border-rose-400/20 bg-rose-500/10 px-6 py-3 text-sm text-rose-100 backdrop-blur">
+                    {error}
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ) : null}
-          {error ? (
-            <div className="sticky bottom-0 border-t border-rose-400/20 bg-rose-500/10 px-6 py-3 text-sm text-rose-100 backdrop-blur">
-              {error}
-            </div>
-          ) : null}
+          )}
         </div>
       </section>
     </div>
@@ -831,7 +905,6 @@ function OverviewTab({
 
   return (
     <div className="space-y-6 p-6">
-      {/* Stats */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total scheduled"
@@ -863,7 +936,6 @@ function OverviewTab({
         />
       </div>
 
-      {/* Meta row */}
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
@@ -891,7 +963,6 @@ function OverviewTab({
         </div>
       </div>
 
-      {/* Actions */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -918,7 +989,6 @@ function OverviewTab({
         </button>
       </div>
 
-      {/* Status breakdown */}
       <div>
         <div className="mb-3 text-sm font-semibold text-white">Status breakdown</div>
         <div className="grid gap-2 sm:grid-cols-3">
@@ -1009,7 +1079,6 @@ function ScheduleTab({
 }) {
   return (
     <div className="grid gap-0 lg:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
-      {/* LEFT — Leads list with filters */}
       <aside className="border-white/10 p-6 lg:border-r">
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-semibold text-white">Company leads</div>
@@ -1018,7 +1087,6 @@ function ScheduleTab({
           </span>
         </div>
 
-        {/* Mission filter */}
         <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
           Mission
         </label>
@@ -1037,7 +1105,6 @@ function ScheduleTab({
           ))}
         </select>
 
-        {/* Lead search */}
         <div className="relative mb-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
           <input
@@ -1049,7 +1116,6 @@ function ScheduleTab({
           />
         </div>
 
-        {/* Replace pending */}
         <label className="mb-4 flex cursor-pointer items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:bg-white/[0.06]">
           <input
             type="checkbox"
@@ -1060,7 +1126,6 @@ function ScheduleTab({
           Replace existing pending follow-ups
         </label>
 
-        {/* Leads list */}
         <div className="max-h-[520px] space-y-1.5 overflow-y-auto pr-1">
           {loading && leads.length === 0 ? (
             <div className="flex items-center justify-center py-10 text-sm text-white/40">
@@ -1114,9 +1179,7 @@ function ScheduleTab({
         </div>
       </aside>
 
-      {/* RIGHT — Cadence builder */}
       <div className="p-6">
-        {/* Email context + footer preview (what the AI will use) */}
         <ContextPreview
           open={contextPanelOpen}
           onToggle={onToggleContextPanel}
@@ -1262,7 +1325,6 @@ function ScheduleTab({
           })}
         </div>
 
-        {/* Actions */}
         <div className="mt-5 flex flex-wrap gap-2 border-t border-white/10 pt-4">
           <button
             type="button"
@@ -1297,7 +1359,7 @@ function ScheduleTab({
   );
 }
 
-/* ───────────────────── Context preview (context + footer) ───────────────────── */
+/* ───────────────────── Context preview ───────────────────── */
 
 function ContextPreview({
   open,
@@ -1319,7 +1381,8 @@ function ContextPreview({
         companyContext.phone ||
         companyContext.extraNotes),
   );
-  const footerImage = userContext?.footerImageBase64 || companyContext?.footerImageBase64 || "";
+  const footerImage =
+    userContext?.footerImageBase64 || companyContext?.footerImageBase64 || "";
 
   return (
     <div
@@ -1369,7 +1432,6 @@ function ContextPreview({
 
       {open && (
         <div className="grid gap-3 border-t border-white/10 px-4 py-4 md:grid-cols-2">
-          {/* Company text context */}
           <div className="rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
               <FileText className="h-3 w-3" />
@@ -1436,12 +1498,12 @@ function ContextPreview({
               </dl>
             ) : (
               <div className="text-xs text-white/40">
-                No email context saved yet. Set it in <span className="text-white/70">Company profile → Email context</span>.
+                No email context saved yet. Set it in{" "}
+                <span className="text-white/70">Company profile → Email context</span>.
               </div>
             )}
           </div>
 
-          {/* Footer image preview */}
           <div className="rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
               <ImageIcon className="h-3 w-3" />
@@ -1463,7 +1525,8 @@ function ContextPreview({
               </div>
             ) : (
               <div className="text-xs text-white/40">
-                No footer banner uploaded. Upload one in <span className="text-white/70">Company profile → Email context</span>.
+                No footer banner uploaded. Upload one in{" "}
+                <span className="text-white/70">Company profile → Email context</span>.
               </div>
             )}
           </div>
@@ -1516,7 +1579,6 @@ function SessionsTab({
 }) {
   return (
     <div className="grid gap-0 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
-      {/* LEFT — Leads (condensed) */}
       <aside className="border-white/10 p-6 lg:border-r">
         <div className="mb-3 text-sm font-semibold text-white">Leads</div>
         <div className="max-h-[520px] space-y-1.5 overflow-y-auto pr-1">
@@ -1552,7 +1614,6 @@ function SessionsTab({
         </div>
       </aside>
 
-      {/* RIGHT — Timeline */}
       <div className="p-6">
         {!selectedLead ? (
           <EmptyState
@@ -1623,9 +1684,6 @@ function SessionsTab({
                     onAction={onAction}
                   />
                 ))}
-                <div className="pt-2 text-[10px] text-white/30">
-                  Last update: {relativeTime(followUps[followUps.length - 1]?.updatedDate ?? null)}
-                </div>
               </div>
             )}
           </>

@@ -6085,6 +6085,8 @@ export function OfficeScreen({
         open={leadOpsModalOpen}
         companyId={companyId}
         companyName={companyName}
+        agents={state.agents}
+        onSelectAgent={handleOpenAgentChat}
         onClose={() => setLeadOpsModalOpen(false)}
       />
 
