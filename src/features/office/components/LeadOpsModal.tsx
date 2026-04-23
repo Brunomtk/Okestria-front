@@ -339,6 +339,10 @@ export function LeadOpsModal({
   const [replacePending, setReplacePending] = useState(false);
   const [missionFilter, setMissionFilter] = useState<number | "all">("all");
   const [leadSearch, setLeadSearch] = useState("");
+  // Sessions tab keeps its own search (by name or email) so users can
+  // quickly locate a specific lead in long company rosters without
+  // disturbing the Schedule tab's filter.
+  const [sessionLeadSearch, setSessionLeadSearch] = useState("");
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
 
@@ -1215,6 +1219,11 @@ export function LeadOpsModal({
                   <SessionsTab
                     loading={followUpLoading || selectedLeadLoading}
                     leads={leads}
+                    missions={missions}
+                    missionFilter={missionFilter}
+                    onMissionFilter={setMissionFilter}
+                    leadSearch={sessionLeadSearch}
+                    onLeadSearch={setSessionLeadSearch}
                     selectedLead={selectedLead}
                     selectedLeadId={selectedLeadId}
                     onSelectLead={setSelectedLeadId}
@@ -1999,6 +2008,11 @@ const Field = ({
 function SessionsTab({
   loading,
   leads,
+  missions,
+  missionFilter,
+  onMissionFilter,
+  leadSearch,
+  onLeadSearch,
   selectedLead,
   selectedLeadId,
   onSelectLead,
@@ -2009,6 +2023,11 @@ function SessionsTab({
 }: {
   loading: boolean;
   leads: LeadSummary[];
+  missions: LeadGenerationJob[];
+  missionFilter: number | "all";
+  onMissionFilter: (value: number | "all") => void;
+  leadSearch: string;
+  onLeadSearch: (value: string) => void;
   selectedLead: LeadSummary | null;
   selectedLeadId: number | null;
   onSelectLead: (leadId: number | null) => void;
@@ -2020,18 +2039,84 @@ function SessionsTab({
   ) => void;
   onJumpToSchedule: () => void;
 }) {
+  // Client-side filter layered on top of the backend-scoped leads list.
+  // Mission filtering is handled by swapping the loader upstream in
+  // LeadOpsModal — this filter just narrows the displayed roster by
+  // name/email so the user can jump to a specific lead fast.
+  const filtered = useMemo(() => {
+    const needle = leadSearch.trim().toLowerCase();
+    if (!needle) return leads;
+    return leads.filter((lead) => {
+      const haystack = [lead.businessName, lead.email]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(needle);
+    });
+  }, [leads, leadSearch]);
+
   return (
-    <div className="grid gap-0 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)]">
+    <div className="grid gap-0 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
       <aside className="border-white/10 p-6 lg:border-r">
-        <div className="mb-3 text-sm font-semibold text-white">Leads</div>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="text-sm font-semibold text-white">Leads</div>
+          <span className="text-[11px] text-white/40">
+            {filtered.length}
+            {filtered.length !== leads.length ? ` / ${leads.length}` : ""}
+          </span>
+        </div>
+
+        {/* Mission filter — re-uses the Schedule tab's state on the parent
+            so switching missions here also re-loads the backend-scoped
+            leads. The new list becomes the universe that the search below
+            operates on. */}
+        <label className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+          Mission
+        </label>
+        <select
+          value={missionFilter === "all" ? "all" : String(missionFilter)}
+          onChange={(e) =>
+            onMissionFilter(e.target.value === "all" ? "all" : Number(e.target.value))
+          }
+          className="mb-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-white/25"
+        >
+          <option value="all">All missions</option>
+          {missions.map((mission) => (
+            <option key={mission.id} value={mission.id}>
+              {mission.title || `Mission #${mission.id}`}
+            </option>
+          ))}
+        </select>
+
+        {/* Name / email search — purely client-side, debounced by input. */}
+        <div className="relative mb-3">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
+          <input
+            type="search"
+            placeholder="Search name or email…"
+            value={leadSearch}
+            onChange={(e) => onLeadSearch(e.target.value)}
+            className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-white/25"
+          />
+        </div>
+
         <div className="max-h-[520px] space-y-1.5 overflow-y-auto pr-1">
-          {leads.length === 0 ? (
+          {filtered.length === 0 ? (
             <EmptyState
               icon={<Target className="h-5 w-5" style={{ color: ACCENT }} />}
-              title="No leads loaded"
+              title={
+                leads.length === 0
+                  ? "No leads loaded"
+                  : "No matches"
+              }
+              hint={
+                leads.length === 0
+                  ? undefined
+                  : "Adjust the mission filter or clear the search."
+              }
             />
           ) : (
-            leads.map((lead) => {
+            filtered.map((lead) => {
               const active = lead.id === selectedLeadId;
               return (
                 <button
