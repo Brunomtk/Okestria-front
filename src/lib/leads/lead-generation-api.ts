@@ -756,7 +756,11 @@ export const generateLeadInsights = async (
   const body = {
     persist: true,
     forceRegenerate: options?.forceRegenerate ?? true,
-    preferredModel: options?.preferredModel ?? "gpt-5.4-nano",
+    // Let the server pick its configured model when the caller doesn't
+    // specify one. Hard-coding an invalid name (the original value here
+    // was "gpt-5.4-nano" which OpenAI rejects) made every generation
+    // silently fall back to the hand-written template.
+    preferredModel: options?.preferredModel ?? null,
     ...(agentId ? { agentId } : {}),
   };
 

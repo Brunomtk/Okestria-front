@@ -47,7 +47,6 @@ import {
   sendSingleLeadEmail,
   fetchLeadChatContext,
   fetchJobChatContext,
-  bulkGenerateInsights,
   bulkDeleteLeads,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
@@ -155,6 +154,15 @@ export function LeadOpsPanel({
   const [sendingSingleEmail, setSendingSingleEmail] = useState(false);
   const [chatPriming, setChatPriming] = useState<number | "job" | null>(null);
   const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    current: number;
+    total: number;
+    currentName: string;
+    succeeded: number;
+    skipped: number;
+    failed: number;
+    cancelRequested: boolean;
+  } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
@@ -574,44 +582,119 @@ export function LeadOpsPanel({
     }
   }, []);
 
+  /**
+   * Generate AI insights for every filtered lead, one at a time. The UI
+   * shows a live progress overlay with the current lead name + counts so
+   * the operator can watch it tick through. Each iteration reuses the
+   * exact same endpoint as the single-lead "Generate" button, so the
+   * behaviour is identical — just looped with a tight refresh after each
+   * lead so the card flips from "no insights" to "ready" as we go.
+   *
+   * We deliberately skip the /bulk-generate-insights endpoint: it
+   * returned 200 OK without any visible feedback while the worker ran
+   * invisibly in the background. Frontend-driven sequencing is slower
+   * but the per-lead feedback is worth it.
+   */
   const handleBulkGenerateInsights = useCallback(async () => {
     if (!companyId) return;
-    setBulkGenerating(true);
-    try {
-      // Backend v42.3 runs the bulk loop inline (first 50 leads) and
-      // returns a populated result. Overflow is queued to the background
-      // worker — in that case the status is "partial_running".
-      const result = await bulkGenerateInsights({
-        companyId,
-        // Only send a model when the user actually chose a non-default one
-        // so the backend is free to pick its own configured default.
-        preferredModel: selectedModel?.trim() || null,
-      });
 
-      const counts = [
-        `${result.succeeded} generated`,
-        result.skipped > 0 ? `${result.skipped} already ready` : null,
-        result.failed > 0 ? `${result.failed} failed` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ");
-
-      const message =
-        result.status === "partial_running"
-          ? `AI is generating ${result.total} leads. ${counts} so far — the remaining batch keeps running in the background.`
-          : `Done for ${result.total} lead(s): ${counts}.`;
-
-      setError(message);
-      setTimeout(() => {
-        setError((current) => (current === message ? null : current));
-      }, 5000);
-      setRefreshTick((t) => t + 1);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate insights in bulk.");
-    } finally {
-      setBulkGenerating(false);
+    // Operate on whatever the user is looking at right now — same scope
+    // as the search/filter they already applied.
+    const targets = filteredLeads.filter((lead) => Number.isFinite(lead.id));
+    if (targets.length === 0) {
+      setError("No leads to generate — adjust the filter first.");
+      return;
     }
-  }, [companyId, selectedModel]);
+
+    setBulkGenerating(true);
+    setBulkProgress({
+      current: 0,
+      total: targets.length,
+      currentName: "",
+      succeeded: 0,
+      skipped: 0,
+      failed: 0,
+      cancelRequested: false,
+    });
+
+    let succeeded = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let index = 0; index < targets.length; index++) {
+      const lead = targets[index];
+
+      // Read the latest cancel flag from state via the setter so we don't
+      // get stale closure values.
+      let shouldStop = false;
+      setBulkProgress((prev) => {
+        if (prev?.cancelRequested) shouldStop = true;
+        return prev
+          ? {
+              ...prev,
+              current: index + 1,
+              currentName: lead.businessName || lead.email || `Lead #${lead.id}`,
+            }
+          : prev;
+      });
+      if (shouldStop) break;
+
+      // Mirror the individual button's skip rule so re-running "Generate
+      // All" doesn't burn AI credits on leads that already have complete
+      // outreach content.
+      const isAlreadyReady = Boolean(
+        lead.ptxFit &&
+          lead.suggestedProduct &&
+          lead.outreachInsight &&
+          lead.outreachScript &&
+          lead.outreachEmailHtml,
+      );
+      if (isAlreadyReady) {
+        skipped++;
+        setBulkProgress((prev) => (prev ? { ...prev, skipped } : prev));
+        continue;
+      }
+
+      try {
+        const updated = await generateLeadInsights(lead.id, null, {
+          forceRegenerate: true,
+          preferredModel: selectedModel?.trim() || null,
+        });
+        if (updated) {
+          // Live-patch the lead in the grid so the card flips to "ready"
+          // immediately without waiting for a full list refresh.
+          setJobLeads((current) =>
+            current.map((l) => (l.id === lead.id ? { ...l, ...updated } : l)),
+          );
+        }
+        succeeded++;
+        setBulkProgress((prev) => (prev ? { ...prev, succeeded } : prev));
+      } catch (e) {
+        failed++;
+        setBulkProgress((prev) => (prev ? { ...prev, failed } : prev));
+        console.warn(`[bulk generate] lead ${lead.id} failed:`, e);
+      }
+    }
+
+    setBulkGenerating(false);
+    setBulkProgress(null);
+
+    const parts: string[] = [];
+    if (succeeded > 0) parts.push(`${succeeded} generated`);
+    if (skipped > 0) parts.push(`${skipped} already ready`);
+    if (failed > 0) parts.push(`${failed} failed`);
+    const summary = parts.length > 0 ? parts.join(" · ") : "no changes";
+    const message = `Done for ${targets.length} lead(s): ${summary}.`;
+    setError(message);
+    setTimeout(() => {
+      setError((current) => (current === message ? null : current));
+    }, 5000);
+    setRefreshTick((t) => t + 1);
+  }, [companyId, filteredLeads, selectedModel]);
+
+  const cancelBulkGenerate = useCallback(() => {
+    setBulkProgress((prev) => (prev ? { ...prev, cancelRequested: true } : prev));
+  }, []);
 
   const handleBulkDelete = useCallback(async () => {
     const leadIds = filteredLeads.map((l) => l.id);
@@ -940,6 +1023,143 @@ export function LeadOpsPanel({
       </div>
 
       {/* ====== MODALS ====== */}
+
+      {/* Bulk generate progress — appears whenever the user clicks
+          "Generate All" and stays open until the loop finishes. Shows the
+          current lead name + an X/Y progress bar + running counts, plus a
+          Cancel button that stops the loop after the in-flight request. */}
+      {bulkProgress && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center px-4 py-6"
+          role="dialog"
+          aria-live="polite"
+        >
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
+          <section
+            className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+            style={{ borderColor: "#22d3ee40" }}
+          >
+            <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+              <div
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                style={{
+                  backgroundColor: "#22d3ee20",
+                  border: "1.5px solid #22d3ee50",
+                  color: "#22d3ee",
+                }}
+              >
+                <Wand2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-lg font-semibold text-white">
+                  Generating insights…
+                </h3>
+                <p className="truncate text-xs text-white/50">
+                  One lead at a time, same flow as the individual button.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              {/* Current lead */}
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                  Current lead
+                </div>
+                <div className="mt-1 flex min-w-0 items-center gap-2">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-cyan-300" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                    {bulkProgress.currentName || "Preparing…"}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-white/50">
+                    {Math.min(bulkProgress.current, bulkProgress.total)} /{" "}
+                    {bulkProgress.total}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="space-y-1.5">
+                <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className="h-full rounded-full bg-cyan-400 transition-all duration-300"
+                    style={{
+                      width: `${
+                        bulkProgress.total > 0
+                          ? Math.min(
+                              100,
+                              Math.floor(
+                                ((bulkProgress.succeeded +
+                                  bulkProgress.skipped +
+                                  bulkProgress.failed) /
+                                  bulkProgress.total) *
+                                  100,
+                              ),
+                            )
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Stat row */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.07] px-2 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                    Generated
+                  </div>
+                  <div className="mt-0.5 text-base font-semibold text-emerald-200">
+                    {bulkProgress.succeeded}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                    Skipped
+                  </div>
+                  <div className="mt-0.5 text-base font-semibold text-white/80">
+                    {bulkProgress.skipped}
+                  </div>
+                </div>
+                <div
+                  className={`rounded-lg border px-2 py-2 ${
+                    bulkProgress.failed > 0
+                      ? "border-rose-400/25 bg-rose-500/[0.07]"
+                      : "border-white/10 bg-white/[0.03]"
+                  }`}
+                >
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                    Failed
+                  </div>
+                  <div
+                    className={`mt-0.5 text-base font-semibold ${
+                      bulkProgress.failed > 0 ? "text-rose-200" : "text-white/80"
+                    }`}
+                  >
+                    {bulkProgress.failed}
+                  </div>
+                </div>
+              </div>
+
+              {/* Cancel — takes effect after the in-flight request finishes */}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <div className="text-[11px] text-white/40">
+                  {bulkProgress.cancelRequested
+                    ? "Stopping after the current lead…"
+                    : "The window stays open until every lead is done."}
+                </div>
+                <button
+                  type="button"
+                  onClick={cancelBulkGenerate}
+                  disabled={bulkProgress.cancelRequested}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {/* New Mission Modal */}
       {modalView === "new-mission" && (
