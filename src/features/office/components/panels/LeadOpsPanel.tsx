@@ -331,6 +331,9 @@ export function LeadOpsPanel({
   }, [jobs]);
 
   // Load leads for the current company, with job-specific fallback when needed.
+  // `refreshTick` is in the dep list so bumping it (e.g. after a bulk insight
+  // generation loop) triggers a full re-fetch and the cards are guaranteed
+  // to reflect whatever the backend just saved.
   useEffect(() => {
     if (!companyId && !selectedJobId) {
       setJobLeads([]);
@@ -357,7 +360,7 @@ export function LeadOpsPanel({
     };
     void load();
     return () => { cancelled = true; };
-  }, [companyId, selectedJobId]);
+  }, [companyId, selectedJobId, refreshTick]);
 
   // Load email batch jobs
   useEffect(() => {
@@ -656,17 +659,29 @@ export function LeadOpsPanel({
       }
 
       try {
-        const updated = await generateLeadInsights(lead.id, null, {
+        // 1. Run the generate call — identical to the individual button.
+        await generateLeadInsights(lead.id, null, {
           forceRegenerate: true,
           preferredModel: selectedModel?.trim() || null,
         });
-        if (updated) {
-          // Live-patch the lead in the grid so the card flips to "ready"
-          // immediately without waiting for a full list refresh.
+
+        // 2. Re-fetch the lead from the backend so the version we patch
+        //    into state is exactly what the DB has (including the fresh
+        //    outreach body + insights). This is the same shape the detail
+        //    modal loads via getLeadById, so opening the modal right after
+        //    shows the new copy without needing a manual re-click.
+        const fresh = await getLeadById(lead.id);
+        if (fresh) {
           setJobLeads((current) =>
-            current.map((l) => (l.id === lead.id ? { ...l, ...updated } : l)),
+            current.map((l) => (l.id === lead.id ? { ...l, ...fresh } : l)),
+          );
+          // If the user already had this lead's detail modal open while
+          // the loop ticks, keep it in sync too.
+          setSelectedLeadDetail((prev) =>
+            prev && prev.id === lead.id ? { ...prev, ...fresh } : prev,
           );
         }
+
         succeeded++;
         setBulkProgress((prev) => (prev ? { ...prev, succeeded } : prev));
       } catch (e) {
@@ -689,6 +704,10 @@ export function LeadOpsPanel({
     setTimeout(() => {
       setError((current) => (current === message ? null : current));
     }, 5000);
+
+    // Hard refresh: bumping refreshTick re-runs the list load effect
+    // (now depends on refreshTick) so the grid reflects backend truth
+    // one more time, in case any per-lead patch got stale.
     setRefreshTick((t) => t + 1);
   }, [companyId, filteredLeads, selectedModel]);
 
