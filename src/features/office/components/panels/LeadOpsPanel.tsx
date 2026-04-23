@@ -222,7 +222,7 @@ export function LeadOpsPanel({ leads, selectedLeadId, onSelectLead, onRefresh }:
     setBusyAction("bulk");
     try {
       const companyId = leads[0]?.companyId ?? selectedLead?.companyId ?? 0;
-      const jobId = leads[0]?.sourceLeadJobId ?? null;
+      const jobId = (leads[0] as { sourceLeadJobId?: number | null } | undefined)?.sourceLeadJobId ?? null;
       const created = await scheduleLeadFollowUpsForGeneration({
         companyId,
         jobId,
