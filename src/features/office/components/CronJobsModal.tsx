@@ -25,7 +25,6 @@ import {
   createCronJob,
   deleteCronJob,
   DELIVERY_LABEL,
-  fetchCronGatewayHealth,
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
@@ -54,7 +53,6 @@ import {
   type CronEmailToolConfig,
   type CronJobToolsConfig,
   type CronEmailToolDefaults,
-  type CronGatewayHealthSnapshot,
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -130,8 +128,6 @@ export function CronJobsModal({
   const [selectedJobRuns, setSelectedJobRuns] = useState<CronJobRun[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-  const [gatewayHealth, setGatewayHealth] = useState<CronGatewayHealthSnapshot | null>(null);
-  const [gatewayHealthLoading, setGatewayHealthLoading] = useState(false);
 
   // Edit dialog — holds the job currently being edited (null = no dialog).
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
@@ -342,18 +338,6 @@ export function CronJobsModal({
     }
   }, [companyId]);
 
-  const loadGatewayHealth = useCallback(async (fresh: boolean = false) => {
-    setGatewayHealthLoading(true);
-    try {
-      const snapshot = await fetchCronGatewayHealth(fresh);
-      setGatewayHealth(snapshot);
-    } catch {
-      // Non-fatal: the cron UI still works even if the health endpoint is missing.
-    } finally {
-      setGatewayHealthLoading(false);
-    }
-  }, []);
-
   const loadJobDetail = useCallback(async (jobId: number) => {
     setDetailLoading(true);
     try {
@@ -373,8 +357,7 @@ export function CronJobsModal({
   useEffect(() => {
     if (!open || !companyId) return;
     void loadJobs();
-    void loadGatewayHealth(false);
-  }, [open, companyId, loadJobs, loadGatewayHealth]);
+  }, [open, companyId, loadJobs]);
 
   useEffect(() => {
     if (!open) return;
@@ -412,7 +395,7 @@ export function CronJobsModal({
       setError(null);
       try {
         await action();
-        await Promise.all([loadJobs(), loadGatewayHealth(true)]);
+        await loadJobs();
         if (postAction) await postAction();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -493,47 +476,13 @@ export function CronJobsModal({
     [loadJobs, loadJobDetail, selectedJobId],
   );
 
-  // v82 — surface *what* is blocking the Schedule button instead of silently
-  // greying it out. When any of these pieces are missing, `missingFields` is
-  // rendered as a helper line under the submit button so the operator knows
-  // exactly what to fix.
-  const missingFields = useMemo(() => {
-    const missing: string[] = [];
-    if (!companyId) missing.push("workspace (select a company)");
-    if (formName.trim().length === 0) missing.push("Name");
-    if (formSystemEvent.trim().length === 0) missing.push("System event");
-    if (formKind === "one-shot") {
-      if (!fromLocalDateTimeInput(formRunAt)) missing.push("Run at (date & time)");
-    } else if (formCron.trim().length === 0) {
-      missing.push("Cron expression");
-    }
-    if (
-      formSessionMode === "named" &&
-      formSessionKey.trim().length === 0
-    ) {
-      missing.push("Session key (named session mode)");
-    }
-    if (
-      formDelivery === "webhook" &&
-      formWebhookUrl.trim().length === 0
-    ) {
-      missing.push("Webhook URL (webhook delivery mode)");
-    }
-    return missing;
-  }, [
-    companyId,
-    formName,
-    formSystemEvent,
-    formKind,
-    formRunAt,
-    formCron,
-    formSessionMode,
-    formSessionKey,
-    formDelivery,
-    formWebhookUrl,
-  ]);
-
-  const canCreate = missingFields.length === 0;
+  const canCreate =
+    !!companyId &&
+    formName.trim().length > 0 &&
+    formSystemEvent.trim().length > 0 &&
+    (formKind === "one-shot"
+      ? !!fromLocalDateTimeInput(formRunAt)
+      : formCron.trim().length > 0);
 
   const handleCreate = useCallback(async () => {
     if (!companyId || !canCreate) return;
@@ -658,26 +607,10 @@ export function CronJobsModal({
             <p className="text-xs text-white/40">
               Scheduled one-shot reminders and recurring background tasks.
             </p>
-            {gatewayHealth ? (
-              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
-                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${gatewayHealth.status === "healthy" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : gatewayHealth.status === "degraded" ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : gatewayHealth.status === "unhealthy" ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-white/10 bg-white/5 text-white/60"}`}>
-                  Gateway {gatewayHealth.status}
-                </span>
-                <span className="text-white/35">
-                  {gatewayHealth.lastCheckedUtc ? `Last check ${formatRelativeTime(gatewayHealth.lastCheckedUtc)}` : "No health check yet"}
-                </span>
-                {typeof gatewayHealth.lastHttpStatus === "number" && gatewayHealth.lastHttpStatus > 0 ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/55">HTTP {gatewayHealth.lastHttpStatus}</span>
-                ) : null}
-                {typeof gatewayHealth.lastLatencyMs === "number" && gatewayHealth.lastLatencyMs >= 0 ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/55">{gatewayHealth.lastLatencyMs} ms</span>
-                ) : null}
-              </div>
-            ) : null}
           </div>
           <button
             type="button"
-            onClick={() => { void Promise.all([loadJobs(), loadGatewayHealth(true)]); }}
+            onClick={() => void loadJobs()}
             disabled={loading}
             title="Refresh"
             className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -733,18 +666,6 @@ export function CronJobsModal({
               <span className="leading-6">{error}</span>
             </div>
           )}
-
-          {gatewayHealth?.lastError ? (
-            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${gatewayHealth.status === "unhealthy" ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-amber-400/25 bg-amber-500/10 text-amber-50"}`}>
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <div className="min-w-0">
-                  <div className="font-medium">Gateway health note</div>
-                  <div className="mt-1 whitespace-pre-wrap break-words leading-6">{sanitizeErrorText(gatewayHealth.lastError)}</div>
-                </div>
-              </div>
-            </div>
-          ) : null}
 
           {tab === "jobs" && (
             <div className="space-y-2">
@@ -888,28 +809,23 @@ export function CronJobsModal({
                                 />
                                 <DetailRow
                                   label="Last result"
-                                  value={(() => {
-                                    // v34: the last-run status lives on the most
-                                    // recent CronJobRun, not on the parent row.
-                                    // Fall back to the job-level lastRunAtUtc so
-                                    // cron rows that pre-date v34 still render
-                                    // something useful.
-                                    const latestRun = selectedJobRuns[0] ?? null;
-                                    if (latestRun) {
-                                      const when =
-                                        latestRun.finishedAtUtc ??
-                                        latestRun.startedAtUtc ??
-                                        latestRun.scheduledAtUtc;
-                                      const suffix = when
-                                        ? ` · ${formatRelativeTime(when)}`
-                                        : "";
-                                      return `${latestRun.status}${suffix}`;
-                                    }
-                                    if (selectedJob.lastRunAtUtc) {
-                                      return `completed · ${formatRelativeTime(selectedJob.lastRunAtUtc)}`;
-                                    }
-                                    return "never run";
-                                  })()}
+                                  value={
+                                    selectedJob.lastRunStatus
+                                      ? `${selectedJob.lastRunStatus}${
+                                          selectedJob.lastRunAtUtc
+                                            ? ` · ${formatRelativeTime(selectedJob.lastRunAtUtc)}`
+                                            : ""
+                                        }`
+                                      : "never run"
+                                  }
+                                />
+                                <DetailRow
+                                  label="Gateway sync"
+                                  value={
+                                    selectedJob.openClawJobId
+                                      ? `mirrored · ${selectedJob.openClawJobId}`
+                                      : "local only"
+                                  }
                                 />
                               </div>
 
@@ -934,7 +850,7 @@ export function CronJobsModal({
                                 >
                                   <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/55">
                                     <Mail className="h-3 w-3" style={{ color: ACCENT }} />
-                                    Tools · Email (Resend) · Custom overrides
+                                    Tools · Email (Resend)
                                   </div>
                                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-white/75">
                                     <div>
@@ -978,8 +894,8 @@ export function CronJobsModal({
                                   <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider">
                                     Last error
                                   </div>
-                                  <div className="whitespace-pre-wrap break-words leading-5">
-                                    {sanitizeErrorText(selectedJob.lastErrorMessage)}
+                                  <div className="whitespace-pre-wrap leading-5">
+                                    {selectedJob.lastErrorMessage}
                                   </div>
                                 </div>
                               )}
@@ -1349,50 +1265,31 @@ export function CronJobsModal({
                 disabled={createBusy}
               />
 
-              <div className="flex flex-col gap-2 pt-2">
-                {missingFields.length > 0 && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Complete the following before scheduling:{" "}
-                      <span className="font-semibold text-amber-50">
-                        {missingFields.join(", ")}
-                      </span>
-                      .
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetForm();
-                      setTab("jobs");
-                    }}
-                    className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCreate()}
-                    disabled={!canCreate || createBusy}
-                    className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ backgroundColor: ACCENT }}
-                    title={
-                      missingFields.length > 0
-                        ? `Missing: ${missingFields.join(", ")}`
-                        : undefined
-                    }
-                  >
-                    {createBusy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Zap className="h-4 w-4" />
-                    )}
-                    Schedule job
-                  </button>
-                </div>
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setTab("jobs");
+                  }}
+                  className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCreate()}
+                  disabled={!canCreate || createBusy}
+                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
+                  style={{ backgroundColor: ACCENT }}
+                >
+                  {createBusy ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Zap className="h-4 w-4" />
+                  )}
+                  Schedule job
+                </button>
               </div>
             </div>
           )}
@@ -2091,11 +1988,7 @@ function RunRow({ run }: { run: CronJobRun }) {
           ? "#22d3ee"
           : "#94a3b8";
 
-  const cleanedError = sanitizeErrorText(run.errorMessage);
-  const hint = buildGatewayErrorHint(
-    cleanedError || (run.errorMessage ?? null),
-    run.httpStatus ?? null,
-  );
+  const hint = buildGatewayErrorHint(run.errorMessage ?? null, run.httpStatus ?? null);
 
   return (
     <div className="flex flex-col gap-1 px-3 py-2 text-[11px]">
@@ -2122,7 +2015,7 @@ function RunRow({ run }: { run: CronJobRun }) {
       </div>
       {run.errorMessage && (
         <div className="ml-5 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1.5 text-[10px] leading-4 text-red-100">
-          <div className="whitespace-pre-wrap break-words">{cleanedError || run.errorMessage}</div>
+          <div className="whitespace-pre-wrap break-words">{run.errorMessage}</div>
           {hint && (
             <div className="mt-1 border-t border-red-400/20 pt-1 text-red-200/80">
               {hint}
@@ -2132,59 +2025,6 @@ function RunRow({ run }: { run: CronJobRun }) {
       )}
     </div>
   );
-}
-
-/**
- * Mirrors the backend v32 `SummarizeGatewayBody` helper: if the stored error
- * message contains raw HTML (nginx's default 502/503/504 page, or any other
- * upstream HTML error body) we strip tags and collapse whitespace so the UI
- * shows "502 Bad Gateway nginx/1.18.0 (Ubuntu)" instead of a multi-line blob
- * of `<html><head>…`.
- *
- * This is a pure render-time cleanup, applied to both `lastErrorMessage` on
- * the job and `errorMessage` on each run. Backend v32 already cleans up new
- * writes, but historic rows still carry the raw body — this keeps the UI
- * readable for those too.
- */
-function sanitizeErrorText(raw: string | null | undefined): string {
-  if (!raw) return "";
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-
-  // Heuristic: only touch the string if it actually looks HTML-ish. Plain
-  // error messages with the occasional "<" (e.g. a stack trace with generics)
-  // pass through unchanged.
-  const lower = trimmed.toLowerCase();
-  const looksHtml =
-    trimmed.startsWith("<") ||
-    lower.includes("<html") ||
-    lower.includes("<head") ||
-    lower.includes("<body") ||
-    /<\/?(html|head|body|title|center|h[1-6]|hr|br|p|div|span)\b/i.test(trimmed);
-
-  if (!looksHtml) return trimmed;
-
-  // Preserve the framing prefix we emit from the backend ("Gateway responded
-  // 502: …", "Upstream returned 503: …") so the sanitized output keeps its
-  // lead-in intact.
-  const prefixMatch = trimmed.match(/^([^<]*?:\s*)(<[\s\S]*)$/);
-  const prefix = prefixMatch ? prefixMatch[1] : "";
-  const htmlPart = prefixMatch ? prefixMatch[2] : trimmed;
-
-  const stripped = htmlPart
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const combined = (prefix + stripped).trim();
-  return combined.length > 0 ? combined : trimmed;
 }
 
 /**
@@ -2212,9 +2052,6 @@ function buildGatewayErrorHint(
   }
   if (lower.includes("runtime hooks not configured")) {
     return "Tip: runtime hooks aren't configured yet. Once OPENCLAW_HOOKS_BASE_URL and OPENCLAW_HOOKS_TOKEN are set, this run will complete via webhook.";
-  }
-  if (httpStatus === 502 || httpStatus === 503 || httpStatus === 504 || lower.includes("temporarily unavailable") || lower.includes("public proxy may be unhealthy")) {
-    return "Tip: the public OpenClaw proxy may be oscillating. Check /api/CronJobs/gateway-health and prefer Okestria__RuntimeHooksInternalBaseUrl for cron dispatch, leaving the public URL only as fallback.";
   }
   return null;
 }
@@ -2421,7 +2258,7 @@ function EmailToolCard({
             <span className="text-sm font-semibold text-white">
               Email tool (Resend)
             </span>
-            {enabled ? (
+            {enabled && (
               <span
                 className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
                 style={{
@@ -2429,43 +2266,22 @@ function EmailToolCard({
                   backgroundColor: `${ACCENT}20`,
                   color: ACCENT,
                 }}
-                title="Custom sender/subject/footer for this job"
               >
-                Custom
+                Active
               </span>
-            ) : defaults?.resendConfigured !== false ? (
-              <span
-                className="rounded-full border border-emerald-400/40 bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-emerald-200"
-                title="Resend is configured on the platform — the agent can send email on every run"
-              >
-                Always on
-              </span>
-            ) : null}
+            )}
           </div>
           <p className="mt-1 text-[11px] leading-5 text-white/50">
-            The <span className="font-mono text-white/75">resend_email</span>{" "}
-            capability ships with every cron run automatically — the platform's
-            Resend key is{" "}
-            <span className="font-semibold">already on the server</span>. Toggle
-            this on only if you want to override the default sender, subject
-            or footer banner for this specific job. Leave it off to send with
-            your profile defaults.
+            When enabled, OpenClaw receives the{" "}
+            <span className="font-mono text-white/75">resend_email</span>{" "}
+            capability on every run. The{" "}
+            <span className="font-semibold">API key stays on the server</span>{" "}
+            — here you only set the sender, default subject and footer banner.
+            We prefill the <span className="font-semibold">From email</span>{" "}
+            with your signed-in address; OpenClaw may still override it with a
+            verified sender at dispatch time.
           </p>
-          {!enabled && defaults?.resendConfigured === false && (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-200">
-              <span
-                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-amber-400/25 text-amber-200"
-                style={{ fontSize: 9, fontWeight: 700 }}
-              >
-                !
-              </span>
-              <span>
-                Resend is not configured on the platform — the agent won't be
-                able to send email until the admin connects it.
-              </span>
-            </div>
-          )}
-          {!enabled && defaults?.resendConfigured !== false && (defaults?.fromName || defaults?.footerImageDataUrl) && (
+          {!enabled && defaults && (defaults.fromName || defaults.footerImageDataUrl) && (
             <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
               <span
                 className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
@@ -2474,11 +2290,11 @@ function EmailToolCard({
                 i
               </span>
               <span>
-                Defaults active — sending as{" "}
+                Ready to enable as{" "}
                 <span className="font-mono text-white/80">
-                  {defaults?.fromName ?? "—"}
+                  {defaults.fromName ?? "—"}
                 </span>
-                {defaults?.fromEmail && (
+                {defaults.fromEmail && (
                   <>
                     {" "}
                     <span className="text-white/45">·</span>{" "}
@@ -2487,9 +2303,10 @@ function EmailToolCard({
                     </span>
                   </>
                 )}
-                {defaults?.footerImageDataUrl && (
+                {defaults.footerImageDataUrl && (
                   <span className="text-white/55"> · with your profile footer</span>
                 )}
+                <span className="text-white/45"> · OpenClaw may override</span>
               </span>
             </div>
           )}
@@ -2701,35 +2518,25 @@ function ToolsBadge({
   summary: { emailEnabled: boolean; hasFooterImage: boolean } | null;
   compact?: boolean;
 }) {
-  // In v31 the resend_email tool ships with every dispatch when the
-  // platform has Resend configured, so a missing `emailEnabled` flag
-  // no longer means the agent can't email — it just means the operator
-  // didn't set any overrides for this job. The badge reflects that:
-  // - no summary at all → don't show anything (older cron jobs / non-cron)
-  // - emailEnabled true → "EMAIL · Custom" (operator overrides live)
-  // - emailEnabled false → "EMAIL" (platform defaults)
-  if (!summary) return null;
-  const isCustom = summary.emailEnabled;
+  if (!summary?.emailEnabled) return null;
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full border font-semibold tracking-wider ${
         compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"
       }`}
       style={{
-        borderColor: isCustom ? `${ACCENT}40` : "rgba(255,255,255,0.15)",
-        backgroundColor: isCustom ? `${ACCENT}15` : "rgba(255,255,255,0.04)",
-        color: isCustom ? ACCENT : "rgba(255,255,255,0.65)",
+        borderColor: `${ACCENT}40`,
+        backgroundColor: `${ACCENT}15`,
+        color: ACCENT,
       }}
       title={
-        isCustom
-          ? summary.hasFooterImage
-            ? "Email tool · custom sender + footer for this job"
-            : "Email tool · custom sender for this job"
-          : "Email tool available via the platform's Resend — defaults from your profile"
+        summary.hasFooterImage
+          ? "Email tool active · with custom footer"
+          : "Email tool active"
       }
     >
       <Mail className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-      {isCustom ? "EMAIL · CUSTOM" : "EMAIL"}
+      EMAIL
     </span>
   );
 }

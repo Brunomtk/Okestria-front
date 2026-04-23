@@ -9,11 +9,7 @@ type TextMessageRequestBody = {
   message?: string | null;
 };
 
-// v82 — raised from 120 → 240 so agent-phrased recipients like
-// "Bruno Silva (VP of Sales, Okestria) <bruno@ptxgrowth.us>" don't trip the
-// cap. The directive parser in `deskDirectives.ts` applies a matching cap at
-// parse time so impossibly-long tails are dropped before they reach here.
-const MAX_RECIPIENT_CHARS = 240;
+const MAX_RECIPIENT_CHARS = 120;
 const MAX_MESSAGE_CHARS = 1_000;
 
 const normalizeText = (value: string | null | undefined): string =>

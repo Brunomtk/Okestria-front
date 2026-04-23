@@ -295,21 +295,12 @@ const normalizeOfficeCallCallee = (value: string): string => {
     .trim();
 };
 
-// Upper bound for a parsed recipient. The `/api/office/text` route caps the
-// field at 240 chars (raised from 120 in v82). Anything longer almost
-// certainly means the natural-language parser grabbed a whole sentence
-// instead of a real name / handle, so we drop the directive at parse time
-// rather than firing a doomed 400 request at the API.
-const MAX_OFFICE_TEXT_RECIPIENT_CHARS = 240;
-
 const normalizeOfficeTextRecipient = (value: string): string => {
-  const cleaned = value
+  return value
     .replace(/^(?:please|can you|could you|would you)\s+/i, "")
     .replace(/^(?:a\s+)?(?:text|message|dm)\s+to\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
-  if (cleaned.length > MAX_OFFICE_TEXT_RECIPIENT_CHARS) return "";
-  return cleaned;
 };
 
 const resolveOfficeCallDirectiveFromNormalized = (
