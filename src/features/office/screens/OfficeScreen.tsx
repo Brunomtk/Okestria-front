@@ -162,7 +162,7 @@ import { randomUUID } from "@/lib/uuid";
 import { HistoryPanel } from "@/features/office/components/panels/HistoryPanel";
 import { InboxPanel } from "@/features/office/components/panels/InboxPanel";
 import { PlaybooksPanel } from "@/features/office/components/panels/PlaybooksPanel";
-import { LeadOpsPanel } from "@/features/office/components/panels/LeadOpsPanel";
+import { LeadOpsModal } from "@/features/office/components/LeadOpsModal";
 import { SkillsMarketplaceModal } from "@/features/office/components/panels/SkillsMarketplaceModal";
 import { JukeboxPanel } from "@/features/spotify-jukebox/components/JukeboxPanel";
 import { JukeboxDisabledPanel } from "@/features/spotify-jukebox/components/JukeboxDisabledPanel";
@@ -6081,39 +6081,13 @@ export function OfficeScreen({
         }}
       />
 
-      {leadOpsModalOpen ? (
-        <div className="pointer-events-auto fixed inset-0 z-40 overflow-y-auto bg-black/72 p-3 backdrop-blur-sm md:p-4" onClick={() => setLeadOpsModalOpen(false)}>
-          <section
-            className="mx-auto my-4 flex h-[min(92vh,960px)] min-h-[620px] w-[min(1320px,96vw)] flex-col overflow-hidden rounded-[28px] border border-cyan-500/20 bg-[#02090b]/96 shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between gap-3 border-b border-cyan-500/10 px-5 py-4">
-              <div>
-                <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-cyan-200/80">Lead Ops</div>
-                <div className="mt-1 text-sm text-white/55">Centralized prospecting missions with one selected agent running in background.</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLeadOpsModalOpen(false)}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/10 hover:text-white"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <LeadOpsPanel
-                agents={state.agents}
-                companyName={companyName}
-                onSelectAgent={(agentId, options) => {
-                  handleOpenAgentChat(agentId, options);
-                }}
-              />
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <LeadOpsModal
+        open={leadOpsModalOpen}
+        companyId={companyId}
+        companyName={companyName}
+        onClose={() => setLeadOpsModalOpen(false)}
+      />
+
 
       {/* Onboarding wizard modal disabled by request.
       {showOnboardingWizard ? (
