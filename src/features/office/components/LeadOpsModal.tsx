@@ -32,7 +32,6 @@ import {
   pauseLeadFollowUp,
   processDueLeadFollowUps,
   resumeLeadFollowUp,
-  scheduleLeadFollowUpsForGeneration,
   scheduleLeadFollowUpsForLead,
   sendLeadFollowUpNow,
   type LeadFollowUp,
@@ -329,6 +328,23 @@ export function LeadOpsModal({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Live progress for "Schedule for all filtered leads". Mirrors the
+   * same pattern we use for bulk insight generation: we loop the
+   * individual per-lead endpoint from the frontend so each call is
+   * small, atomic, and the UI can show which lead is being processed.
+   * The old single-shot /followups/bulk endpoint stayed up but in
+   * practice returned 502s under load — looping works reliably.
+   */
+  const [bulkScheduleProgress, setBulkScheduleProgress] = useState<{
+    current: number;
+    total: number;
+    currentName: string;
+    succeeded: number;
+    failed: number;
+    cancelRequested: boolean;
+  } | null>(null);
+
   const resetFeedback = useCallback(() => {
     setMessage(null);
     setError(null);
@@ -575,8 +591,8 @@ export function LeadOpsModal({
       setError("Company not identified.");
       return;
     }
-    const leadIds = filteredLeads.map((l) => l.id).filter((n) => Number.isFinite(n));
-    if (!leadIds.length) {
+    const targets = filteredLeads.filter((l) => Number.isFinite(l.id));
+    if (!targets.length) {
       setError("No leads match the current filter. Adjust the filter and try again.");
       return;
     }
@@ -585,18 +601,74 @@ export function LeadOpsModal({
       setError("Fill in at least one follow-up subject.");
       return;
     }
+
     resetFeedback();
     setBusyAction("bulk");
+    setBulkScheduleProgress({
+      current: 0,
+      total: targets.length,
+      currentName: "",
+      succeeded: 0,
+      failed: 0,
+      cancelRequested: false,
+    });
+
+    // Loop the per-lead endpoint instead of a single /followups/bulk
+    // call. Each iteration mirrors the "Schedule for selected lead"
+    // button, which is known-good. Small per-request payload means no
+    // 502 timeouts and we can show live progress.
+    let succeeded = 0;
+    let failed = 0;
+    let totalCreated = 0;
+
     try {
-      const created = await scheduleLeadFollowUpsForGeneration({
-        companyId,
-        jobId: missionFilter === "all" ? null : missionFilter,
-        leadIds,
-        replacePending,
-        steps: payload,
-      });
+      for (let i = 0; i < targets.length; i++) {
+        const lead = targets[i];
+
+        // Cancellation check — reads latest state via setter.
+        let shouldStop = false;
+        setBulkScheduleProgress((prev) => {
+          if (prev?.cancelRequested) shouldStop = true;
+          return prev
+            ? {
+                ...prev,
+                current: i + 1,
+                currentName:
+                  lead.businessName || lead.email || `Lead #${lead.id}`,
+              }
+            : prev;
+        });
+        if (shouldStop) break;
+
+        try {
+          const created = await scheduleLeadFollowUpsForLead(lead.id, payload);
+          totalCreated += created.length;
+          succeeded++;
+          setBulkScheduleProgress((prev) =>
+            prev ? { ...prev, succeeded } : prev,
+          );
+        } catch (cause) {
+          failed++;
+          setBulkScheduleProgress((prev) =>
+            prev ? { ...prev, failed } : prev,
+          );
+          console.warn(
+            `[bulk schedule] lead ${lead.id} failed:`,
+            cause instanceof Error ? cause.message : cause,
+          );
+        }
+      }
+
+      const parts: string[] = [];
+      if (succeeded > 0)
+        parts.push(
+          `${totalCreated} follow-up(s) scheduled across ${succeeded} lead(s)`,
+        );
+      if (failed > 0) parts.push(`${failed} failed`);
       setMessage(
-        `${created.length} follow-up(s) scheduled across ${leadIds.length} lead(s).`,
+        parts.length > 0
+          ? parts.join(" · ")
+          : "No follow-ups were created. Check the cadence fields and try again.",
       );
       await loadFollowUpData();
     } catch (cause) {
@@ -607,8 +679,15 @@ export function LeadOpsModal({
       );
     } finally {
       setBusyAction(null);
+      setBulkScheduleProgress(null);
     }
   };
+
+  const cancelBulkSchedule = useCallback(() => {
+    setBulkScheduleProgress((prev) =>
+      prev ? { ...prev, cancelRequested: true } : prev,
+    );
+  }, []);
 
   const handleItemAction = async (
     action: "pause" | "resume" | "cancel" | "send",
@@ -668,14 +747,137 @@ export function LeadOpsModal({
 
   /* ───────────────────── Render ───────────────────── */
 
+  const bulkScheduleOverlay = bulkScheduleProgress ? (
+    <div
+      className="fixed inset-0 z-[96] flex items-center justify-center px-4 py-6"
+      role="dialog"
+      aria-live="polite"
+    >
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" aria-hidden="true" />
+      <section
+        className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        style={{ borderColor: `${ACCENT}40` }}
+      >
+        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+          <div
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              backgroundColor: `${ACCENT}20`,
+              border: `1.5px solid ${ACCENT}50`,
+              color: ACCENT,
+            }}
+          >
+            <Mail className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-lg font-semibold text-white">
+              Scheduling cadences…
+            </h3>
+            <p className="truncate text-xs text-white/50">
+              One lead at a time, same as the single-lead button.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              Current lead
+            </div>
+            <div className="mt-1 flex min-w-0 items-center gap-2">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" style={{ color: ACCENT }} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-white">
+                {bulkScheduleProgress.currentName || "Preparing…"}
+              </span>
+              <span className="shrink-0 text-[11px] text-white/50">
+                {Math.min(bulkScheduleProgress.current, bulkScheduleProgress.total)} /{" "}
+                {bulkScheduleProgress.total}
+              </span>
+            </div>
+          </div>
+
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{
+                width: `${
+                  bulkScheduleProgress.total > 0
+                    ? Math.min(
+                        100,
+                        Math.floor(
+                          ((bulkScheduleProgress.succeeded + bulkScheduleProgress.failed) /
+                            bulkScheduleProgress.total) *
+                            100,
+                        ),
+                      )
+                    : 0
+                }%`,
+                backgroundColor: ACCENT,
+              }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className="rounded-lg border border-emerald-400/25 bg-emerald-500/[0.07] px-2 py-2">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Scheduled
+              </div>
+              <div className="mt-0.5 text-base font-semibold text-emerald-200">
+                {bulkScheduleProgress.succeeded}
+              </div>
+            </div>
+            <div
+              className={`rounded-lg border px-2 py-2 ${
+                bulkScheduleProgress.failed > 0
+                  ? "border-rose-400/25 bg-rose-500/[0.07]"
+                  : "border-white/10 bg-white/[0.03]"
+              }`}
+            >
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                Failed
+              </div>
+              <div
+                className={`mt-0.5 text-base font-semibold ${
+                  bulkScheduleProgress.failed > 0 ? "text-rose-200" : "text-white/80"
+                }`}
+              >
+                {bulkScheduleProgress.failed}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <div className="text-[11px] text-white/40">
+              {bulkScheduleProgress.cancelRequested
+                ? "Stopping after the current lead…"
+                : "The window stays open until every lead is done."}
+            </div>
+            <button
+              type="button"
+              onClick={cancelBulkSchedule}
+              disabled={bulkScheduleProgress.cancelRequested}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  ) : null;
+
   return (
-    // Note: we intentionally avoid putting `backdrop-filter` on the
-    // outermost container, otherwise the sub-modals that LeadOpsPanel
-    // renders (New Mission, Lead Vault, Lead Detail, Email Batch,
-    // Single Email) would be trapped inside its containing block and
-    // fail to cover the full viewport. The blur now lives on the
-    // backdrop sibling, which is not an ancestor of the sub-modals,
-    // so `fixed inset-0` inside them escapes back to the viewport.
+    <>
+    {/* Bulk schedule progress sits on z-96 so it stacks above the main
+        modal when the user fires a "Schedule for all filtered leads"
+        pass. It unmounts automatically once the loop finishes. */}
+    {bulkScheduleOverlay}
+    {/* Note: we intentionally avoid putting `backdrop-filter` on the
+        outermost container, otherwise the sub-modals that LeadOpsPanel
+        renders (New Mission, Lead Vault, Lead Detail, Email Batch,
+        Single Email) would be trapped inside its containing block and
+        fail to cover the full viewport. The blur now lives on the
+        backdrop sibling, which is not an ancestor of the sub-modals,
+        so `fixed inset-0` inside them escapes back to the viewport. */}
     <div className="fixed inset-0 z-[95] flex items-center justify-center px-4 py-6">
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
@@ -939,6 +1141,7 @@ export function LeadOpsModal({
         </div>
       </section>
     </div>
+    </>
   );
 }
 
