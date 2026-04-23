@@ -1487,15 +1487,19 @@ export function LeadOpsPanel({
               <option value="gpt-4o-mini">GPT-4o Mini</option>
             </select>
 
-            {/* Bulk Actions */}
+            {/* Bulk Actions — the button doubles as an inline counter
+                while generating, so the user sees "Generating 3/10" right
+                where they clicked instead of chasing the overlay. */}
             <button
               type="button"
               onClick={() => void handleBulkGenerateInsights()}
               disabled={bulkGenerating || filteredLeads.length === 0}
-              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25 disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-lg bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-300 ring-1 ring-cyan-500/25 transition hover:bg-cyan-500/25 disabled:opacity-60"
             >
               {bulkGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
-              Generate All
+              {bulkGenerating && bulkProgress
+                ? `Generating ${Math.min(bulkProgress.current, bulkProgress.total)} / ${bulkProgress.total}`
+                : "Generate All"}
             </button>
 
             {confirmBulkDelete ? (
@@ -1529,6 +1533,79 @@ export function LeadOpsPanel({
               </button>
             )}
           </div>
+
+          {/* Inline bulk-generate progress strip. Sits between the toolbar
+              and the quick-stats row so the user sees live progress right
+              where they clicked — counter, current lead name, ETA and a
+              thin progress bar — without needing to focus the overlay. */}
+          {bulkGenerating && bulkProgress ? (
+            <div className="mb-5 overflow-hidden rounded-lg border border-cyan-500/25 bg-cyan-500/[0.05] px-4 py-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-cyan-300" />
+                  <span className="text-xs font-semibold text-cyan-200">
+                    Generating {Math.min(bulkProgress.current, bulkProgress.total)} of{" "}
+                    {bulkProgress.total}
+                  </span>
+                  {bulkProgress.currentName ? (
+                    <span className="min-w-0 truncate text-xs text-white/55">
+                      · {bulkProgress.currentName}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-3">
+                  <span className="text-[11px] text-emerald-300/90">
+                    {bulkProgress.succeeded} done
+                  </span>
+                  {bulkProgress.failed > 0 ? (
+                    <span className="text-[11px] text-rose-300/90">
+                      {bulkProgress.failed} failed
+                    </span>
+                  ) : null}
+                  <span className="text-[11px] text-white/45">
+                    {bulkProgress.cancelRequested
+                      ? "stopping…"
+                      : bulkProgress.etaSeconds !== null && bulkProgress.etaSeconds > 0
+                        ? `~${formatEtaLabel(bulkProgress.etaSeconds)} left`
+                        : "estimating…"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBulkProgress((prev) =>
+                        prev ? { ...prev, cancelRequested: true } : prev,
+                      );
+                    }}
+                    disabled={bulkProgress.cancelRequested}
+                    className="rounded-md bg-white/5 px-2 py-1 text-[11px] text-white/70 ring-1 ring-white/10 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-cyan-500 transition-all duration-500"
+                  style={{
+                    width: `${
+                      bulkProgress.total > 0
+                        ? Math.min(
+                            100,
+                            Math.floor(
+                              ((bulkProgress.succeeded +
+                                bulkProgress.skipped +
+                                bulkProgress.failed) /
+                                bulkProgress.total) *
+                                100,
+                            ),
+                          )
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {/* Quick Stats */}
           <div className="mb-5 grid grid-cols-4 gap-2">
