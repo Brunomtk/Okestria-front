@@ -843,23 +843,28 @@ export function CronJobsModal({
                                 />
                                 <DetailRow
                                   label="Last result"
-                                  value={
-                                    selectedJob.lastRunStatus
-                                      ? `${selectedJob.lastRunStatus}${
-                                          selectedJob.lastRunAtUtc
-                                            ? ` · ${formatRelativeTime(selectedJob.lastRunAtUtc)}`
-                                            : ""
-                                        }`
-                                      : "never run"
-                                  }
-                                />
-                                <DetailRow
-                                  label="Gateway sync"
-                                  value={
-                                    selectedJob.openClawJobId
-                                      ? `mirrored · ${selectedJob.openClawJobId}`
-                                      : "local only"
-                                  }
+                                  value={(() => {
+                                    // v34: the last-run status lives on the most
+                                    // recent CronJobRun, not on the parent row.
+                                    // Fall back to the job-level lastRunAtUtc so
+                                    // cron rows that pre-date v34 still render
+                                    // something useful.
+                                    const latestRun = selectedJobRuns[0] ?? null;
+                                    if (latestRun) {
+                                      const when =
+                                        latestRun.finishedAtUtc ??
+                                        latestRun.startedAtUtc ??
+                                        latestRun.scheduledAtUtc;
+                                      const suffix = when
+                                        ? ` · ${formatRelativeTime(when)}`
+                                        : "";
+                                      return `${latestRun.status}${suffix}`;
+                                    }
+                                    if (selectedJob.lastRunAtUtc) {
+                                      return `completed · ${formatRelativeTime(selectedJob.lastRunAtUtc)}`;
+                                    }
+                                    return "never run";
+                                  })()}
                                 />
                               </div>
 

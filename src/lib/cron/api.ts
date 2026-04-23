@@ -91,6 +91,17 @@ export type CronJobToolsSummary = {
   hasFooterImage: boolean;
 };
 
+/**
+ * v34: Okestria-owned cron row — the OpenClaw gateway is a pure executor,
+ * so we no longer persist its task/run identifiers. Correlation happens
+ * via the minted `externalRunKey` on the run record (see `CronJobRun`).
+ *
+ * Removed in v34:
+ *   • `openClawJobId`   — gateway never needed the back-reference.
+ *   • `lastRunStatus`   — duplicated `CronJobRun.status`.
+ *   • `metadataJson`    — replaced by typed `leadContextJson` /
+ *                         `attachmentsJson` / tools bundle.
+ */
 export type CronJob = {
   id: number;
   companyId: number;
@@ -112,14 +123,11 @@ export type CronJob = {
   webhookToken: string | null;
   deleteAfterRun: boolean;
   status: CronJobStatus;
-  openClawJobId: string | null;
   nextRunAtUtc: string | null;
   lastRunAtUtc: string | null;
-  lastRunStatus: string | null;
   runCount: number;
   failureCount: number;
   lastErrorMessage: string | null;
-  metadataJson: string | null;
   leadId: number | null;
   leadGenerationJobId: number | null;
   leadContextJson: string | null;
@@ -132,6 +140,9 @@ export type CronJob = {
   updatedDate: string | null;
 };
 
+/**
+ * v34: list-row shape (trimmed `lastRunStatus` — see comment on {@link CronJob}).
+ */
 export type CronJobListItem = {
   id: number;
   companyId: number;
@@ -144,7 +155,6 @@ export type CronJobListItem = {
   runAtUtc: string | null;
   nextRunAtUtc: string | null;
   lastRunAtUtc: string | null;
-  lastRunStatus: string | null;
   runCount: number;
   failureCount: number;
   agentId: number | null;
@@ -159,6 +169,14 @@ export type CronJobListItem = {
   updatedDate: string | null;
 };
 
+/**
+ * v34: append-only audit row for a single cron fire.
+ *
+ * The gateway-internal task/run ids (`openClawTaskId` / `openClawRunId`)
+ * were dropped — a single Okestria-minted `externalRunKey` (GUID) is
+ * echoed back on the finalization webhook and used to correlate the
+ * run end-to-end.
+ */
 export type CronJobRun = {
   id: number;
   cronJobId: number;
@@ -168,8 +186,8 @@ export type CronJobRun = {
   scheduledAtUtc: string | null;
   startedAtUtc: string | null;
   finishedAtUtc: string | null;
-  openClawTaskId: string | null;
-  openClawRunId: string | null;
+  /** Okestria-minted correlation key. Present once the dispatch ships. */
+  externalRunKey: string | null;
   sessionKey: string | null;
   deliveryMode: CronJobDeliveryMode | null;
   httpStatus: number | null;
@@ -197,7 +215,6 @@ export type CreateCronJobInput = {
   webhookUrl?: string | null;
   webhookToken?: string | null;
   deleteAfterRun: boolean;
-  metadataJson?: string | null;
   /** Optional lead context anchor — the backend resolves the lead + attaches a
    *  [OKESTRIA_LEAD_CHAT_CONTEXT] block to every run. */
   leadId?: number | null;
@@ -226,7 +243,6 @@ export type UpdateCronJobInput = {
   webhookUrl?: string | null;
   webhookToken?: string | null;
   deleteAfterRun?: boolean;
-  metadataJson?: string | null;
   agentId?: number | null;
   squadId?: string | null;
   clearAgent?: boolean;
@@ -261,9 +277,39 @@ export type CronEmailToolDefaults = {
   note: string | null;
 };
 
-const normalizeErrorText = async (response: Response) => {
+/**
+ * v34 unifies the controller's error envelope on `{ "error": "..." }`
+ * — older deployments still return a raw string or a quoted string, so
+ * we accept either shape without guessing. The returned value is
+ * always a plain operator-facing sentence.
+ */
+const normalizeErrorText = async (response: Response): Promise<string> => {
   const text = (await response.text()).trim();
-  return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
+  if (!text) return `Request failed with status ${response.status}`;
+
+  // Try the v34 structured envelope first.
+  if (text.startsWith("{")) {
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed && typeof parsed === "object") {
+        const candidate =
+          (parsed as { error?: unknown }).error ??
+          (parsed as { message?: unknown }).message ??
+          (parsed as { title?: unknown }).title;
+        if (typeof candidate === "string" && candidate.trim().length > 0) {
+          return candidate.trim();
+        }
+      }
+    } catch {
+      // fall through — not JSON after all
+    }
+  }
+
+  // Legacy path: raw quoted string.
+  return (
+    text.replace(/^"|"$/g, "") ||
+    `Request failed with status ${response.status}`
+  );
 };
 
 const performCronFetch = async (
