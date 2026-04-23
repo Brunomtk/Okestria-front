@@ -295,12 +295,18 @@ const normalizeOfficeCallCallee = (value: string): string => {
     .trim();
 };
 
+const MAX_OFFICE_TEXT_RECIPIENT_CHARS = 240;
+
 const normalizeOfficeTextRecipient = (value: string): string => {
-  return value
+  const cleaned = value
     .replace(/^(?:please|can you|could you|would you)\s+/i, "")
     .replace(/^(?:a\s+)?(?:text|message|dm)\s+to\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (cleaned.length > MAX_OFFICE_TEXT_RECIPIENT_CHARS) return "";
+
+  return cleaned;
 };
 
 const resolveOfficeCallDirectiveFromNormalized = (

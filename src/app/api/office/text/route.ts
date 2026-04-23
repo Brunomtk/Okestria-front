@@ -9,7 +9,7 @@ type TextMessageRequestBody = {
   message?: string | null;
 };
 
-const MAX_RECIPIENT_CHARS = 120;
+const MAX_RECIPIENT_CHARS = 240;
 const MAX_MESSAGE_CHARS = 1_000;
 
 const normalizeText = (value: string | null | undefined): string =>
