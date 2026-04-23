@@ -25,6 +25,7 @@ import {
   createCronJob,
   deleteCronJob,
   DELIVERY_LABEL,
+  fetchCronGatewayHealth,
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
@@ -53,6 +54,7 @@ import {
   type CronEmailToolConfig,
   type CronJobToolsConfig,
   type CronEmailToolDefaults,
+  type CronGatewayHealthSnapshot,
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -128,6 +130,8 @@ export function CronJobsModal({
   const [selectedJobRuns, setSelectedJobRuns] = useState<CronJobRun[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const [gatewayHealth, setGatewayHealth] = useState<CronGatewayHealthSnapshot | null>(null);
+  const [gatewayHealthLoading, setGatewayHealthLoading] = useState(false);
 
   // Edit dialog — holds the job currently being edited (null = no dialog).
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
@@ -338,6 +342,18 @@ export function CronJobsModal({
     }
   }, [companyId]);
 
+  const loadGatewayHealth = useCallback(async (fresh: boolean = false) => {
+    setGatewayHealthLoading(true);
+    try {
+      const snapshot = await fetchCronGatewayHealth(fresh);
+      setGatewayHealth(snapshot);
+    } catch {
+      // Non-fatal: the cron UI still works even if the health endpoint is missing.
+    } finally {
+      setGatewayHealthLoading(false);
+    }
+  }, []);
+
   const loadJobDetail = useCallback(async (jobId: number) => {
     setDetailLoading(true);
     try {
@@ -357,7 +373,8 @@ export function CronJobsModal({
   useEffect(() => {
     if (!open || !companyId) return;
     void loadJobs();
-  }, [open, companyId, loadJobs]);
+    void loadGatewayHealth(false);
+  }, [open, companyId, loadJobs, loadGatewayHealth]);
 
   useEffect(() => {
     if (!open) return;
@@ -395,7 +412,7 @@ export function CronJobsModal({
       setError(null);
       try {
         await action();
-        await loadJobs();
+        await Promise.all([loadJobs(), loadGatewayHealth(true)]);
         if (postAction) await postAction();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -641,10 +658,26 @@ export function CronJobsModal({
             <p className="text-xs text-white/40">
               Scheduled one-shot reminders and recurring background tasks.
             </p>
+            {gatewayHealth ? (
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className={`inline-flex items-center rounded-full border px-2 py-0.5 font-medium ${gatewayHealth.status === "healthy" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : gatewayHealth.status === "degraded" ? "border-amber-400/30 bg-amber-500/10 text-amber-100" : gatewayHealth.status === "unhealthy" ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-white/10 bg-white/5 text-white/60"}`}>
+                  Gateway {gatewayHealth.status}
+                </span>
+                <span className="text-white/35">
+                  {gatewayHealth.lastCheckedUtc ? `Last check ${formatRelativeTime(gatewayHealth.lastCheckedUtc)}` : "No health check yet"}
+                </span>
+                {typeof gatewayHealth.lastHttpStatus === "number" && gatewayHealth.lastHttpStatus > 0 ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/55">HTTP {gatewayHealth.lastHttpStatus}</span>
+                ) : null}
+                {typeof gatewayHealth.lastLatencyMs === "number" && gatewayHealth.lastLatencyMs >= 0 ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-white/55">{gatewayHealth.lastLatencyMs} ms</span>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           <button
             type="button"
-            onClick={() => void loadJobs()}
+            onClick={() => { void Promise.all([loadJobs(), loadGatewayHealth(true)]); }}
             disabled={loading}
             title="Refresh"
             className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
@@ -700,6 +733,18 @@ export function CronJobsModal({
               <span className="leading-6">{error}</span>
             </div>
           )}
+
+          {gatewayHealth?.lastError ? (
+            <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${gatewayHealth.status === "unhealthy" ? "border-red-400/30 bg-red-500/10 text-red-100" : "border-amber-400/25 bg-amber-500/10 text-amber-50"}`}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className="font-medium">Gateway health note</div>
+                  <div className="mt-1 whitespace-pre-wrap break-words leading-6">{sanitizeErrorText(gatewayHealth.lastError)}</div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {tab === "jobs" && (
             <div className="space-y-2">
@@ -2167,6 +2212,9 @@ function buildGatewayErrorHint(
   }
   if (lower.includes("runtime hooks not configured")) {
     return "Tip: runtime hooks aren't configured yet. Once OPENCLAW_HOOKS_BASE_URL and OPENCLAW_HOOKS_TOKEN are set, this run will complete via webhook.";
+  }
+  if (httpStatus === 502 || httpStatus === 503 || httpStatus === 504 || lower.includes("temporarily unavailable") || lower.includes("public proxy may be unhealthy")) {
+    return "Tip: the public OpenClaw proxy may be oscillating. Check /api/CronJobs/gateway-health and prefer Okestria__RuntimeHooksInternalBaseUrl for cron dispatch, leaving the public URL only as fallback.";
   }
   return null;
 }

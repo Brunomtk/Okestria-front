@@ -434,6 +434,22 @@ export const triggerCronJobRun = async (
   });
 };
 
+
+export type CronGatewayHealthSnapshot = {
+  status: "healthy" | "degraded" | "unhealthy" | "unknown" | string;
+  lastCheckedUtc: string | null;
+  lastLatencyMs: number | null;
+  lastHttpStatus: number | null;
+  lastError: string | null;
+  dispatchPermitted: boolean;
+};
+
+export const fetchCronGatewayHealth = async (fresh: boolean = false): Promise<CronGatewayHealthSnapshot> => {
+  return requestBackendJson<CronGatewayHealthSnapshot>(
+    `/api/CronJobs/gateway-health${fresh ? "?fresh=true" : ""}`,
+    { method: "GET" },
+  );
+};
 export const fetchCronJobRuns = async (
   jobId: number,
   take: number = 25,
