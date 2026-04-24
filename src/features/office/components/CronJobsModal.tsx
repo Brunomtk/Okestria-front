@@ -8,7 +8,7 @@ import {
   ChevronRight,
   CircleStop,
   Loader2,
-  Mail,
+  // Mail icon was used only by the removed email-tool card + badges.
   Pause,
   Pencil,
   Play,
@@ -28,7 +28,6 @@ import {
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
-  resolveEmailToolDefaults,
   formatCronDate,
   formatRelativeTime,
   KIND_LABEL,
@@ -50,9 +49,9 @@ import {
   type CronJobWakeMode,
   type CreateCronJobInput,
   type UpdateCronJobInput,
-  type CronEmailToolConfig,
-  type CronJobToolsConfig,
-  type CronEmailToolDefaults,
+  // Email tool was removed from the cron UI. We intentionally do NOT
+  // import CronEmailToolConfig / CronEmailToolDefaults / resolveEmailToolDefaults
+  // anymore so dead imports don't drag the bundle or confuse readers.
 } from "@/lib/cron/api";
 import {
   listLeadGenerationJobs,
@@ -149,21 +148,11 @@ export function CronJobsModal({
   const [formAgentId, setFormAgentId] = useState<string>("");
   const [formSquadId, setFormSquadId] = useState<string>("");
   const [formDeleteAfterRun, setFormDeleteAfterRun] = useState(true);
-  // ── Tools (v28) ─────────────────────────────────────────────────────────
-  // The email tool lets the cron-driven agent send transactional emails via
-  // the company's Resend account. Credentials live on the server; the UI
-  // only captures the "shape" of the email (who it's from, default subject,
-  // optional footer banner).
-  const [formEmailEnabled, setFormEmailEnabled] = useState(false);
-  const [formEmailFrom, setFormEmailFrom] = useState("");
-  const [formEmailFromName, setFormEmailFromName] = useState("");
-  // Reply-To is no longer an editable form field — OpenClaw picks the
-  // reply address at dispatch (verified Resend sender), so we just
-  // always submit `null` for this job shape.
-  const [formEmailSubject, setFormEmailSubject] = useState("");
-  const [formEmailFooterDataUrl, setFormEmailFooterDataUrl] = useState<string | null>(null);
-  const [formEmailFooterName, setFormEmailFooterName] = useState<string | null>(null);
-  const [formEmailHint, setFormEmailHint] = useState("");
+  // NOTE: The email tool (`tools.email`) used to live here — it let the
+  // cron-driven agent send transactional emails via Resend and added a
+  // lot of surface area (from/fromName/subject/footer/hint) that isn't
+  // needed by the cron scheduler itself. It was removed from the modal.
+  // Cron jobs now focus strictly on scheduling agent/squad runs.
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -175,14 +164,6 @@ export function CronJobsModal({
   });
   const [contextLeads, setContextLeads] = useState<LeadSummary[]>([]);
   const [contextMissions, setContextMissions] = useState<LeadGenerationJob[]>([]);
-
-  // Email-tool defaults (back v29). Lazily fetched the first time the "new"
-  // tab is opened so the operator sees their real email / name / footer
-  // before even toggling the tool on. Re-used by the edit dialog too.
-  const [emailDefaults, setEmailDefaults] = useState<CronEmailToolDefaults | null>(
-    null,
-  );
-  const [emailDefaultsLoaded, setEmailDefaultsLoaded] = useState(false);
 
   const resetForm = useCallback(() => {
     setFormName("");
@@ -201,13 +182,6 @@ export function CronJobsModal({
     setFormAgentId("");
     setFormSquadId("");
     setFormDeleteAfterRun(true);
-    setFormEmailEnabled(false);
-    setFormEmailFrom("");
-    setFormEmailFromName("");
-    setFormEmailSubject("");
-    setFormEmailFooterDataUrl(null);
-    setFormEmailFooterName(null);
-    setFormEmailHint("");
     setContextValue({ leadId: null, leadGenerationJobId: null, attachments: [] });
     setCreateError(null);
   }, []);
@@ -236,62 +210,10 @@ export function CronJobsModal({
     };
   }, [open, tab, companyId]);
 
-  // Resolve the email-tool defaults as soon as the modal opens. We use
-  // `resolveEmailToolDefaults` (not the raw endpoint) so even if the v29
-  // backend endpoint is missing we still get the operator's profile data
-  // from /Users/me + /Companies/by-company + /Users/{id}/email-context +
-  // the session cookie. This is what the user explicitly asked for:
-  // "puxar tudo prenchido do usuario logado, footer, ...".
-  useEffect(() => {
-    if (!open || !companyId || emailDefaultsLoaded) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const defaults = await resolveEmailToolDefaults(companyId);
-        if (cancelled) return;
-        setEmailDefaults(defaults);
-      } catch {
-        if (!cancelled) setEmailDefaults(null);
-      } finally {
-        if (!cancelled) setEmailDefaultsLoaded(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, companyId, emailDefaultsLoaded]);
-
-  // Reset the "loaded" latch when the modal closes so a second open (for
-  // example after editing the user profile) re-fetches fresh defaults.
-  useEffect(() => {
-    if (!open) {
-      setEmailDefaultsLoaded(false);
-      setEmailDefaults(null);
-    }
-  }, [open]);
-
-  // Eagerly prefill the create form's email fields the moment defaults
-  // arrive — regardless of whether the operator toggled the tool on.
-  // This is what makes the "Email tool (Resend)" card visibly populated
-  // the second the modal opens instead of sitting empty until the user
-  // checks the box. We only write into blank fields to avoid clobbering
-  // values the operator may have already typed.
-  useEffect(() => {
-    if (!emailDefaults) return;
-    setFormEmailFrom((current) => current || emailDefaults.fromEmail || "");
-    setFormEmailFromName((current) => current || emailDefaults.fromName || "");
-    // Reply-To: no UI field → no prefill.
-    setFormEmailFooterDataUrl((current) =>
-      current ? current : emailDefaults.footerImageDataUrl || null,
-    );
-    setFormEmailFooterName((current) =>
-      current
-        ? current
-        : emailDefaults.footerImageDataUrl
-          ? emailDefaults.footerImageFileName || "Your profile footer"
-          : null,
-    );
-  }, [emailDefaults]);
+  // The three email-related effects (fetch resolveEmailToolDefaults,
+  // reset on close, eagerly prefill the form) used to live here. They
+  // were removed along with the rest of the email-tool UI — see the
+  // comment at the top of the state block.
 
   const leadOptions = useMemo(
     () =>
@@ -524,16 +446,10 @@ export function CronJobsModal({
         leadGenerationJobId: contextValue.leadGenerationJobId,
         attachments:
           contextValue.attachments.length > 0 ? contextValue.attachments : null,
-        tools: buildToolsPayload({
-          emailEnabled: formEmailEnabled,
-          fromEmail: formEmailFrom,
-          fromName: formEmailFromName,
-          // OpenClaw resolves Reply-To at dispatch (verified From sender).
-          replyTo: "",
-          subjectTemplate: formEmailSubject,
-          footerImageDataUrl: formEmailFooterDataUrl,
-          instructionsHint: formEmailHint,
-        }),
+        // No tools — the cron UI no longer configures the email tool.
+        // Sending null keeps the backend compatible (it accepts null or
+        // an empty object) and leaves other cron-managed metadata alone.
+        tools: null,
       };
       await createCronJob(payload);
       resetForm();
@@ -564,12 +480,6 @@ export function CronJobsModal({
     formWake,
     formWebhookToken,
     formWebhookUrl,
-    formEmailEnabled,
-    formEmailFrom,
-    formEmailFromName,
-    formEmailSubject,
-    formEmailFooterDataUrl,
-    formEmailHint,
     loadJobs,
     resetForm,
   ]);
@@ -732,7 +642,8 @@ export function CronJobsModal({
                             >
                               {STATUS_LABEL[job.status]}
                             </span>
-                            <ToolsBadge summary={job.toolsSummary} compact />
+                            {/* ToolsBadge used to show here for jobs
+                                with the email tool enabled. Removed. */}
                           </div>
                           <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/35">
                             <span>{KIND_LABEL[job.kind]}</span>
@@ -840,54 +751,10 @@ export function CronJobsModal({
                                 </div>
                               )}
 
-                              {selectedJob.toolsSummary?.emailEnabled && (
-                                <div
-                                  className="rounded-lg border p-3"
-                                  style={{
-                                    borderColor: `${ACCENT}30`,
-                                    backgroundColor: `${ACCENT}0D`,
-                                  }}
-                                >
-                                  <div className="mb-1.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-white/55">
-                                    <Mail className="h-3 w-3" style={{ color: ACCENT }} />
-                                    Tools · Email (Resend)
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-white/75">
-                                    <div>
-                                      <span className="text-white/40">From: </span>
-                                      <span className="font-mono text-white/85">
-                                        {selectedJob.toolsSummary.emailFromEmail ??
-                                          "—"}
-                                      </span>
-                                    </div>
-                                    <div>
-                                      <span className="text-white/40">Name: </span>
-                                      <span className="text-white/85">
-                                        {selectedJob.toolsSummary.emailFromName ??
-                                          "—"}
-                                      </span>
-                                    </div>
-                                    <div className="col-span-2">
-                                      <span className="text-white/40">Footer: </span>
-                                      <span className="text-white/85">
-                                        {selectedJob.toolsSummary.hasFooterImage
-                                          ? "custom image"
-                                          : "author default"}
-                                      </span>
-                                    </div>
-                                    {selectedJob.tools?.email?.subjectTemplate && (
-                                      <div className="col-span-2">
-                                        <span className="text-white/40">
-                                          Default subject:{" "}
-                                        </span>
-                                        <span className="text-white/85">
-                                          {selectedJob.tools.email.subjectTemplate}
-                                        </span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
+                              {/* "Tools · Email (Resend)" detail block
+                                  was rendered here for jobs that had the
+                                  email tool configured. Removed along
+                                  with the rest of the email-tool UI. */}
 
                               {selectedJob.lastErrorMessage && (
                                 <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-[11px] text-red-100">
@@ -1232,38 +1099,12 @@ export function CronJobsModal({
                 description="Pin a lead or mission so every firing of this cron sees the same briefing, and drop up to 6 files the agent can open at runtime (15MB each, 25MB total)."
               />
 
-              <EmailToolCard
-                enabled={formEmailEnabled}
-                onEnabledChange={setFormEmailEnabled}
-                fromEmail={formEmailFrom}
-                onFromEmailChange={setFormEmailFrom}
-                fromName={formEmailFromName}
-                onFromNameChange={setFormEmailFromName}
-                subjectTemplate={formEmailSubject}
-                onSubjectTemplateChange={setFormEmailSubject}
-                footerDataUrl={formEmailFooterDataUrl}
-                footerName={formEmailFooterName}
-                onFooterChange={(dataUrl, name) => {
-                  setFormEmailFooterDataUrl(dataUrl);
-                  setFormEmailFooterName(name);
-                }}
-                instructionsHint={formEmailHint}
-                onInstructionsHintChange={setFormEmailHint}
-                defaults={emailDefaults}
-                onResetToDefaults={() => {
-                  if (!emailDefaults) return;
-                  setFormEmailFrom(emailDefaults.fromEmail ?? "");
-                  setFormEmailFromName(emailDefaults.fromName ?? "");
-                  // Reply-To intentionally not restored — no UI field.
-                  setFormEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
-                  setFormEmailFooterName(
-                    emailDefaults.footerImageDataUrl
-                      ? emailDefaults.footerImageFileName || "Your profile footer"
-                      : null,
-                  );
-                }}
-                disabled={createBusy}
-              />
+              {/* The EmailToolCard used to live here — it let operators
+                  configure an inline Resend email sender for the cron
+                  agent. Removed from the cron modal per product
+                  decision: cron jobs now only schedule agent / squad
+                  runs. Outreach emails have their own dedicated Lead
+                  follow-up cadence in LeadOpsModal. */}
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
@@ -1302,7 +1143,6 @@ export function CronJobsModal({
           job={editingJob}
           agents={agents}
           squads={squads}
-          emailDefaults={emailDefaults}
           onClose={() => setEditingJob(null)}
           onSaved={() => void handleEditSaved(editingJob.id)}
         />
@@ -1425,7 +1265,6 @@ type EditCronJobDialogProps = {
   job: CronJob;
   agents: CronAgentOption[];
   squads: CronSquadOption[];
-  emailDefaults: CronEmailToolDefaults | null;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -1444,7 +1283,6 @@ function EditCronJobDialog({
   job,
   agents,
   squads,
-  emailDefaults,
   onClose,
   onSaved,
 }: EditCronJobDialogProps) {
@@ -1469,57 +1307,13 @@ function EditCronJobDialog({
   const [squadId, setSquadId] = useState<string>(job.squadId ?? "");
   const [deleteAfterRun, setDeleteAfterRun] = useState(job.deleteAfterRun);
 
-  // Tools (v28) — seeded from job.tools.email, plus a flag tracking whether
-  // the operator touched any tools field (to decide between patch / no-op).
-  const initialEmail = job.tools?.email ?? null;
-  const [emailEnabled, setEmailEnabled] = useState<boolean>(
-    !!initialEmail?.enabled,
-  );
-  const [emailFrom, setEmailFrom] = useState<string>(initialEmail?.fromEmail ?? "");
-  const [emailFromName, setEmailFromName] = useState<string>(
-    initialEmail?.fromName ?? "",
-  );
-  // Reply-To is not editable anymore — OpenClaw picks it at dispatch.
-  // We don't track it as a form field; the submission always sends
-  // `null` for replyTo.
-  const [emailSubject, setEmailSubject] = useState<string>(
-    initialEmail?.subjectTemplate ?? "",
-  );
-  const [emailFooterDataUrl, setEmailFooterDataUrl] = useState<string | null>(
-    initialEmail?.footerImageDataUrl ?? null,
-  );
-  const [emailFooterName, setEmailFooterName] = useState<string | null>(
-    initialEmail?.footerImageDataUrl ? "footer atual" : null,
-  );
-  const [emailHint, setEmailHint] = useState<string>(
-    initialEmail?.instructionsHint ?? "",
-  );
+  // Email-tool state was removed along with the rest of the email-tool
+  // UI. The edit dialog no longer touches `job.tools` at all — existing
+  // cron rows with a saved email config are preserved on the server,
+  // we just don't surface the editor for it.
 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-
-  // Prefill the email-tool fields from the resolved defaults as soon as
-  // they arrive — same eager behavior as the create form. We only write
-  // into blank fields so saved job values (and operator-typed overrides)
-  // are preserved. This runs regardless of whether `emailEnabled` is true,
-  // so when the operator flips the tool ON later the card is already
-  // populated with their profile data.
-  useEffect(() => {
-    if (!emailDefaults) return;
-    setEmailFrom((current) => current || emailDefaults.fromEmail || "");
-    setEmailFromName((current) => current || emailDefaults.fromName || "");
-    // Reply-To: no UI field → no prefill.
-    setEmailFooterDataUrl((current) =>
-      current ? current : emailDefaults.footerImageDataUrl || null,
-    );
-    setEmailFooterName((current) =>
-      current
-        ? current
-        : emailDefaults.footerImageDataUrl
-          ? emailDefaults.footerImageFileName || "Your profile footer"
-          : null,
-    );
-  }, [emailDefaults]);
 
   const canSave =
     name.trim().length > 0 &&
@@ -1605,31 +1399,10 @@ function EditCronJobDialog({
         }
       }
 
-      // ── Tools (v28) ─────────────────────────────────────────────────
-      // Three scenarios:
-      //   1. Operator toggled the tool ON or changed any sub-field → send
-      //      the whole `tools` bundle.
-      //   2. Operator toggled OFF an existing tool → set `clearTools`.
-      //   3. Nothing changed → don't include `tools` in the payload at all
-      //      (avoids retransmitting the footer data-URL unnecessarily).
-      const nextTools = buildToolsPayload({
-        emailEnabled,
-        fromEmail: emailFrom,
-        fromName: emailFromName,
-        // OpenClaw resolves Reply-To at dispatch (verified From sender).
-        replyTo: "",
-        subjectTemplate: emailSubject,
-        footerImageDataUrl: emailFooterDataUrl,
-        instructionsHint: emailHint,
-      });
-      const previousTools = job.tools ?? null;
-      if (!toolsBundlesEqual(previousTools, nextTools)) {
-        if (nextTools === null && previousTools !== null) {
-          payload.clearTools = true;
-        } else {
-          payload.tools = nextTools;
-        }
-      }
+      // Tools bundle is no longer touched from the edit dialog — see
+      // the comment in the state block above. Whatever the row has on
+      // the server stays as-is; we only edit schedule/session/agent
+      // metadata here.
 
       if (Object.keys(payload).length === 0) {
         // Nothing to do — just close.
@@ -1651,12 +1424,6 @@ function EditCronJobDialog({
     deleteAfterRun,
     deliveryMode,
     description,
-    emailEnabled,
-    emailFooterDataUrl,
-    emailFrom,
-    emailFromName,
-    emailHint,
-    emailSubject,
     job,
     name,
     onSaved,
@@ -1918,38 +1685,8 @@ function EditCronJobDialog({
             </label>
           )}
 
-          <EmailToolCard
-            enabled={emailEnabled}
-            onEnabledChange={setEmailEnabled}
-            fromEmail={emailFrom}
-            onFromEmailChange={setEmailFrom}
-            fromName={emailFromName}
-            onFromNameChange={setEmailFromName}
-            subjectTemplate={emailSubject}
-            onSubjectTemplateChange={setEmailSubject}
-            footerDataUrl={emailFooterDataUrl}
-            footerName={emailFooterName}
-            onFooterChange={(dataUrl, nextName) => {
-              setEmailFooterDataUrl(dataUrl);
-              setEmailFooterName(nextName);
-            }}
-            instructionsHint={emailHint}
-            onInstructionsHintChange={setEmailHint}
-            defaults={emailDefaults}
-            onResetToDefaults={() => {
-              if (!emailDefaults) return;
-              setEmailFrom(emailDefaults.fromEmail ?? "");
-              setEmailFromName(emailDefaults.fromName ?? "");
-              // Reply-To intentionally not restored — no UI field.
-              setEmailFooterDataUrl(emailDefaults.footerImageDataUrl ?? null);
-              setEmailFooterName(
-                emailDefaults.footerImageDataUrl
-                  ? emailDefaults.footerImageFileName || "Your profile footer"
-                  : null,
-              );
-            }}
-            disabled={busy}
-          />
+          {/* EmailToolCard removed. Email sending from cron jobs was
+              replaced by the Lead follow-up cadence (LeadOpsModal). */}
         </div>
 
         {/* Footer */}
@@ -2076,467 +1813,18 @@ function previewEffectiveSessionKey(rawKey: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Tools (v28) — email capability bundle
+// Removed: the old email-tool helpers and UI that used to live below.
+// Specifically:
+//   • `BuildToolsPayloadInput` + `buildToolsPayload` — emitted a
+//     CronJobToolsConfig with an `email` bundle.
+//   • `toolsBundlesEqual` — compared two CronJobToolsConfig values to
+//     decide whether to patch `tools` on update.
+//   • `EmailToolCard` — the ~330-line collapsible card used in both
+//     the create form and the edit dialog.
+//   • `ToolsBadge` — the tiny "EMAIL" pill in the job list + detail.
 //
-// The backend owns the credentials (Resend apiKey lives in server config)
-// and will splice them in at dispatch time. The UI only captures the
-// "shape" of the email: who it's from, default subject, an optional
-// footer banner (stored as a data-URL the server will forward verbatim),
-// and free-form guidance appended to the dispatch payload.
-//
-// `buildToolsPayload` returns `null` when nothing is configured so the
-// backend can treat "no tools" uniformly with "tools cleared".
+// Cron jobs no longer expose any email-tool configuration; operator
+// outreach happens through LeadOpsModal (follow-up cadence + insights).
+// Removing the dead code shrinks the bundle and makes it obvious to
+// readers that cron jobs are now purely about agent/squad scheduling.
 // ─────────────────────────────────────────────────────────────────────────
-
-type BuildToolsPayloadInput = {
-  emailEnabled: boolean;
-  fromEmail: string;
-  fromName: string;
-  replyTo: string;
-  subjectTemplate: string;
-  footerImageDataUrl: string | null;
-  instructionsHint: string;
-};
-
-function buildToolsPayload(
-  input: BuildToolsPayloadInput,
-): CronJobToolsConfig | null {
-  const email: CronEmailToolConfig | null = input.emailEnabled
-    ? {
-        enabled: true,
-        fromEmail: input.fromEmail.trim() || null,
-        fromName: input.fromName.trim() || null,
-        replyTo: input.replyTo.trim() || null,
-        subjectTemplate: input.subjectTemplate.trim() || null,
-        footerImageDataUrl: input.footerImageDataUrl || null,
-        instructionsHint: input.instructionsHint.trim() || null,
-      }
-    : null;
-
-  if (!email) return null;
-  return { email };
-}
-
-/**
- * Detects whether the two tool bundles are materially different. Used by
- * the edit dialog so we can skip the `tools` field entirely when the
- * operator didn't touch anything — this also avoids accidentally
- * resubmitting a data-URL footer that the server already has.
- */
-function toolsBundlesEqual(
-  a: CronJobToolsConfig | null,
-  b: CronJobToolsConfig | null,
-): boolean {
-  const ae = a?.email ?? null;
-  const be = b?.email ?? null;
-  if (!ae && !be) return true;
-  if (!ae || !be) return false;
-  return (
-    (ae.enabled ?? false) === (be.enabled ?? false) &&
-    (ae.fromEmail ?? null) === (be.fromEmail ?? null) &&
-    (ae.fromName ?? null) === (be.fromName ?? null) &&
-    (ae.replyTo ?? null) === (be.replyTo ?? null) &&
-    (ae.subjectTemplate ?? null) === (be.subjectTemplate ?? null) &&
-    (ae.footerImageDataUrl ?? null) === (be.footerImageDataUrl ?? null) &&
-    (ae.instructionsHint ?? null) === (be.instructionsHint ?? null)
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// EmailToolCard
-//
-// Collapsible tool-bundle card. Visually mirrors the LeadContextAttachmentsSection
-// so the two sections sit side-by-side in the form without feeling alien.
-// Amber accent everywhere to match the modal's tone.
-// ─────────────────────────────────────────────────────────────────────────
-
-type EmailToolCardProps = {
-  enabled: boolean;
-  onEnabledChange: (next: boolean) => void;
-  fromEmail: string;
-  onFromEmailChange: (next: string) => void;
-  fromName: string;
-  onFromNameChange: (next: string) => void;
-  // Reply-To is no longer operator-editable — OpenClaw picks it at
-  // dispatch (verified Resend sender), so the card doesn't take a
-  // replyTo / onReplyToChange pair anymore.
-  subjectTemplate: string;
-  onSubjectTemplateChange: (next: string) => void;
-  footerDataUrl: string | null;
-  footerName: string | null;
-  onFooterChange: (dataUrl: string | null, name: string | null) => void;
-  instructionsHint: string;
-  onInstructionsHintChange: (next: string) => void;
-  /** Resolved defaults from the backend — drives the "Usar meus dados" button
-   *  and the subtle placeholder text that hints at the fallback values. */
-  defaults?: CronEmailToolDefaults | null;
-  onResetToDefaults?: () => void;
-  disabled?: boolean;
-};
-
-// Approx. 2MB — Resend caps each attachment at ~25MB but this is a footer
-// banner, not an essay. Keeping it small protects the agent's context too.
-const FOOTER_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
-
-function EmailToolCard({
-  enabled,
-  onEnabledChange,
-  fromEmail,
-  onFromEmailChange,
-  fromName,
-  onFromNameChange,
-  subjectTemplate,
-  onSubjectTemplateChange,
-  footerDataUrl,
-  footerName,
-  onFooterChange,
-  instructionsHint,
-  onInstructionsHintChange,
-  defaults,
-  onResetToDefaults,
-  disabled,
-}: EmailToolCardProps) {
-  const [footerError, setFooterError] = useState<string | null>(null);
-
-  const handleFooterPick = useCallback(
-    async (file: File | null) => {
-      setFooterError(null);
-      if (!file) {
-        onFooterChange(null, null);
-        return;
-      }
-      if (!file.type.startsWith("image/")) {
-        setFooterError("The footer must be an image (PNG or JPG).");
-        return;
-      }
-      if (file.size > FOOTER_IMAGE_MAX_BYTES) {
-        setFooterError("The image is larger than 2MB — compress it before uploading.");
-        return;
-      }
-      try {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(new Error("Failed to read the file."));
-          reader.readAsDataURL(file);
-        });
-        onFooterChange(dataUrl, file.name);
-      } catch (err) {
-        setFooterError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [onFooterChange],
-  );
-
-  return (
-    <div
-      className="rounded-xl border px-4 py-3.5"
-      style={{
-        borderColor: enabled ? `${ACCENT}40` : "rgba(255,255,255,0.08)",
-        backgroundColor: enabled ? `${ACCENT}0D` : "rgba(255,255,255,0.02)",
-      }}
-    >
-      <label className="flex cursor-pointer items-start gap-3">
-        <input
-          type="checkbox"
-          checked={enabled}
-          disabled={disabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-          className="mt-1 h-3.5 w-3.5 accent-amber-400"
-        />
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
-              style={{
-                backgroundColor: `${ACCENT}20`,
-                border: `1px solid ${ACCENT}40`,
-              }}
-            >
-              <Mail className="h-3.5 w-3.5" style={{ color: ACCENT }} />
-            </span>
-            <span className="text-sm font-semibold text-white">
-              Email tool (Resend)
-            </span>
-            {enabled && (
-              <span
-                className="rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
-                style={{
-                  borderColor: `${ACCENT}50`,
-                  backgroundColor: `${ACCENT}20`,
-                  color: ACCENT,
-                }}
-              >
-                Active
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-[11px] leading-5 text-white/50">
-            When enabled, OpenClaw receives the{" "}
-            <span className="font-mono text-white/75">resend_email</span>{" "}
-            capability on every run. The{" "}
-            <span className="font-semibold">API key stays on the server</span>{" "}
-            — here you only set the sender, default subject and footer banner.
-            We prefill the <span className="font-semibold">From email</span>{" "}
-            with your signed-in address; OpenClaw may still override it with a
-            verified sender at dispatch time.
-          </p>
-          {!enabled && defaults && (defaults.fromName || defaults.footerImageDataUrl) && (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[10px] text-white/60">
-              <span
-                className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full"
-                style={{ backgroundColor: `${ACCENT}25`, color: ACCENT, fontSize: 9, fontWeight: 700 }}
-              >
-                i
-              </span>
-              <span>
-                Ready to enable as{" "}
-                <span className="font-mono text-white/80">
-                  {defaults.fromName ?? "—"}
-                </span>
-                {defaults.fromEmail && (
-                  <>
-                    {" "}
-                    <span className="text-white/45">·</span>{" "}
-                    <span className="font-mono text-white/80">
-                      {defaults.fromEmail}
-                    </span>
-                  </>
-                )}
-                {defaults.footerImageDataUrl && (
-                  <span className="text-white/55"> · with your profile footer</span>
-                )}
-                <span className="text-white/45"> · OpenClaw may override</span>
-              </span>
-            </div>
-          )}
-        </div>
-      </label>
-
-      {enabled && (
-        <div className="mt-3 space-y-3 border-t border-white/[0.08] pt-3">
-          {/* Defaults banner — shows the resolved fallback chain + a quick
-             "restore my profile defaults" button so operators can revert
-             after experimenting with overrides. */}
-          {defaults && (
-            <div className="flex flex-col gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2 text-[11px] md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-2 text-white/65">
-                <span
-                  className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full"
-                  style={{
-                    backgroundColor: `${ACCENT}25`,
-                    color: ACCENT,
-                    fontSize: 10,
-                    fontWeight: 700,
-                  }}
-                >
-                  i
-                </span>
-                <div className="leading-5">
-                  <span className="font-semibold text-white/80">
-                    Using your profile:
-                  </span>{" "}
-                  <span className="font-mono text-white/85">
-                    {defaults.fromName ?? "—"}
-                  </span>
-                  {defaults.fromEmail && (
-                    <>
-                      {" "}
-                      <span className="text-white/55">·</span>{" "}
-                      <span className="font-mono text-white/85">
-                        {defaults.fromEmail}
-                      </span>
-                    </>
-                  )}
-                  {/* Reply-To chip removed — OpenClaw decides the reply
-                      address at dispatch time (defaults to the verified
-                      From sender), so it's not a user-editable field. */}
-                  {defaults.footerImageDataUrl && (
-                    <span className="text-white/55"> · personal footer</span>
-                  )}
-                  <span className="text-white/55"> · OpenClaw may override</span>
-                  {!defaults.resendConfigured && (
-                    <span className="ml-1 rounded-full border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
-                      Resend off
-                    </span>
-                  )}
-                </div>
-              </div>
-              {onResetToDefaults && (
-                <button
-                  type="button"
-                  onClick={onResetToDefaults}
-                  disabled={disabled}
-                  className="shrink-0 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Use my data
-                </button>
-              )}
-            </div>
-          )}
-          {defaults?.note && (
-            <div className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-3 py-2 text-[11px] leading-5 text-amber-100/90">
-              {defaults.note}
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <Field
-              label="From email"
-              hint={
-                defaults?.fromEmail
-                  ? `Blank uses: ${defaults.fromEmail} (OpenClaw may override).`
-                  : "Blank lets OpenClaw pick a verified sender per request."
-              }
-            >
-              <input
-                type="email"
-                value={fromEmail}
-                onChange={(e) => onFromEmailChange(e.target.value)}
-                placeholder={defaults?.fromEmail ?? "you@yourdomain.com"}
-                disabled={disabled}
-                className={`${inputClass} font-mono`}
-              />
-            </Field>
-            <Field
-              label="From name"
-              hint={
-                defaults?.fromName
-                  ? `Blank uses: ${defaults.fromName}`
-                  : "Friendly sender name."
-              }
-            >
-              <input
-                type="text"
-                value={fromName}
-                onChange={(e) => onFromNameChange(e.target.value)}
-                placeholder={defaults?.fromName ?? "Lucas @ PTX"}
-                disabled={disabled}
-                className={inputClass}
-              />
-            </Field>
-          </div>
-
-          {/* Reply-To input intentionally removed — OpenClaw picks the
-              reply address at dispatch (defaults to the verified From
-              sender from Resend), so there is nothing for the operator
-              to fill in here. */}
-          <Field
-            label="Default subject"
-            hint="The agent can override this per email."
-          >
-            <input
-              type="text"
-              value={subjectTemplate}
-              onChange={(e) => onSubjectTemplateChange(e.target.value)}
-              placeholder="PTX · Daily update"
-              disabled={disabled}
-              className={inputClass}
-            />
-          </Field>
-
-          <div>
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/50">
-              Footer image
-            </div>
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] p-2.5">
-              {footerDataUrl ? (
-                <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={footerDataUrl}
-                    alt={footerName ?? "Email footer"}
-                    className="h-12 max-w-[220px] rounded border border-white/10 bg-black/30 object-contain"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[11px] font-semibold text-white/85">
-                      {footerName ?? "footer"}
-                    </div>
-                    <div className="text-[10px] text-white/45">
-                      Appended to every email the agent sends.
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onFooterChange(null, null)}
-                    disabled={disabled}
-                    className="rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold text-white/70 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ) : (
-                <label className="flex cursor-pointer flex-col items-start gap-1">
-                  <span className="text-[11px] text-white/55">
-                    PNG or JPG · up to 2MB · suggested width 600px
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={disabled}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] ?? null;
-                      void handleFooterPick(file);
-                      // Reset so picking the same file twice re-triggers
-                      e.target.value = "";
-                    }}
-                    className="block text-[11px] text-white/60 file:mr-2 file:rounded-md file:border-0 file:bg-amber-500/20 file:px-2.5 file:py-1 file:text-[11px] file:font-semibold file:text-amber-100 hover:file:bg-amber-500/30"
-                  />
-                </label>
-              )}
-              {footerError && (
-                <div className="mt-2 text-[10px] text-red-200">{footerError}</div>
-              )}
-            </div>
-          </div>
-
-          <Field
-            label="Extra instructions for the agent"
-            hint="Free-form text sent inside [OKESTRIA_CRON_TOOLS]. e.g. &ldquo;Always sign as Lucas.&rdquo;"
-          >
-            <textarea
-              value={instructionsHint}
-              onChange={(e) => onInstructionsHintChange(e.target.value)}
-              placeholder="Always sign as Lucas / PTX. Keep the tone formal."
-              rows={2}
-              disabled={disabled}
-              className={`${inputClass} resize-none`}
-            />
-          </Field>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Tools badge used in the jobs list + detail drawer so the operator can see
-// at a glance that a job has the email tool wired up.
-function ToolsBadge({
-  summary,
-  compact = false,
-}: {
-  summary: { emailEnabled: boolean; hasFooterImage: boolean } | null;
-  compact?: boolean;
-}) {
-  if (!summary?.emailEnabled) return null;
-  return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full border font-semibold tracking-wider ${
-        compact ? "px-1.5 py-0.5 text-[9px]" : "px-2 py-0.5 text-[10px]"
-      }`}
-      style={{
-        borderColor: `${ACCENT}40`,
-        backgroundColor: `${ACCENT}15`,
-        color: ACCENT,
-      }}
-      title={
-        summary.hasFooterImage
-          ? "Email tool active · with custom footer"
-          : "Email tool active"
-      }
-    >
-      <Mail className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-      EMAIL
-    </span>
-  );
-}
