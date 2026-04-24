@@ -951,6 +951,25 @@ export const bulkDeleteLeads = async (payload: BulkDeleteLeadsPayload): Promise<
   });
 };
 
+// Delete a single lead by id — dedicated single-lead endpoint. Backend
+// cancels any live follow-ups for the lead first before removing it so
+// the send worker doesn't crash on a missing FK. Use this from the
+// per-lead detail modal; use bulkDeleteLeads for multi-select.
+export const deleteLead = async (leadId: number): Promise<void> => {
+  await requestBackend<unknown>(`/api/Leads/${leadId}`, { method: "DELETE" });
+};
+
+// Cancel every non-terminal follow-up for the authenticated user's
+// company in one shot. Returns the number of rows flipped to
+// "cancelled" so the frontend can show a toast with the count.
+export const cancelAllCompanyFollowUps = async (): Promise<number> => {
+  const res = await requestBackend<{ cancelled?: number }>(
+    `/api/Leads/followups/cancel-all`,
+    { method: "POST" },
+  );
+  return typeof res?.cancelled === "number" ? res.cancelled : 0;
+};
+
 // ── Chat Context ──────────────────────────────────────────────────
 
 export type LeadChatContextDTO = {

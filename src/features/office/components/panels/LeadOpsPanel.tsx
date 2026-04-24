@@ -52,6 +52,7 @@ import {
   fetchLeadChatContext,
   fetchJobChatContext,
   bulkDeleteLeads,
+  deleteLead,
   type LeadEmailBatchJob,
   type LeadGenerationJob,
   type LeadSummary,
@@ -214,6 +215,17 @@ export function LeadOpsPanel({
   } | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+  // Per-lead delete — scoped to the currently open lead-detail modal.
+  // `confirmDeleteLead` doubles as the "confirmation open" flag so the
+  // user has to click twice (matching the bulk-delete UX). Reset
+  // whenever the user switches lead so the flag doesn't bleed from
+  // one detail view to the next.
+  const [confirmDeleteLead, setConfirmDeleteLead] = useState(false);
+  const [deletingLead, setDeletingLead] = useState(false);
+  useEffect(() => {
+    setConfirmDeleteLead(false);
+  }, [selectedLeadId]);
 
   // AI Model selection
   // Default AI model for the bulk/single insight buttons. Dated snapshot
@@ -873,6 +885,31 @@ export function LeadOpsPanel({
       setBulkDeleting(false);
     }
   }, [filteredLeads]);
+
+  // Delete the lead that's currently open in the lead-detail modal.
+  // Closes the modal on success so the user doesn't see a zombie card,
+  // and removes the row from `jobLeads` optimistically instead of
+  // waiting for the full refresh tick.
+  const handleDeleteSingleLead = useCallback(async () => {
+    if (!selectedLeadDetail) return;
+    const lead = selectedLeadDetail;
+    setDeletingLead(true);
+    try {
+      await deleteLead(lead.id);
+      setJobLeads((c) => c.filter((l) => l.id !== lead.id));
+      setConfirmDeleteLead(false);
+      setModalView("lead-vault");
+      setSelectedLeadId(null);
+      const msg = `${lead.businessName || `Lead #${lead.id}`} deleted.`;
+      setError(msg);
+      setTimeout(() => setError((c) => (c === msg ? null : c)), 2400);
+      setRefreshTick((t) => t + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete lead.");
+    } finally {
+      setDeletingLead(false);
+    }
+  }, [selectedLeadDetail]);
 
   const copyToClipboard = useCallback(async (text: string | null | undefined, msg: string) => {
     if (!text || !navigator?.clipboard) return;
@@ -1797,12 +1834,66 @@ export function LeadOpsPanel({
       {/* Lead Detail Modal */}
       {modalView === "lead-detail" && selectedLeadDetail && outreachData && (
         <Modal
-          onClose={() => { setModalView("lead-vault"); setSelectedLeadId(null); }}
+          onClose={() => {
+            setModalView("lead-vault");
+            setSelectedLeadId(null);
+            setConfirmDeleteLead(false);
+          }}
           title={selectedLeadDetail.businessName}
           subtitle={[selectedLeadDetail.city, selectedLeadDetail.state].filter(Boolean).join(", ") || selectedLeadDetail.category || "Lead Details"}
           size="lg"
           icon={<Sparkles className="h-5 w-5" />}
           accent="#34d399"
+          // Two-click destructive action in the footer — one click flips
+          // the confirm state, second click runs deleteLead. Same UX as
+          // the bulk-delete button, just scoped to this single lead.
+          footer={
+            confirmDeleteLead ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0 text-xs text-rose-200">
+                  Delete <span className="font-semibold">{selectedLeadDetail.businessName}</span>?
+                  Any pending follow-ups for this lead will be cancelled first.
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeleteLead(false)}
+                    disabled={deletingLead}
+                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteSingleLead()}
+                    disabled={deletingLead}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/40 bg-rose-500/20 px-3 py-2 text-xs font-semibold text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deletingLead ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                    Confirm delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-[11px] text-white/40">
+                  Lead ID #{selectedLeadDetail.id}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteLead(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/25 bg-rose-500/[0.07] px-3 py-2 text-xs font-medium text-rose-200 transition hover:bg-rose-500/15"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete lead
+                </button>
+              </div>
+            )
+          }
         >
           {/* Tabs */}
           <div className="mb-5 flex items-center gap-1 rounded-lg bg-white/5 p-1">

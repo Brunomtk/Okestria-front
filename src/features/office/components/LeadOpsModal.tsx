@@ -37,6 +37,8 @@ import {
   getBulkScheduleFollowUpsJobStatus,
   getActiveBulkScheduleFollowUpsJob,
   cancelBulkScheduleFollowUpsJob,
+  bulkDeleteLeads,
+  cancelAllCompanyFollowUps,
   sendLeadFollowUpNow,
   type LeadFollowUp,
   type LeadFollowUpOverview,
@@ -147,19 +149,38 @@ const fmtDate = (value?: string | null) => {
   }).format(date);
 };
 
-const startOfTodayLocal = () => {
-  const d = new Date();
-  d.setHours(9, 0, 0, 0);
-  return d;
-};
+// Base send-time for a freshly scheduled cadence. The first email always
+// goes out **at least 1 hour from right now** — this is the rule the
+// product requested, and it has two side benefits:
+//
+//   1. The operator has a window to review / tweak / cancel the cadence
+//      before anything actually sends.
+//   2. It prevents the "already past 9am so send immediately" bug the
+//      old version had: we used to anchor step 1 at "today 9am local",
+//      which was in the past any time someone scheduled in the
+//      afternoon, and the background worker (which filters by
+//      ScheduledAtUtc <= now) would fire step 1 on its next tick.
+//
+// The backend's LeadFollowUpWorker only sends rows whose
+// ScheduledAtUtc <= now, so an email CAN go up to the worker's cycle
+// (~30s on the new build) after the timestamp — never before it.
+const buildStepBase = () => new Date(Date.now() + 60 * 60 * 1000);
 
 const buildStepsPayload = (steps: DraftStep[]): LeadFollowUpStepInput[] => {
-  const base = startOfTodayLocal();
+  const base = buildStepBase();
   return steps
     .map((step, index) => {
-      const scheduled = new Date(base);
-      scheduled.setDate(base.getDate() + Math.max(0, step.delayDays));
-      scheduled.setHours(9 + Math.min(index, 8), 0, 0, 0);
+      // Start from the 1h-in-future base and add the step's delayDays
+      // (counted from the base, not from step 1's fire time, so the
+      // cadence matches the operator's mental model: "send at D+0,
+      // D+2, D+5 counted from now").
+      const delayDays = Math.max(0, step.delayDays);
+      const offsetMs =
+        delayDays * 24 * 60 * 60 * 1000 +
+        // Stagger multi-step same-day cadences by `index` minutes so
+        // the worker doesn't fire them all in the same poll tick.
+        Math.min(index, 8) * 60 * 1000;
+      const scheduled = new Date(base.getTime() + offsetMs);
       return {
         sequenceNumber: index + 1,
         name: step.name.trim() || `Follow-up ${index + 1}`,
@@ -173,6 +194,24 @@ const buildStepsPayload = (steps: DraftStep[]): LeadFollowUpStepInput[] => {
       };
     })
     .filter((step) => step.subjectTemplate.length > 0);
+};
+
+// Utility for the Schedule tab — shows the operator when each step
+// will actually fire given the current clock. Keeps the preview live
+// without making the component a stopwatch: computed once per render,
+// good enough for a "this will send around X" hint.
+const previewStepSendTime = (step: DraftStep, index: number): string => {
+  const base = buildStepBase();
+  const delayDays = Math.max(0, step.delayDays);
+  const offsetMs =
+    delayDays * 24 * 60 * 60 * 1000 + Math.min(index, 8) * 60 * 1000;
+  const scheduled = new Date(base.getTime() + offsetMs);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(scheduled);
 };
 
 const toneByStatus = (status?: string | null) => {
@@ -343,6 +382,19 @@ export function LeadOpsModal({
   // quickly locate a specific lead in long company rosters without
   // disturbing the Schedule tab's filter.
   const [sessionLeadSearch, setSessionLeadSearch] = useState("");
+
+  // "Delete leads without email" confirmation. We show a modal listing
+  // every affected lead so the user can review before wiping. Null
+  // means the modal is closed.
+  const [deleteNoEmailModalOpen, setDeleteNoEmailModalOpen] = useState(false);
+  const [deletingNoEmail, setDeletingNoEmail] = useState(false);
+
+  // "Cancel all follow-ups" confirmation. Affects every non-terminal
+  // row (scheduled / retry / processing / paused) across every lead in
+  // the authenticated user's company. Destructive enough to deserve its
+  // own confirm dialog.
+  const [cancelAllFollowUpsModalOpen, setCancelAllFollowUpsModalOpen] = useState(false);
+  const [cancellingAllFollowUps, setCancellingAllFollowUps] = useState(false);
   const [expandedStep, setExpandedStep] = useState<number | null>(1);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
 
@@ -791,6 +843,77 @@ export function LeadOpsModal({
     }
   }, [bulkScheduleJobId]);
 
+  // Leads in the current Sessions scope that don't have a usable email
+  // address. The Sessions tab's "Delete leads without email" button
+  // operates on exactly this set. Recomputed whenever the parent `leads`
+  // state changes — no client-side search filter is applied because the
+  // user explicitly picked "delete ALL without email", not "delete what
+  // matches the current search".
+  const leadsWithoutEmail = useMemo(
+    () => leads.filter((l) => !l.email || !l.email.trim()),
+    [leads],
+  );
+
+  const handleDeleteLeadsWithoutEmail = async () => {
+    if (leadsWithoutEmail.length === 0) return;
+    setDeletingNoEmail(true);
+    try {
+      const ids = leadsWithoutEmail.map((l) => l.id);
+      await bulkDeleteLeads({ leadIds: ids });
+      setMessage(
+        `${ids.length} lead${ids.length === 1 ? "" : "s"} without email deleted.`,
+      );
+      setDeleteNoEmailModalOpen(false);
+      // If the currently selected lead was in the deletion set, clear it
+      // so the timeline pane doesn't render stale data.
+      if (selectedLeadId && ids.includes(selectedLeadId)) {
+        setSelectedLeadId(null);
+      }
+      await loadFollowUpData();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to delete leads without email.",
+      );
+    } finally {
+      setDeletingNoEmail(false);
+    }
+  };
+
+  const handleCancelAllFollowUps = async () => {
+    setCancellingAllFollowUps(true);
+    try {
+      const cancelled = await cancelAllCompanyFollowUps();
+      setMessage(
+        cancelled === 0
+          ? "No active follow-ups to cancel."
+          : `Cancelled ${cancelled} follow-up${cancelled === 1 ? "" : "s"}.`,
+      );
+      setCancelAllFollowUpsModalOpen(false);
+      // Refresh so the timeline / stats / sidebar reflect the new state.
+      await loadFollowUpData();
+      if (selectedLeadId) {
+        const refreshed = await listLeadFollowUps(selectedLeadId);
+        setSelectedLeadFollowUps(
+          refreshed.sort(
+            (a, b) =>
+              new Date(a.scheduledAtUtc).getTime() -
+              new Date(b.scheduledAtUtc).getTime(),
+          ),
+        );
+      }
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Failed to cancel all follow-ups.",
+      );
+    } finally {
+      setCancellingAllFollowUps(false);
+    }
+  };
+
   const handleItemAction = async (
     action: "pause" | "resume" | "cancel" | "send",
     followUp: LeadFollowUp,
@@ -969,12 +1092,196 @@ export function LeadOpsModal({
     </div>
   ) : null;
 
+  // Confirmation modal for "Delete leads without email". Shows the full
+  // list of affected leads so the operator can review before wiping.
+  // Mounts at z-[97] — above bulkScheduleOverlay (z-96) and the main
+  // modal (z-95).
+  const deleteNoEmailOverlay = deleteNoEmailModalOpen ? (
+    <div
+      className="fixed inset-0 z-[97] flex items-center justify-center px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={() => (deletingNoEmail ? null : setDeleteNoEmailModalOpen(false))}
+        aria-hidden="true"
+      />
+      <section
+        className="relative z-10 flex max-h-[86vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-rose-400/30 bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+      >
+        <div className="flex items-start gap-4 border-b border-white/10 px-6 py-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-rose-400/40 bg-rose-500/15 text-rose-200">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-lg font-semibold text-white">
+              Delete leads without email?
+            </h3>
+            <p className="text-xs text-white/55">
+              {leadsWithoutEmail.length} lead{leadsWithoutEmail.length === 1 ? "" : "s"} from the current mission scope will be removed. This can&apos;t be undone.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteNoEmailModalOpen(false)}
+            disabled={deletingNoEmail}
+            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Scrollable list of affected rows. Shows business name,
+            derived secondary label, and mission name when we have one
+            so the operator can pinpoint what's going away. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+          {leadsWithoutEmail.length === 0 ? (
+            <div className="py-6 text-center text-sm text-white/50">
+              No leads without email in the current scope.
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {leadsWithoutEmail.map((lead) => (
+                <div
+                  key={lead.id}
+                  className="flex items-start justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-white">
+                      {lead.businessName || `Lead #${lead.id}`}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] text-white/45">
+                      {[lead.city, lead.state, lead.category]
+                        .filter(Boolean)
+                        .join(" · ") || "No location / category"}
+                    </div>
+                  </div>
+                  <span className="shrink-0 rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-200">
+                    no email
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={() => setDeleteNoEmailModalOpen(false)}
+            disabled={deletingNoEmail}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleDeleteLeadsWithoutEmail()}
+            disabled={deletingNoEmail || leadsWithoutEmail.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg border border-rose-400/40 bg-rose-500/20 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {deletingNoEmail ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Trash2 className="h-4 w-4" />
+            )}
+            Delete {leadsWithoutEmail.length} lead{leadsWithoutEmail.length === 1 ? "" : "s"}
+          </button>
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  // Confirmation modal for "Cancel all follow-ups". Smaller than the
+  // delete dialog because we don't have a specific list to show — we
+  // rely on the counter from the overview endpoint for scale feedback.
+  const cancelAllFollowUpsOverlay = cancelAllFollowUpsModalOpen ? (
+    <div
+      className="fixed inset-0 z-[97] flex items-center justify-center px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+        onClick={() => (cancellingAllFollowUps ? null : setCancelAllFollowUpsModalOpen(false))}
+        aria-hidden="true"
+      />
+      <section className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-amber-400/30 bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]">
+        <div className="flex items-start gap-4 border-b border-white/10 px-6 py-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-amber-400/40 bg-amber-500/15 text-amber-200">
+            <AlertTriangle className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-lg font-semibold text-white">
+              Cancel all follow-ups?
+            </h3>
+            <p className="text-xs text-white/55">
+              This flips every active cadence row (scheduled, paused, or in-flight) to
+              cancelled across every lead in this company. Already-sent emails stay
+              untouched. Can&apos;t be undone.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCancelAllFollowUpsModalOpen(false)}
+            disabled={cancellingAllFollowUps}
+            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="px-6 py-4">
+          <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.05] px-4 py-3 text-sm text-amber-100">
+            {overview
+              ? `${(overview.pending ?? 0) + (overview.processing ?? 0) + (overview.paused ?? 0)} active follow-up${((overview.pending ?? 0) + (overview.processing ?? 0) + (overview.paused ?? 0)) === 1 ? "" : "s"} will be cancelled.`
+              : "Loading follow-up count…"}
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={() => setCancelAllFollowUpsModalOpen(false)}
+            disabled={cancellingAllFollowUps}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Keep them
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCancelAllFollowUps()}
+            disabled={cancellingAllFollowUps}
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-500/20 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancellingAllFollowUps ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="h-4 w-4" />
+            )}
+            Cancel all
+          </button>
+        </div>
+      </section>
+    </div>
+  ) : null;
+
   return (
     <>
     {/* Bulk schedule progress sits on z-96 so it stacks above the main
         modal when the user fires a "Schedule for all filtered leads"
         pass. It unmounts automatically once the loop finishes. */}
     {bulkScheduleOverlay}
+    {/* Confirm-and-review dialog for the "delete leads without email"
+        housekeeping action. z-[97] is above bulkScheduleOverlay so if
+        a schedule run is happening at the same time (rare) we sit on
+        top. */}
+    {deleteNoEmailOverlay}
+    {/* Confirm dialog for "Cancel all follow-ups". Same z-tier as the
+        delete dialog because both are destructive and shouldn't be
+        dismissed by accident. */}
+    {cancelAllFollowUpsOverlay}
     {/* Note: we intentionally avoid putting `backdrop-filter` on the
         outermost container, otherwise the sub-modals that LeadOpsPanel
         renders (New Mission, Lead Vault, Lead Detail, Email Batch,
@@ -1231,6 +1538,16 @@ export function LeadOpsModal({
                     busyAction={busyAction}
                     onAction={handleItemAction}
                     onJumpToSchedule={() => setFollowUpTab("schedule")}
+                    leadsWithoutEmailCount={leadsWithoutEmail.length}
+                    onOpenDeleteNoEmail={() => setDeleteNoEmailModalOpen(true)}
+                    onOpenCancelAllFollowUps={() => setCancelAllFollowUpsModalOpen(true)}
+                    activeFollowUpsCount={
+                      overview
+                        ? (overview.pending ?? 0) +
+                          (overview.processing ?? 0) +
+                          (overview.paused ?? 0)
+                        : 0
+                    }
                   />
                 )}
 
@@ -1592,7 +1909,9 @@ function ScheduleTab({
             </div>
             <div className="mt-0.5 text-[11px] text-white/40">
               Each step generates a different email — the AI agent adapts the copy
-              to the lead&apos;s context.
+              to the lead&apos;s context. Step 1 always fires at least{" "}
+              <span className="text-white/70">1 hour from now</span> so you have a
+              window to review.
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -1667,9 +1986,24 @@ function ScheduleTab({
                         {step.subjectTemplate || "No subject yet"}
                       </div>
                     </div>
-                    <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
-                      D+{step.delayDays}
-                    </span>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span
+                        className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50"
+                        title="Delay in days from when the cadence is scheduled"
+                      >
+                        D+{step.delayDays}
+                      </span>
+                      {/* Live-ish preview of when this step will actually
+                          fire, computed from now + 1h base. Gives the
+                          operator concrete feedback instead of relying
+                          on the day count alone. */}
+                      <span
+                        className="truncate text-[10px] font-medium text-fuchsia-200/80"
+                        title="Estimated send time based on the current clock. First step always fires at least 1 hour from now."
+                      >
+                        {previewStepSendTime(step, index)}
+                      </span>
+                    </div>
                   </button>
 
                   {/* Remove step — hidden when only one step is left because
@@ -2020,6 +2354,10 @@ function SessionsTab({
   busyAction,
   onAction,
   onJumpToSchedule,
+  leadsWithoutEmailCount,
+  onOpenDeleteNoEmail,
+  onOpenCancelAllFollowUps,
+  activeFollowUpsCount,
 }: {
   loading: boolean;
   leads: LeadSummary[];
@@ -2038,6 +2376,10 @@ function SessionsTab({
     followUp: LeadFollowUp,
   ) => void;
   onJumpToSchedule: () => void;
+  leadsWithoutEmailCount: number;
+  onOpenDeleteNoEmail: () => void;
+  onOpenCancelAllFollowUps: () => void;
+  activeFollowUpsCount: number;
 }) {
   // Client-side filter layered on top of the backend-scoped leads list.
   // Mission filtering is handled by swapping the loader upstream in
@@ -2065,6 +2407,21 @@ function SessionsTab({
             {filtered.length !== leads.length ? ` / ${leads.length}` : ""}
           </span>
         </div>
+
+        {/* "Cancel all follow-ups" — bulk kill-switch for every active
+            cadence in the company. Hidden when there's nothing to
+            cancel so the button isn't a permanent UI decoration. */}
+        {activeFollowUpsCount > 0 ? (
+          <button
+            type="button"
+            onClick={onOpenCancelAllFollowUps}
+            className="mb-3 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-500/[0.08] px-3 py-2 text-xs font-medium text-amber-200 transition hover:bg-amber-500/15"
+            title="Cancel every active follow-up across every lead in this company"
+          >
+            <X className="h-3.5 w-3.5" />
+            Cancel all {activeFollowUpsCount} active follow-up{activeFollowUpsCount === 1 ? "" : "s"}
+          </button>
+        ) : null}
 
         {/* Mission filter — re-uses the Schedule tab's state on the parent
             so switching missions here also re-loads the backend-scoped
@@ -2099,6 +2456,22 @@ function SessionsTab({
             className="w-full rounded-lg border border-white/10 bg-black/30 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-white/25"
           />
         </div>
+
+        {/* Housekeeping action: remove every lead in the current scope
+            that doesn't have an email address. Hidden when the count is
+            zero. Opens a confirmation modal that lists the affected rows
+            so the delete is never a surprise. */}
+        {leadsWithoutEmailCount > 0 ? (
+          <button
+            type="button"
+            onClick={onOpenDeleteNoEmail}
+            className="mb-4 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/[0.07] px-3 py-2 text-xs font-medium text-rose-200 transition hover:bg-rose-500/15"
+            title="Review and delete every lead in the current mission with no email address"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete {leadsWithoutEmailCount} lead{leadsWithoutEmailCount === 1 ? "" : "s"} without email
+          </button>
+        ) : null}
 
         <div className="max-h-[520px] space-y-1.5 overflow-y-auto pr-1">
           {filtered.length === 0 ? (
