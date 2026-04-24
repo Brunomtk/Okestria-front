@@ -323,6 +323,62 @@ const requestBackendJson = async <T>(
 
 const escapeQuery = (value: string) => encodeURIComponent(value);
 
+// ── Gateway diagnostics (v43) ─────────────────────────────────────
+// Two endpoints the cron modal uses to help operators unstick
+// misconfigured cross-VPS setups without shelling into the server:
+//   • /gateway-config tells you what URLs/tokens the backend has loaded
+//     and what callback URL OpenClaw needs to POST back to.
+//   • /test-gateway fires a real synthetic POST to /hooks/agent and
+//     echoes the status + body so you can see exactly why a dispatch
+//     isn't reaching the gateway.
+
+export type CronGatewayHealth = {
+  status: string;
+  lastCheckedUtc?: string | null;
+  lastLatencyMs?: number | null;
+  lastHttpStatus?: number | null;
+  lastError?: string | null;
+  dispatchPermitted?: boolean;
+};
+
+export type CronGatewayConfig = {
+  hooksConfigured: boolean;
+  hooksBaseUrl?: string | null;
+  hasHookToken: boolean;
+  gatewayBaseUrl?: string | null;
+  hasUpstreamToken: boolean;
+  expectedCallbackUrl?: string | null;
+  health?: CronGatewayHealth | null;
+};
+
+export type CronGatewayTestResult = {
+  ok: boolean;
+  httpStatus: number;
+  dispatchUrl: string;
+  resolvedAgentId?: string | null;
+  agentResolutionError?: string | null;
+  responseBodyPreview?: string | null;
+  error?: string | null;
+  latencyMs: number;
+  checkedAtUtc: string;
+};
+
+export const fetchCronGatewayConfig = async (): Promise<CronGatewayConfig> => {
+  return requestBackendJson<CronGatewayConfig>(`/api/CronJobs/gateway-config`, {
+    method: "GET",
+  });
+};
+
+export const testCronGateway = async (
+  agentId?: number | null,
+): Promise<CronGatewayTestResult> => {
+  const qs = agentId && agentId > 0 ? `?agentId=${agentId}` : "";
+  return requestBackendJson<CronGatewayTestResult>(
+    `/api/CronJobs/test-gateway${qs}`,
+    { method: "POST" },
+  );
+};
+
 export const fetchCronJobs = async (
   companyId: number,
   filters?: { kind?: CronJobKind; status?: CronJobStatus },

@@ -28,6 +28,10 @@ import {
   fetchCronJob,
   fetchCronJobRuns,
   fetchCronJobs,
+  fetchCronGatewayConfig,
+  testCronGateway,
+  type CronGatewayConfig,
+  type CronGatewayTestResult,
   formatCronDate,
   formatRelativeTime,
   KIND_LABEL,
@@ -119,6 +123,16 @@ export function CronJobsModal({
   onClose,
 }: CronJobsModalProps) {
   const [tab, setTab] = useState<Tab>("jobs");
+  // v43 gateway diagnostics. When the modal opens we pull the config
+  // + health snapshot so the operator sees a "Gateway: ✅ healthy /
+  // ⚠ unhealthy / ❌ not configured" strip under the header without
+  // having to trigger a real dispatch. The "Test gateway" button fires
+  // a real no-op POST to /hooks/agent via the backend and surfaces
+  // the raw gateway response.
+  const [gatewayConfig, setGatewayConfig] = useState<CronGatewayConfig | null>(null);
+  const [gatewayConfigLoading, setGatewayConfigLoading] = useState(false);
+  const [gatewayTestResult, setGatewayTestResult] = useState<CronGatewayTestResult | null>(null);
+  const [gatewayTestBusy, setGatewayTestBusy] = useState(false);
   const [jobs, setJobs] = useState<CronJobListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,6 +294,59 @@ export function CronJobsModal({
     if (!open || !companyId) return;
     void loadJobs();
   }, [open, companyId, loadJobs]);
+
+  // Fetch the gateway config the moment the modal opens so the banner
+  // under the tabs reflects whether /hooks is wired up at all. Kept as
+  // a best-effort call: if the endpoint 404s on older back builds the
+  // banner falls back to "config unknown" and we proceed as normal.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    const loadConfig = async () => {
+      setGatewayConfigLoading(true);
+      try {
+        const cfg = await fetchCronGatewayConfig();
+        if (!cancelled) setGatewayConfig(cfg);
+      } catch {
+        if (!cancelled) setGatewayConfig(null);
+      } finally {
+        if (!cancelled) setGatewayConfigLoading(false);
+      }
+    };
+    void loadConfig();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  const handleTestGateway = useCallback(async () => {
+    setGatewayTestBusy(true);
+    setGatewayTestResult(null);
+    try {
+      const result = await testCronGateway(null);
+      setGatewayTestResult(result);
+      // A successful test updates the gateway health snapshot on the
+      // backend — re-fetch the config so the top-of-modal pill flips
+      // green without requiring a modal reopen.
+      try {
+        const cfg = await fetchCronGatewayConfig();
+        setGatewayConfig(cfg);
+      } catch {
+        /* best-effort */
+      }
+    } catch (err) {
+      setGatewayTestResult({
+        ok: false,
+        httpStatus: 0,
+        dispatchUrl: "",
+        latencyMs: 0,
+        checkedAtUtc: new Date().toISOString(),
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setGatewayTestBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -567,6 +634,138 @@ export function CronJobsModal({
             New job
           </button>
         </div>
+
+        {/* ── Gateway diagnostics strip ──
+            Always visible (sits above the tab content) so the operator
+            sees at a glance whether the OpenClaw bridge is even wired
+            up. The "Test gateway" button fires a real synthetic POST to
+            /hooks/agent and shows the round-trip below. */}
+        {(() => {
+          if (gatewayConfigLoading && !gatewayConfig) {
+            return (
+              <div className="border-b border-white/10 px-6 py-3 text-xs text-white/45">
+                <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" />
+                Checking OpenClaw gateway…
+              </div>
+            );
+          }
+          if (!gatewayConfig) return null;
+
+          const healthStatus = gatewayConfig.health?.status ?? "unknown";
+          const statusLabel = !gatewayConfig.hooksConfigured
+            ? { text: "Not configured", tone: "rose" as const }
+            : healthStatus === "healthy"
+              ? { text: "Online", tone: "emerald" as const }
+              : healthStatus === "degraded"
+                ? { text: "Degraded", tone: "amber" as const }
+                : healthStatus === "unhealthy"
+                  ? { text: "Unreachable", tone: "rose" as const }
+                  : { text: "Unknown", tone: "amber" as const };
+
+          const tonePalette = {
+            emerald: { border: "border-emerald-400/30", bg: "bg-emerald-500/[0.07]", text: "text-emerald-200" },
+            amber: { border: "border-amber-400/30", bg: "bg-amber-500/[0.08]", text: "text-amber-200" },
+            rose: { border: "border-rose-400/30", bg: "bg-rose-500/[0.08]", text: "text-rose-200" },
+          };
+          const tone = tonePalette[statusLabel.tone];
+
+          return (
+            <div className="border-b border-white/10 px-6 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${tone.border} ${tone.bg} ${tone.text}`}
+                    >
+                      Gateway · {statusLabel.text}
+                    </span>
+                    {gatewayConfig.hooksBaseUrl ? (
+                      <span className="truncate text-[11px] text-white/45">
+                        {gatewayConfig.hooksBaseUrl}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
+                    <span>
+                      Hook token:{" "}
+                      <span className={gatewayConfig.hasHookToken ? "text-emerald-300" : "text-rose-300"}>
+                        {gatewayConfig.hasHookToken ? "set" : "missing"}
+                      </span>
+                    </span>
+                    <span>
+                      Upstream token:{" "}
+                      <span className={gatewayConfig.hasUpstreamToken ? "text-emerald-300" : "text-rose-300"}>
+                        {gatewayConfig.hasUpstreamToken ? "set" : "missing"}
+                      </span>
+                    </span>
+                    {gatewayConfig.expectedCallbackUrl ? (
+                      <span className="truncate">
+                        Callback: <code className="text-white/55">{gatewayConfig.expectedCallbackUrl}</code>
+                      </span>
+                    ) : null}
+                    {gatewayConfig.health?.lastCheckedUtc ? (
+                      <span>
+                        Checked: {formatRelativeTime(gatewayConfig.health.lastCheckedUtc)}
+                      </span>
+                    ) : null}
+                    {typeof gatewayConfig.health?.lastLatencyMs === "number" ? (
+                      <span>Latency: {gatewayConfig.health.lastLatencyMs}ms</span>
+                    ) : null}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleTestGateway()}
+                  disabled={gatewayTestBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  title="POST a synthetic payload to OpenClaw /hooks/agent and show the exact response"
+                >
+                  {gatewayTestBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Zap className="h-3.5 w-3.5" />
+                  )}
+                  Test gateway
+                </button>
+              </div>
+              {gatewayTestResult ? (
+                <div
+                  className={`mt-2 rounded-lg border px-3 py-2 text-[11px] leading-5 ${
+                    gatewayTestResult.ok
+                      ? "border-emerald-400/30 bg-emerald-500/[0.07] text-emerald-100"
+                      : "border-rose-400/30 bg-rose-500/[0.07] text-rose-100"
+                  }`}
+                >
+                  <div className="font-semibold">
+                    {gatewayTestResult.ok
+                      ? `✅ Gateway responded ${gatewayTestResult.httpStatus} in ${gatewayTestResult.latencyMs}ms`
+                      : `❌ ${gatewayTestResult.error ?? `Gateway responded ${gatewayTestResult.httpStatus}`}`}
+                  </div>
+                  {gatewayTestResult.dispatchUrl ? (
+                    <div className="mt-0.5 text-white/60">
+                      URL: <code>{gatewayTestResult.dispatchUrl}</code>
+                    </div>
+                  ) : null}
+                  {gatewayTestResult.resolvedAgentId ? (
+                    <div className="text-white/60">
+                      Agent id resolved: <code>{gatewayTestResult.resolvedAgentId}</code>
+                    </div>
+                  ) : null}
+                  {gatewayTestResult.agentResolutionError ? (
+                    <div className="text-amber-200/80">
+                      ⚠ {gatewayTestResult.agentResolutionError}
+                    </div>
+                  ) : null}
+                  {gatewayTestResult.responseBodyPreview ? (
+                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 px-2 py-1 text-[10px] text-white/70">
+                      {gatewayTestResult.responseBodyPreview}
+                    </pre>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
 
         {/* ── Content ── */}
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
