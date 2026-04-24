@@ -184,6 +184,11 @@ export function LeadOpsPanel({
   const [modalView, setModalView] = useState<ModalView>("none");
   const [leadBrowserSearch, setLeadBrowserSearch] = useState("");
   const [leadBrowserView, setLeadBrowserView] = useState<"list" | "cards">("cards");
+  // Which mission's leads the vault is currently showing. "all" means
+  // every lead in the company; a number scopes the list to that job id.
+  // Seeded from the clicked mission when the vault opens so deep-links
+  // from a mission card land pre-filtered to that mission's leads.
+  const [vaultMissionFilter, setVaultMissionFilter] = useState<number | "all">("all");
   const [emailPreviewMode, setEmailPreviewMode] = useState<"preview" | "html">("preview");
 
   // Loading states
@@ -537,15 +542,31 @@ export function LeadOpsPanel({
     let cancelled = false;
     const load = async () => {
       try {
-        const [job, companyLeads, jobLeads] = await Promise.all([
-          selectedJobId ? getLeadGenerationJob(selectedJobId) : Promise.resolve(null),
-          companyId ? listLeadsByCompany(companyId) : Promise.resolve([]),
-          selectedJobId ? listLeadsByJob(selectedJobId) : Promise.resolve([]),
-        ]);
+        // Route the lead fetch based on the vault's current mission
+        // filter. Old code always loaded `listLeadsByCompany` AND
+        // `listLeadsByJob`, then just preferred company leads when
+        // non-empty — which meant the mission filter was silently
+        // ignored for any company that had leads. Swapping to a
+        // single endpoint per render keeps the result aligned with
+        // what the operator picked.
+        const job = selectedJobId ? await getLeadGenerationJob(selectedJobId) : null;
         if (cancelled) return;
         if (job) setJobs((c) => [job, ...c.filter((j) => j.id !== job.id)].sort((a, b) => b.id - a.id));
 
-        const leads = companyLeads.length > 0 ? companyLeads : jobLeads;
+        const missionScopeId =
+          vaultMissionFilter === "all"
+            ? null
+            : typeof vaultMissionFilter === "number"
+              ? vaultMissionFilter
+              : null;
+
+        const leads = missionScopeId
+          ? await listLeadsByJob(missionScopeId)
+          : companyId
+            ? await listLeadsByCompany(companyId)
+            : [];
+
+        if (cancelled) return;
         setJobLeads(leads);
         setError(null);
       } catch (e) {
@@ -554,7 +575,7 @@ export function LeadOpsPanel({
     };
     void load();
     return () => { cancelled = true; };
-  }, [companyId, selectedJobId, refreshTick]);
+  }, [companyId, selectedJobId, refreshTick, vaultMissionFilter]);
 
   // Load email batch jobs
   useEffect(() => {
@@ -646,6 +667,10 @@ export function LeadOpsPanel({
     setLeadBrowserView("cards");
     setSelectedLeadId(null);
     setSelectedLeadDetail(null);
+    // Clicking a mission card (or "View leads") now drops the vault
+    // into that mission's scope — the filter dropdown above the grid
+    // can still flip back to "All missions" at any time.
+    setVaultMissionFilter(jobId > 0 ? jobId : "all");
     setModalView("lead-vault");
   }, []);
 
@@ -1546,8 +1571,16 @@ export function LeadOpsPanel({
       {modalView === "lead-vault" && (
         <Modal
           onClose={() => setModalView("none")}
-          title={selectedJob ? `${selectedJob.title} · Company Leads` : "Company Leads"}
-          subtitle={`${stats.total} leads available for this company`}
+          title={
+            vaultMissionFilter !== "all" && selectedJob
+              ? `${selectedJob.title} · Mission leads`
+              : "Company Leads"
+          }
+          subtitle={
+            vaultMissionFilter !== "all" && selectedJob
+              ? `${stats.total} lead${stats.total === 1 ? "" : "s"} from this mission`
+              : `${stats.total} lead${stats.total === 1 ? "" : "s"} across every mission`
+          }
           size="xl"
           icon={<Building2 className="h-5 w-5" />}
           accent="#a78bfa"
@@ -1562,6 +1595,32 @@ export function LeadOpsPanel({
                 placeholder="Search leads..."
                 className="flex-1 bg-transparent text-sm text-white outline-none placeholder:text-white/30"
               />
+            </div>
+            {/* Mission filter — "All missions" means listLeadsByCompany,
+                otherwise listLeadsByJob(id). Changing this triggers the
+                load effect via its dep list, so the grid refreshes
+                against the server-side scope instead of filtering
+                client-side (which would still reflect all 200 rows in
+                memory). */}
+            <div className="flex items-center gap-1 rounded-lg bg-white/5 px-1 ring-1 ring-white/10">
+              <Target className="ml-2 h-3.5 w-3.5 text-white/40" />
+              <select
+                value={vaultMissionFilter === "all" ? "all" : String(vaultMissionFilter)}
+                onChange={(e) =>
+                  setVaultMissionFilter(
+                    e.target.value === "all" ? "all" : Number(e.target.value),
+                  )
+                }
+                className="bg-transparent px-2 py-2 text-xs text-white/80 outline-none [&>option]:bg-slate-900 [&>option]:text-white"
+                title="Filter leads by lead-generation mission"
+              >
+                <option value="all">All missions</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title || `Mission #${j.id}`}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1 ring-1 ring-white/10">
               <button
