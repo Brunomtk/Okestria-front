@@ -30,9 +30,13 @@ import {
   X as XIcon,
   Zap,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
+import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
 import {
   applyCronRunMessage,
+  applyCronRunMessageBySession,
   cancelCronJob,
   createCronJob,
   deleteCronJob,
@@ -235,36 +239,48 @@ function CronJobsModalInner({
     void loadJobDetail(selectedJobId);
   }, [open, selectedJobId, loadJobDetail]);
 
-  // Auto-refresh detail every 4s while a run is in flight so the chat
-  // bubbles update from queued → running → succeeded without the user
-  // having to click around.
+  // v96 — Auto-refresh on a 5 s heartbeat whenever the modal is open and
+  // a cron is selected. Previously we only polled while a run was already
+  // in flight, which meant scheduler-fired runs (created server-side)
+  // never showed up if the operator wasn't watching that cron at the
+  // exact moment they queued. With a steady heartbeat the timeline
+  // catches up automatically and the WS bridge can match the new run.
   useEffect(() => {
     if (!open || !selectedJob) return;
-    const hasInFlight = (selectedJob.runs ?? []).some(
-      (r) => r.status === "queued" || r.status === "running",
-    );
-    if (!hasInFlight) return;
     const id = window.setInterval(() => {
       void loadJobDetail(selectedJob.id);
-    }, 4000);
+    }, 5000);
     return () => window.clearInterval(id);
   }, [open, selectedJob, loadJobDetail]);
+
+  // v96 — On a slower heartbeat, refresh the cron list itself so new
+  // jobs created by other tabs (or the scheduler) show up in the rail.
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => {
+      void loadJobs();
+    }, 15000);
+    return () => window.clearInterval(id);
+  }, [open, loadJobs]);
 
   // ── Gateway WS bridge — forward chat events to apply-message ──────────
   useEffect(() => {
     if (!open || !gatewayClient || !gatewayConnected) return;
     const runs = selectedJob?.runs ?? [];
-    if (runs.length === 0) return;
-
+    // v96 — even if the local run cache is empty (e.g. modal just opened
+    // on a different cron), we keep the bridge running and fall through
+    // to the sessionKey-based apply-message route. That covers the case
+    // where the scheduler fires a run on a cron the operator isn't
+    // currently viewing.
     const runIndex = new Map<string, { runId: number; jobId: number }>();
     for (const r of runs) {
       const k = (r.sessionKey ?? "").trim();
       if (!k) continue;
       runIndex.set(k, { runId: r.id, jobId: r.cronJobId });
     }
-    if (runIndex.size === 0) return;
 
     const forwardedRunIds = new Set<number>();
+    const forwardedSessionKeys = new Set<string>();
     for (const r of runs) {
       if (
         r.status === "succeeded" ||
@@ -272,6 +288,7 @@ function CronJobsModalInner({
         r.status === "cancelled"
       ) {
         forwardedRunIds.add(r.id);
+        if (r.sessionKey) forwardedSessionKeys.add(r.sessionKey);
       }
     }
 
@@ -359,35 +376,73 @@ function CronJobsModalInner({
         if (!payload) return;
         const sessionKey = (payload.sessionKey ?? "").trim();
         if (!sessionKey) return;
-        const target = matchSession(sessionKey);
-        if (!target) return;
-        if (forwardedRunIds.has(target.runId)) return;
 
+        // Only forward terminal-ish events. Running/delta/thinking are
+        // useful UI signals but the back's apply-message is happy to
+        // ignore them — we still skip them here to avoid spamming.
         const state = (payload.state ?? "").toLowerCase();
         if (state !== "final" && state !== "aborted" && state !== "error") return;
 
         const text = extractText(payload.message);
         const errorMessage = payload.errorMessage ?? null;
-
-        // For "final" we MUST have text. For aborted/error, error string
-        // is enough (we'll surface it as the run's error).
         if (state === "final" && (!text || text.length === 0)) return;
 
-        forwardedRunIds.add(target.runId);
-        void applyCronRunMessage(target.runId, {
-          state: state as "final" | "aborted" | "error",
-          text: text ?? null,
-          error: errorMessage,
-          sessionKey: stripPrefix(sessionKey),
-        })
-          .then(() => {
-            void loadJobs();
-            void loadJobDetail(target.jobId);
+        const stripped = stripPrefix(sessionKey);
+        // Skip cron sessionKeys that don't follow our naming convention
+        // (e.g. squad sessions also flow through this WS).
+        if (!stripped.startsWith("hook:cron-") && !stripped.startsWith("hook:okestria-cron-")) {
+          // Still respect locally-known runs that happen to use a
+          // different prefix (legacy sessionMode = "main"/"named").
+          if (!matchSession(sessionKey)) return;
+        }
+
+        // Idempotency by sessionKey — covers both the runId match path
+        // and the by-session fallback.
+        if (forwardedSessionKeys.has(stripped)) return;
+        forwardedSessionKeys.add(stripped);
+
+        const target = matchSession(sessionKey);
+
+        if (target) {
+          // Fast path: local run row exists, post by runId.
+          if (forwardedRunIds.has(target.runId)) return;
+          forwardedRunIds.add(target.runId);
+          void applyCronRunMessage(target.runId, {
+            state: state as "final" | "aborted" | "error",
+            text: text ?? null,
+            error: errorMessage,
+            sessionKey: stripped,
           })
-          .catch((err) => {
-            forwardedRunIds.delete(target.runId);
-            console.error("CronBridge: apply-message failed", err);
-          });
+            .then(() => {
+              void loadJobs();
+              void loadJobDetail(target.jobId);
+            })
+            .catch((err) => {
+              forwardedRunIds.delete(target.runId);
+              forwardedSessionKeys.delete(stripped);
+              console.error("CronBridge: apply-message failed", err);
+            });
+        } else {
+          // v96 fallback: no local run row (scheduler tick on a cron
+          // the operator isn't viewing). Resolve server-side by
+          // sessionKey instead.
+          void applyCronRunMessageBySession({
+            state: state as "final" | "aborted" | "error",
+            text: text ?? null,
+            error: errorMessage,
+            sessionKey: stripped,
+          })
+            .then((updated) => {
+              void loadJobs();
+              if (updated && selectedJob && updated.cronJobId === selectedJob.id) {
+                void loadJobDetail(selectedJob.id);
+              }
+            })
+            .catch((err) => {
+              forwardedSessionKeys.delete(stripped);
+              console.error("CronBridge: by-session apply-message failed", err);
+            });
+        }
       } catch (err) {
         console.error("CronBridge: onEvent error", err);
       }
@@ -943,17 +998,10 @@ function CronChatPanel({
         </div>
       </div>
 
-      {/* Job system event preview */}
-      {job.systemEvent ? (
-        <div className="border-b border-white/10 bg-white/[0.02] px-5 py-3">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
-            System event
-          </div>
-          <div className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap text-[12.5px] leading-6 text-white/70">
-            {job.systemEvent}
-          </div>
-        </div>
-      ) : null}
+      {/* v94 — System event preview strip removed; the chat timeline now
+          owns the full vertical space between header and composer.
+          The saved system event still drives every run; review/edit it
+          from the cron's Edit dialog. */}
 
       {/* Run timeline */}
       <div
@@ -1193,12 +1241,16 @@ function RunBubble({
 
         {out.length > 0 ? (
           <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.03] px-5 py-4 text-sm leading-7 text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-            <div className="whitespace-pre-wrap break-words">{out}</div>
+            <div className="agent-markdown break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{out}</ReactMarkdown>
+            </div>
           </div>
         ) : isFailed ? (
           <div className="rounded-[20px] rounded-tl-md border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm leading-7 text-red-100/90">
-            <div className="whitespace-pre-wrap break-words">
-              {err || "This run failed without a message."}
+            <div className="agent-markdown break-words">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                {err || "This run failed without a message."}
+              </ReactMarkdown>
             </div>
           </div>
         ) : isRunning ? (

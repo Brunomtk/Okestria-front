@@ -60,6 +60,11 @@ import { isNearBottom } from "@/lib/dom";
 // surfaces all render the same multiavatar fallback (or real photo) for
 // every author bubble.
 import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
+// v95 — render assistant text as proper markdown (headings, lists, links)
+// instead of dumping `##` and `**` straight on the screen.
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
 
 type SquadTaskSessionFeedMessage = {
   id: string;
@@ -669,12 +674,18 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
 
                         {out.length > 0 ? (
                           <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.03] px-5 py-4 text-sm leading-7 text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-                            <div className="whitespace-pre-wrap break-words">{out}</div>
+                            <div className="agent-markdown break-words">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                                {out}
+                              </ReactMarkdown>
+                            </div>
                           </div>
                         ) : failedRun ? (
                           <div className="rounded-[20px] rounded-tl-md border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm leading-7 text-red-100/90">
-                            <div className="whitespace-pre-wrap break-words">
-                              {err || "This agent failed without a message."}
+                            <div className="agent-markdown break-words">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                                {err || "This agent failed without a message."}
+                              </ReactMarkdown>
                             </div>
                           </div>
                         ) : isRunningNow ? (
@@ -709,7 +720,11 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                   >
                     <div className={`rounded-[24px] border px-5 py-4 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.18)] ${message.role === "user" ? "border-[#4b3b86]/35 bg-[#1a1326] text-white/80" : message.role === "assistant" ? "border-white/10 bg-white/[0.03] text-white/82" : "border-cyan-400/15 bg-cyan-500/5 text-cyan-100/90"}`}>
                       <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{message.role} (live)</div>
-                      <div className="whitespace-pre-wrap leading-7">{message.text}</div>
+                      <div className="agent-markdown break-words">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                          {message.text}
+                        </ReactMarkdown>
+                      </div>
                       <div className="mt-3 text-xs text-white/30">{fmtDate(new Date(message.timestampMs).toISOString())}</div>
                     </div>
                   </div>

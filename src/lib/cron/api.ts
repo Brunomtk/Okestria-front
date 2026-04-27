@@ -513,3 +513,32 @@ export const applyCronRunMessage = async (
     },
   );
 };
+
+/**
+ * v96 — sessionKey-based fallback for the bridge.
+ *
+ * The runId-based `applyCronRunMessage` requires the modal to have
+ * loaded the run row first. When the scheduler fires a run while the
+ * operator is on a different cron, the bridge has no run in its index
+ * and the runId is unknown. This route lets the bridge POST by
+ * sessionKey and the back resolves the run server-side.
+ *
+ * The back also accepts a sessionKey carrying a leaked
+ * `agent:<slug>:` prefix and strips it.
+ */
+export const applyCronRunMessageBySession = async (
+  payload: CronRunApplyMessagePayload & { sessionKey: string },
+): Promise<CronJobRun | null> => {
+  return await requestBackendJson<CronJobRun | null>(
+    `/api/CronJobs/runs/by-session/apply-message`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        state: payload.state ?? "",
+        text: payload.text ?? null,
+        error: payload.error ?? null,
+        sessionKey: payload.sessionKey,
+      }),
+    },
+  );
+};
