@@ -82,6 +82,16 @@ export type GatewayRuntimeEventHandler = {
 const findAgentBySessionKey = (agents: AgentState[], sessionKey: string): string | null => {
   const exact = agents.find((agent) => isSameSessionKey(agent.sessionKey, sessionKey));
   if (exact) return exact.agentId;
+
+  // v90 — squad / cron / webhook sessions extend the agent prefix with a
+  // `hook:` namespace (e.g. `agent:sales-closer:hook:sqexec-...:agent:44:step:1`).
+  // These belong to the squad-task surface, NOT to the agent's main chat,
+  // so we must NOT route them into the agent's chat panel. Bail before the
+  // parsed-agent-id fallback so the regular agent chat stays clean.
+  if (/(:|^)hook:/.test(sessionKey)) {
+    return null;
+  }
+
   // Transport sessions such as Telegram or WhatsApp can extend the canonical main session key.
   // Falling back to the parsed agent id keeps runtime recovery transport-agnostic.
   const parsedAgentId = parseAgentIdFromSessionKey(sessionKey);

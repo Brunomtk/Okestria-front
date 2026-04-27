@@ -381,6 +381,78 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                 <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">{sessionError}</div>
               ) : null}
 
+              {/* v90 — render one bubble per run so the squad chat shows
+                  every agent's reply, not just the squad's final response.
+                  Order by step number so workflow output reads top-to-bottom
+                  the same way the user defined it. */}
+              {(() => {
+                const orderedRuns = [...(resolvedActiveTask.runs ?? [])].sort((a, b) => {
+                  const ta = a.finishedAtUtc ? new Date(a.finishedAtUtc).getTime() : 0;
+                  const tb = b.finishedAtUtc ? new Date(b.finishedAtUtc).getTime() : 0;
+                  if (ta && tb && ta !== tb) return ta - tb;
+                  return a.id - b.id;
+                });
+                if (orderedRuns.length === 0) return null;
+                return orderedRuns.map((run, idx) => {
+                  const out = (run.outputText || "").trim();
+                  const err = (run.dispatchError || "").trim();
+                  const status = normalize(run.status);
+                  const author = run.agentName || `Agent #${run.agentId}`;
+                  const stepLabel = `Step ${idx + 1}`;
+                  const fmtTs = run.finishedAtUtc || run.startedAtUtc;
+
+                  if (out.length > 0) {
+                    return (
+                      <div key={`run-${run.id}`} className="max-w-[84%]">
+                        <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-5 py-4 text-sm text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+                          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                            <span>{stepLabel}</span>
+                            <span className="opacity-50">·</span>
+                            <span className="text-white/55">{author}</span>
+                          </div>
+                          <div className="whitespace-pre-wrap leading-7">{out}</div>
+                          <div className="mt-3 text-xs text-white/30">{fmtDate(fmtTs)}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (err.length > 0 || isFailed(status)) {
+                    return (
+                      <div key={`run-${run.id}`} className="max-w-[84%]">
+                        <div className="rounded-[24px] border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm text-red-100/90">
+                          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-200/70">
+                            <span>{stepLabel}</span>
+                            <span className="opacity-50">·</span>
+                            <span>{author}</span>
+                            <span className="rounded-full border border-red-400/30 bg-red-500/15 px-1.5 py-0.5 text-[9px] tracking-wider">failed</span>
+                          </div>
+                          <div className="whitespace-pre-wrap leading-7">{err || "This agent failed without a message."}</div>
+                          <div className="mt-3 text-xs text-red-200/40">{fmtDate(fmtTs)}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isRunning(status)) {
+                    return (
+                      <div key={`run-${run.id}`} className="max-w-[84%]">
+                        <div className="inline-flex items-center gap-3 rounded-[24px] border border-cyan-400/15 bg-cyan-500/5 px-5 py-3 text-sm text-cyan-100/85">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">{stepLabel} · {author}</span>
+                          <span className="text-cyan-200/80">{status === "queued" || status === "pending" ? "queued" : "thinking..."}</span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                });
+              })()}
+
+              {/* Live session feed bubbles (gateway WS deltas) — kept after
+                  the per-run bubbles so streaming partials still show up
+                  while a run hasn't been finalised yet. */}
               {(sessionMessages ?? []).length > 0 ? (
                 (sessionMessages ?? []).map((message) => (
                   <div
@@ -388,7 +460,7 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                     className={message.role === "user" ? "ml-auto max-w-[78%]" : "max-w-[84%]"}
                   >
                     <div className={`rounded-[24px] border px-5 py-4 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.18)] ${message.role === "user" ? "border-[#4b3b86]/35 bg-[#1a1326] text-white/80" : message.role === "assistant" ? "border-white/10 bg-white/[0.03] text-white/82" : "border-cyan-400/15 bg-cyan-500/5 text-cyan-100/90"}`}>
-                      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{message.role}</div>
+                      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">{message.role} (live)</div>
                       <div className="whitespace-pre-wrap leading-7">{message.text}</div>
                       <div className="mt-3 text-xs text-white/30">{fmtDate(new Date(message.timestampMs).toISOString())}</div>
                     </div>
@@ -396,7 +468,9 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                 ))
               ) : null}
 
-              {sessionLoading || (resolvedActiveTask.runs.length === 0 && !sessionError) || ((sessionMessages ?? []).length === 0 && isRunning(resolvedActiveTask.status)) ? (
+              {sessionLoading
+                || (resolvedActiveTask.runs.length === 0 && !sessionError && isRunning(resolvedActiveTask.status))
+                ? (
                 <div className="rounded-[24px] border border-cyan-400/15 bg-cyan-500/5 px-4 py-3 text-sm text-cyan-200/90">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
