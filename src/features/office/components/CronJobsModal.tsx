@@ -30,6 +30,7 @@ import {
   X as XIcon,
   Zap,
 } from "lucide-react";
+import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 import {
   applyCronRunMessage,
   cancelCronJob,
@@ -64,20 +65,9 @@ import { isNearBottom } from "@/lib/dom";
 // ── Visual helpers ──────────────────────────────────────────────────────
 const ACCENT = "#f59e0b"; // warm amber to match the HUD button
 
-const INITIALS = (name: string | null | undefined) => {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-};
-
-const HUE_FROM = (seed: string) => {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return h % 360;
-};
+// v93 — INITIALS / HUE_FROM helpers retired in favour of <AgentAvatar />,
+// which renders the agent's real photo and falls back to a multiavatar
+// SVG keyed off the agent's slug. Same look as the agent chat panel.
 
 const ATTACHMENT_MAX_FILES = 6;
 const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024;
@@ -649,9 +639,7 @@ function CronListRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const seed = (agent?.name ?? agent?.slug ?? job.name ?? "?").toString();
-  const hue = HUE_FROM(seed);
-  const initials = INITIALS(agent?.name ?? job.name);
+  const seed = (agent?.slug ?? agent?.name ?? job.name ?? "?").toString();
   const status = job.status;
   const statusDot = STATUS_COLOR[status] ?? "#94a3b8";
   const scheduleLabel =
@@ -674,25 +662,12 @@ function CronListRow({
         }`}
       >
         <div className="relative mt-0.5 flex-none">
-          {agent?.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={agent.avatarUrl}
-              alt=""
-              className="h-9 w-9 rounded-full border border-white/10 object-cover"
-            />
-          ) : (
-            <div
-              className="flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase"
-              style={{
-                backgroundColor: `hsl(${hue}, 60%, 22%)`,
-                border: `1.5px solid hsl(${hue}, 70%, 45%)`,
-                color: `hsl(${hue}, 80%, 80%)`,
-              }}
-            >
-              {initials}
-            </div>
-          )}
+          <AgentAvatar
+            seed={seed}
+            name={agent?.name ?? job.name}
+            avatarUrl={agent?.avatarUrl ?? null}
+            size={36}
+          />
           <span
             className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: statusDot, border: "1.5px solid #0c0810" }}
@@ -762,9 +737,7 @@ function CronChatPanel({
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [running, setRunning] = useState(false);
 
-  const seed = (agent?.name ?? agent?.slug ?? job.name).toString();
-  const hue = HUE_FROM(seed);
-  const initials = INITIALS(agent?.name ?? job.name);
+  const seed = (agent?.slug ?? agent?.name ?? job.name).toString();
 
   const status = job.status;
   const statusColor = STATUS_COLOR[status] ?? "#94a3b8";
@@ -848,25 +821,12 @@ function CronChatPanel({
       {/* Header strip */}
       <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-4">
         <div className="relative flex-none">
-          {agent?.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={agent.avatarUrl}
-              alt=""
-              className="h-11 w-11 rounded-full border border-white/15 object-cover"
-            />
-          ) : (
-            <div
-              className="flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
-              style={{
-                backgroundColor: `hsl(${hue}, 60%, 22%)`,
-                border: `1.5px solid hsl(${hue}, 70%, 45%)`,
-                color: `hsl(${hue}, 80%, 80%)`,
-              }}
-            >
-              {initials}
-            </div>
-          )}
+          <AgentAvatar
+            seed={seed}
+            name={agent?.name ?? job.name}
+            avatarUrl={agent?.avatarUrl ?? null}
+            size={44}
+          />
           <span
             className="absolute -right-1 -bottom-1 h-3 w-3 rounded-full"
             style={{ backgroundColor: statusColor, border: "2px solid #0c0810" }}
@@ -1012,8 +972,7 @@ function CronChatPanel({
                 key={run.id}
                 run={run}
                 agent={agent}
-                hue={hue}
-                initials={initials}
+                seed={seed}
               />
             ))}
             <div ref={chatBottomRef} aria-hidden className="h-px w-px" />
@@ -1172,13 +1131,11 @@ function CronChatPanel({
 function RunBubble({
   run,
   agent,
-  hue,
-  initials,
+  seed,
 }: {
   run: CronJobRun;
   agent: CronAgentOption | null | undefined;
-  hue: number;
-  initials: string;
+  seed: string;
 }) {
   const status = run.status;
   const out = (run.resultText ?? "").trim();
@@ -1188,34 +1145,24 @@ function RunBubble({
   const isCancelled = status === "cancelled" || status === "skipped";
   const ts = run.finishedAtUtc || run.startedAtUtc || run.createdDate;
 
-  const avatarBg = `hsl(${hue}, 60%, 22%)`;
-  const avatarBorder = `hsl(${hue}, 70%, 45%)`;
-  const avatarText = `hsl(${hue}, 80%, 80%)`;
-
   return (
     <div className="flex items-start gap-3">
       <div className="relative flex-none">
-        {agent?.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={agent.avatarUrl}
-            alt=""
-            className="h-10 w-10 rounded-full border border-white/15 object-cover"
-            title={agent.name ?? undefined}
-          />
-        ) : (
-          <div
-            className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
-            style={{
-              backgroundColor: isFailed ? "rgba(239,68,68,.18)" : avatarBg,
-              border: `1.5px solid ${isFailed ? "rgba(239,68,68,.45)" : avatarBorder}`,
-              color: isFailed ? "#fca5a5" : avatarText,
-            }}
-            title={agent?.name ?? undefined}
+        <AgentAvatar
+          seed={seed}
+          name={agent?.name ?? "Agent"}
+          avatarUrl={agent?.avatarUrl ?? null}
+          size={40}
+        />
+        {isFailed ? (
+          <span
+            className="absolute -right-0.5 -bottom-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500"
+            style={{ border: "1.5px solid #0c0810" }}
+            title="Failed"
           >
-            {initials}
-          </div>
-        )}
+            <span className="block h-1.5 w-1.5 rounded-full bg-white/80" />
+          </span>
+        ) : null}
         {isRunning ? (
           <span
             className="absolute -right-0.5 -bottom-0.5 h-3 w-3 animate-pulse rounded-full"
@@ -1242,11 +1189,6 @@ function RunBubble({
               {status}
             </span>
           ) : null}
-          {run.httpStatus ? (
-            <span className="rounded-full border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[9px] text-white/50">
-              HTTP {run.httpStatus}
-            </span>
-          ) : null}
         </div>
 
         {out.length > 0 ? (
@@ -1260,29 +1202,22 @@ function RunBubble({
             </div>
           </div>
         ) : isRunning ? (
-          <div
-            className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border px-4 py-2.5 text-sm"
-            style={{
-              borderColor: `${avatarBorder}55`,
-              backgroundColor: `${avatarBg}aa`,
-              color: avatarText,
-            }}
-          >
+          <div className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border border-cyan-400/25 bg-cyan-500/10 px-4 py-2.5 text-sm text-cyan-100/85">
             <span className="inline-flex gap-1">
               <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full"
-                style={{ backgroundColor: avatarText, animationDelay: "0ms" }}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                style={{ animationDelay: "0ms" }}
               />
               <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full"
-                style={{ backgroundColor: avatarText, animationDelay: "150ms" }}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                style={{ animationDelay: "150ms" }}
               />
               <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full"
-                style={{ backgroundColor: avatarText, animationDelay: "300ms" }}
+                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                style={{ animationDelay: "300ms" }}
               />
             </span>
-            <span className="opacity-80">
+            <span className="opacity-90">
               {status === "queued" ? "queued — waiting in line" : "thinking..."}
             </span>
           </div>

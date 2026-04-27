@@ -1455,6 +1455,19 @@ export function OfficeScreen({
     () => companySquads.map((s) => ({ id: s.id, name: s.name })),
     [companySquads],
   );
+
+  // v93 — avatar lookup keyed by gatewayAgentId so SquadChatPanel can
+  // render each member's real photo (falls back to the multiavatar SVG
+  // inside <AgentAvatar /> when the agent has no upload).
+  const squadAgentAvatarLookup = useMemo<Record<string, string | null | undefined>>(() => {
+    const map: Record<string, string | null | undefined> = {};
+    for (const agent of state.agents) {
+      const key = (agent.agentId ?? "").toString().trim();
+      if (!key) continue;
+      map[key] = agent.avatarUrl ?? null;
+    }
+    return map;
+  }, [state.agents]);
   const hasDeleteMutationBlock = deleteAgentBlock?.kind === "delete-agent";
   const { enqueueConfigMutation } = useConfigMutationQueue({
     status,
@@ -6355,7 +6368,10 @@ export function OfficeScreen({
       ) : null}
       */}
 
-      {showOpenClawConsole ? (
+      {/* v93 — OpenClaw console button hidden per product polish pass.
+          The console modal itself is preserved below in case `showOpenClawConsole`
+          is flipped on for debugging. */}
+      {false && showOpenClawConsole ? (
         <>
           <button
             type="button"
@@ -6759,6 +6775,7 @@ export function OfficeScreen({
                         }));
                       }}
                       onOpenOps={(squadId) => handleOpenSquadOps(squadId)}
+                      agentAvatars={squadAgentAvatarLookup}
                     />
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
@@ -6791,6 +6808,7 @@ export function OfficeScreen({
           </div>
         )}
 
+        {/* v93 — HQ button hidden per product polish pass. Uncomment to bring it back.
         <button
           type="button"
           onClick={() => setHqModalOpen((current) => !current)}
@@ -6799,6 +6817,7 @@ export function OfficeScreen({
           {hqModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <PanelsTopLeft className="h-3.5 w-3.5" />}
           <span>{hqModalOpen ? "CLOSE HQ" : "OPEN HQ"}</span>
         </button>
+        */}
 
         <button
           type="button"

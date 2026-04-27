@@ -14,13 +14,9 @@ import {
   Zap,
 } from "lucide-react";
 
-// v90.1 — small visual helpers used across the squad chat surface.
-const SQUAD_INITIALS = (name: string | null | undefined) => {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-};
+// v93 — initials helper retired; <AgentAvatar /> now owns initials and the
+// multiavatar SVG fallback. We still keep the hue helper around so the
+// thinking bubble can derive a deterministic accent per agent.
 
 // Stable hash → hue, so each agent always renders with the same colour.
 const SQUAD_HUE_FROM = (seed: string) => {
@@ -60,6 +56,10 @@ const formatBytes = (bytes: number) => {
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
 import { ackSquadTaskRender, fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
+// v93 — share the agent chat's avatar component so cron, squad, and agent
+// surfaces all render the same multiavatar fallback (or real photo) for
+// every author bubble.
+import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 
 type SquadTaskSessionFeedMessage = {
   id: string;
@@ -79,6 +79,10 @@ type SquadChatPanelProps = {
   onTaskFocusChange?: (taskId: number | null) => void;
   onSendMessage?: (squad: SquadSummary, message: string) => void;
   onOpenOps?: (squadId: string) => void;
+  /** v93 — optional lookup so each member bubble can render the agent's
+   *  real avatar photo. Keyed by gatewayAgentId; falls back to a
+   *  multiavatar SVG when the entry is missing. */
+  agentAvatars?: Record<string, string | null | undefined>;
 };
 
 const fmtDate = (value: string | null | undefined) => {
@@ -92,7 +96,7 @@ const normalize = (value: string | null | undefined) => (value ?? "").trim().toL
 const isRunning = (value: string | null | undefined) => ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(normalize(value));
 const isFailed = (value: string | null | undefined) => ["failed", "error", "cancelled"].includes(normalize(value));
 
-function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMessages, sessionLoading, sessionError, taskCache, onTaskFocusChange, onSendMessage, onOpenOps }: SquadChatPanelProps) {
+function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMessages, sessionLoading, sessionError, taskCache, onTaskFocusChange, onSendMessage, onOpenOps, agentAvatars }: SquadChatPanelProps) {
   const [draft, setDraft] = useState("");
   // v90.1 — attachment staging. We surface the same UX the squad ops modal
   // exposes (clip button → up to 6 files / 15MB each / 25MB total) so the
@@ -584,7 +588,10 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                   const fmtTs = run.finishedAtUtc || run.startedAtUtc;
                   const meta = memberByAgentId.get(run.agentId);
                   const isLeader = !!meta?.isLeader;
-                  const initials = SQUAD_INITIALS(author);
+                  // v93 — keep the deterministic colour palette around for
+                  // the "thinking..." bubble background; the actual avatar
+                  // is now rendered by <AgentAvatar /> below, which already
+                  // owns initials + multiavatar fallback internally.
                   const hue = SQUAD_HUE_FROM(author);
                   const avatarBg = `hsl(${hue}, 60%, 22%)`;
                   const avatarBorder = `hsl(${hue}, 70%, 45%)`;
@@ -592,20 +599,33 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                   const isRunningNow = isRunning(status);
                   const failedRun = !out && (err.length > 0 || isFailed(status));
 
+                  // v93 — match the agent chat's avatar treatment: prefer
+                  // the agent's gatewayAgentId / slug as a stable seed so
+                  // each agent always renders the same multiavatar across
+                  // cron, squad, and direct chat surfaces. When the parent
+                  // supplies `agentAvatars`, we render the real photo.
+                  const avatarSeed = (meta?.gatewayAgentId ?? author ?? `agent-${run.agentId}`).toString();
+                  const resolvedAvatarUrl =
+                    (meta?.gatewayAgentId && agentAvatars?.[meta.gatewayAgentId]) ?? null;
                   return (
                     <div key={`run-${run.id}`} className="flex items-start gap-3">
                       {/* Avatar */}
                       <div className="relative flex-none">
                         <div
-                          className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+                          className="rounded-full"
                           style={{
-                            backgroundColor: failedRun ? "rgba(239,68,68,.18)" : avatarBg,
-                            border: `1.5px solid ${failedRun ? "rgba(239,68,68,.45)" : avatarBorder}`,
-                            color: failedRun ? "#fca5a5" : avatarText,
+                            boxShadow: failedRun
+                              ? "0 0 0 1.5px rgba(239,68,68,.45)"
+                              : "0 8px 24px rgba(0,0,0,0.35)",
                           }}
                           title={author}
                         >
-                          {initials}
+                          <AgentAvatar
+                            seed={avatarSeed}
+                            name={author}
+                            avatarUrl={resolvedAvatarUrl}
+                            size={40}
+                          />
                         </div>
                         {isLeader ? (
                           <span
