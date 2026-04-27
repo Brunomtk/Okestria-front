@@ -2613,20 +2613,45 @@ export function OfficeScreen({
 
     const unsubscribe = client.onEvent((event) => {
       try {
-        // Mirror EVERY event to the dbg ring, even non-chat ones, so we
-        // can see what the gateway is sending while the modal is open.
+        // v90 — the gateway emits chat events with sessionKey prefixed by
+        // "agent:<slug>:" (e.g. "agent:sales-closer:hook:sqexec-...:agent:44:step:1")
+        // while the back persists ExternalSessionKey as the bare hook key
+        // ("hook:sqexec-...:agent:44:step:1"). This matcher tries exact
+        // match first, then strips any "agent:<slug>:" prefix and matches
+        // on the remaining "hook:..." suffix.
+        const matchSessionKeyToRun = (rawSessionKey: string | null) => {
+          if (!rawSessionKey) return null;
+          const direct = sessionKeyToRun.get(rawSessionKey);
+          if (direct) return direct;
+          const hookIdx = rawSessionKey.indexOf("hook:");
+          if (hookIdx > 0) {
+            const suffix = rawSessionKey.slice(hookIdx);
+            const suffixHit = sessionKeyToRun.get(suffix);
+            if (suffixHit) return suffixHit;
+          }
+          // Also handle any other prefix format the gateway might use:
+          // walk every entry and check if either side endsWith the other.
+          for (const [k, v] of sessionKeyToRun.entries()) {
+            if (rawSessionKey.endsWith(k) || k.endsWith(rawSessionKey)) return v;
+          }
+          return null;
+        };
+
+        // Mirror EVERY chat event to the dbg ring so we can see what the
+        // gateway is sending while the modal is open.
         if (w.__sqDbg && event.event === "chat") {
           const p = event.payload as
             | { runId?: string; sessionKey?: string; state?: string }
             | undefined;
           const sk = p && typeof p.sessionKey === "string" ? p.sessionKey.trim() : null;
+          const matchTarget = matchSessionKeyToRun(sk);
           const entry: SqDbgEntry = {
             ts: Date.now(),
             eventName: event.event,
             sessionKey: sk,
             state: p?.state ?? null,
             runId: p?.runId ?? null,
-            matched: !!(sk && sessionKeyToRun.get(sk)),
+            matched: !!matchTarget,
           };
           if (!entry.matched) entry.reason = "session_not_in_modal_runs";
           w.__sqDbg.events.push(entry);
@@ -2645,7 +2670,7 @@ export function OfficeScreen({
         if (!payload) return;
         const sessionKey = (payload.sessionKey ?? "").trim();
         if (!sessionKey) return;
-        const target = sessionKeyToRun.get(sessionKey);
+        const target = matchSessionKeyToRun(sessionKey);
         if (!target) return;
         if (forwardedRunIds.has(target.stepId)) {
           console.info("[squad-bridge] already forwarded for step", target.stepId);
