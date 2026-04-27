@@ -2484,11 +2484,32 @@ export function OfficeScreen({
 
   useEffect(() => {
     if (!squadOpsModalOpen || !squadOpsSquadId) return;
+    // v45 — when a task is actively running we poll fast (2.5s) so the
+    // chat lights up live as each member returns and the leader synthesises.
+    // Idle tasks keep the slower 12s cadence to be polite to the API.
+    const taskStatus = (squadOpsSelectedTask?.status ?? "").toLowerCase();
+    const runs = squadOpsSelectedTask?.runs ?? [];
+    const anyRunActive = runs.some((r) =>
+      ["pending", "queued", "running", "dispatching", "processing", "in_progress"].includes(
+        (r.status ?? "").toLowerCase(),
+      ),
+    );
+    const isLive =
+      ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(taskStatus)
+      || anyRunActive;
+    const cadenceMs = isLive ? 2500 : 12000;
     const intervalId = window.setInterval(() => {
       void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask?.id ?? null);
-    }, 12000);
+    }, cadenceMs);
     return () => window.clearInterval(intervalId);
-  }, [loadSquadOpsTasks, squadOpsModalOpen, squadOpsSelectedTask?.id, squadOpsSquadId]);
+  }, [
+    loadSquadOpsTasks,
+    squadOpsModalOpen,
+    squadOpsSelectedTask?.id,
+    squadOpsSelectedTask?.status,
+    squadOpsSelectedTask?.runs,
+    squadOpsSquadId,
+  ]);
 
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {

@@ -296,6 +296,36 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   const respondedAgents = useMemo(() => runs.filter(runHasResponded), [runs]);
   const hasAnyDispatched = runs.length > 0;
 
+  // v45 — pull the leader run out of the roster so the modal can render its
+  // synthesis distinctly (members each give their bit, the leader does the
+  // final answer once everyone is done). Falls back to first-run heuristics
+  // for older payloads where role isn't populated.
+  const leaderRun = useMemo(() => {
+    const explicit = runs.find((r) => normalize(r.role) === "leader");
+    if (explicit) return explicit;
+    return runs[0] ?? null;
+  }, [runs]);
+  const memberRuns = useMemo(
+    () => runs.filter((r) => !leaderRun || r.id !== leaderRun.id),
+    [runs, leaderRun],
+  );
+  const memberRunsAllTerminal = useMemo(
+    () =>
+      memberRuns.length > 0 &&
+      memberRuns.every((r) =>
+        ["completed", "failed", "cancelled", "skipped"].includes(normalize(r.status)),
+      ),
+    [memberRuns],
+  );
+  const leaderIsThinking = leaderRun ? runIsThinking(leaderRun) : false;
+  const leaderIsResponded = leaderRun ? runHasResponded(leaderRun) : false;
+  const leaderIsWaitingForMembers =
+    !!leaderRun &&
+    !leaderIsResponded &&
+    !runHasFailed(leaderRun) &&
+    !memberRunsAllTerminal &&
+    memberRuns.length > 0;
+
   /* Build a chat timeline from selectedTask.messages, falling back to
      synthesising from prompt + run outputs when messages haven't been
      persisted yet (identical intent to SquadChatPanel.timelineMessages). */
@@ -673,6 +703,119 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                             </div>
                           )}
 
+                          {/* v45 — Per-member progress strip: each agent shows
+                              its current state (pending → running → completed/
+                              failed) so the operator can watch the squad work
+                              live as the self-contained pipeline runs. */}
+                          {memberRuns.length > 0 && (
+                            <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5">
+                              <div className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-white/40">
+                                <span>Members</span>
+                                <span>
+                                  {
+                                    memberRuns.filter((r) =>
+                                      ["completed", "failed", "cancelled", "skipped"].includes(
+                                        normalize(r.status),
+                                      ),
+                                    ).length
+                                  }
+                                  /{memberRuns.length} done
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {memberRuns.map((r) => {
+                                  const s = normalize(r.status);
+                                  const isDone = s === "completed";
+                                  const isFail = ["failed", "cancelled"].includes(s);
+                                  const isLive =
+                                    ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(s);
+                                  const bg = isDone
+                                    ? `${color}25`
+                                    : isFail
+                                      ? "rgba(239,68,68,.18)"
+                                      : isLive
+                                        ? `${color}10`
+                                        : "rgba(255,255,255,.04)";
+                                  const border = isDone
+                                    ? `${color}55`
+                                    : isFail
+                                      ? "rgba(239,68,68,.4)"
+                                      : isLive
+                                        ? `${color}40`
+                                        : "rgba(255,255,255,.1)";
+                                  const txt = isDone
+                                    ? color
+                                    : isFail
+                                      ? "#fca5a5"
+                                      : isLive
+                                        ? color
+                                        : "rgba(255,255,255,.5)";
+                                  return (
+                                    <span
+                                      key={r.id}
+                                      className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                                      style={{ backgroundColor: bg, borderColor: border, color: txt }}
+                                      title={`${r.agentName || "Agent"} · ${r.status}`}
+                                    >
+                                      {isLive && (
+                                        <span
+                                          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                                          style={{ backgroundColor: txt }}
+                                        />
+                                      )}
+                                      <span className="truncate max-w-[120px]">
+                                        {r.agentName || `Agent #${r.agentId}`}
+                                      </span>
+                                      <span className="opacity-60">
+                                        {isDone ? "✓" : isFail ? "✕" : isLive ? "…" : ""}
+                                      </span>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+
+                              {/* Leader synthesis indicator — visible only for
+                                  leader-mode squads where the leader is parked
+                                  until members finish. */}
+                              {leaderRun && (
+                                <div className="mt-3 flex items-center gap-2 border-t border-white/5 pt-2">
+                                  <span
+                                    className="inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[10px] font-bold uppercase tracking-wider"
+                                    style={{
+                                      borderColor: `${color}40`,
+                                      backgroundColor: `${color}15`,
+                                      color,
+                                    }}
+                                  >
+                                    Leader · {leaderRun.agentName || "Lead"}
+                                  </span>
+                                  {leaderIsResponded ? (
+                                    <span className="text-[11px] text-white/55">
+                                      Final synthesis delivered.
+                                    </span>
+                                  ) : runHasFailed(leaderRun) ? (
+                                    <span className="text-[11px] text-red-200/85">
+                                      Leader failed — see chat below.
+                                    </span>
+                                  ) : leaderIsThinking ? (
+                                    <span className="inline-flex items-center gap-1.5 text-[11px] text-white/55">
+                                      <Loader2 className="h-3 w-3 animate-spin" style={{ color }} />
+                                      Synthesising every member&rsquo;s reply…
+                                    </span>
+                                  ) : leaderIsWaitingForMembers ? (
+                                    <span className="text-[11px] text-white/55">
+                                      Waiting for members to finish before synthesising.
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] text-white/40">
+                                      Pending.
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {/* Timeline — chat bubbles */}
                           <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
                             {timeline.length === 0 ? (
@@ -707,6 +850,37 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                               )
                             )}
                           </div>
+
+                          {/* v45 — Leader synthesis card. Once the leader has
+                              produced its synthesis, surface it as the squad's
+                              authoritative answer, separated from the
+                              chronological chat above. */}
+                          {leaderRun && leaderIsResponded && (
+                            <div
+                              className="mt-4 overflow-hidden rounded-xl border"
+                              style={{
+                                borderColor: `${color}55`,
+                                backgroundColor: `${color}0d`,
+                              }}
+                            >
+                              <div
+                                className="flex items-center justify-between gap-2 border-b px-4 py-2 text-[11px] font-semibold uppercase tracking-wider"
+                                style={{ borderColor: `${color}22`, color }}
+                              >
+                                <span className="inline-flex items-center gap-2">
+                                  <Zap className="h-3.5 w-3.5" />
+                                  Squad final answer · {leaderRun.agentName || "Lead"}
+                                </span>
+                                <span className="text-[10px] text-white/45">
+                                  {memberRuns.length} member
+                                  {memberRuns.length === 1 ? "" : "s"} synthesised
+                                </span>
+                              </div>
+                              <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-white/90">
+                                {(leaderRun.outputText || "").trim()}
+                              </div>
+                            </div>
+                          )}
 
                           {/* Error */}
                           {error && (
