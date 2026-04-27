@@ -35,6 +35,13 @@ import {
   LeadContextAttachmentsSection,
   type LeadContextAttachmentsValue,
 } from "./shared/LeadContextAttachmentsSection";
+// v97 — render assistant text as proper markdown (headings, lists, links)
+// instead of dumping `##` and `**` straight on the screen, matching the
+// agent / cron / squad-chat surfaces.
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
+import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 
 type DispatchMode = "pending" | "retryFailed" | "redispatchAll";
 
@@ -165,20 +172,35 @@ const relativeTime = (value: string | null | undefined): string => {
   return fmtDate(value);
 };
 
-/** Initials from an agent / author name, for the chat bubble avatar. */
-const initialsOf = (name: string | null | undefined) => {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-};
+// v97 — `initialsOf` was retired in favour of <AgentAvatar />, which
+// owns initials + multiavatar SVG fallback internally. Kept here only as
+// a comment pointer in case future code wants the original helper back.
 
 /* ── Chat timeline types ── */
 
 type ChatBubble =
   | { id: string; kind: "user"; text: string; timestampMs: number; authorName: string | null }
-  | { id: string; kind: "assistant"; text: string; timestampMs: number; authorName: string; status: "ok" | "failed"; errorText?: string | null }
-  | { id: string; kind: "thinking"; authorName: string; timestampMs: number };
+  | {
+      id: string;
+      kind: "assistant";
+      text: string;
+      timestampMs: number;
+      authorName: string;
+      status: "ok" | "failed";
+      errorText?: string | null;
+      // v97 — optional avatar metadata so the bubble matches the agent's
+      // identity in the squad chat / cron surfaces.
+      avatarSeed?: string | null;
+      avatarUrl?: string | null;
+    }
+  | {
+      id: string;
+      kind: "thinking";
+      authorName: string;
+      timestampMs: number;
+      avatarSeed?: string | null;
+      avatarUrl?: string | null;
+    };
 
 /* ── Component ── */
 
@@ -296,6 +318,22 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   const color = squad?.color?.trim() || DEFAULT_COLOR;
   const iconEmoji = squad?.iconEmoji?.trim() || "🚀";
   const memberCount = squad?.members?.length ?? 0;
+
+  // v97 — lookup so each bubble can render the agent's real avatar (or a
+  // stable multiavatar fallback). Keyed by backendAgentId because that's
+  // what SquadTaskRun carries.
+  const memberAvatarLookup = useMemo(() => {
+    const map = new Map<number, { gatewayAgentId: string | null; name: string }>();
+    for (const m of squad?.members ?? []) {
+      if (typeof m.backendAgentId === "number") {
+        map.set(m.backendAgentId, {
+          gatewayAgentId: m.gatewayAgentId,
+          name: m.name,
+        });
+      }
+    }
+    return map;
+  }, [squad?.members]);
   const activeMode = (squad?.executionMode ?? "leader") as SquadExecutionMode;
   const modeLabel = MODE_LABEL[activeMode] ?? activeMode;
 
@@ -370,6 +408,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
             authorName: m.authorName || null,
           } as ChatBubble;
         }
+        const meta =
+          typeof m.authorId === "number" ? memberAvatarLookup.get(m.authorId) : null;
         return {
           id: `msg-${m.id}`,
           kind: "assistant",
@@ -377,18 +417,25 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           timestampMs: ts,
           authorName: m.authorName || "Agent",
           status: "ok",
+          avatarSeed: meta?.gatewayAgentId ?? m.authorName ?? `author-${m.authorId ?? "?"}`,
+          avatarUrl: null,
         } as ChatBubble;
       });
 
     if (fromMessages.length > 0) {
       // Append live thinking placeholders for agents still working,
       // so the chat feels alive while responses stream in.
-      const extra: ChatBubble[] = thinkingAgents.map((run) => ({
-        id: `thinking-${run.id}`,
-        kind: "thinking",
-        authorName: run.agentName || "Agent",
-        timestampMs: Date.now(),
-      }));
+      const extra: ChatBubble[] = thinkingAgents.map((run) => {
+        const meta = memberAvatarLookup.get(run.agentId);
+        return {
+          id: `thinking-${run.id}`,
+          kind: "thinking",
+          authorName: run.agentName || "Agent",
+          timestampMs: Date.now(),
+          avatarSeed: meta?.gatewayAgentId ?? run.agentName ?? `agent-${run.agentId}`,
+          avatarUrl: null,
+        } as ChatBubble;
+      });
       return [...fromMessages.sort((a, b) => a.timestampMs - b.timestampMs), ...extra];
     }
 
@@ -410,6 +457,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
     for (const run of runs) {
       const out = (run.outputText || "").trim();
       const err = (run.dispatchError || "").trim();
+      const meta = memberAvatarLookup.get(run.agentId);
+      const avatarSeed = meta?.gatewayAgentId ?? run.agentName ?? `agent-${run.agentId}`;
       if (out.length > 0) {
         synthetic.push({
           id: `run-out-${run.id}`,
@@ -422,6 +471,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
             : run.startedAtUtc
               ? new Date(run.startedAtUtc).getTime()
               : 0,
+          avatarSeed,
+          avatarUrl: null,
         });
       } else if (err.length > 0 || runHasFailed(run)) {
         synthetic.push({
@@ -436,6 +487,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
               ? new Date(run.startedAtUtc).getTime()
               : 0,
           errorText: err || null,
+          avatarSeed,
+          avatarUrl: null,
         });
       } else if (runIsThinking(run)) {
         synthetic.push({
@@ -443,12 +496,14 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           kind: "thinking",
           authorName: run.agentName || "Agent",
           timestampMs: Date.now(),
+          avatarSeed,
+          avatarUrl: null,
         });
       }
     }
 
     return synthetic;
-  }, [selectedTask, runs, thinkingAgents]);
+  }, [selectedTask, runs, thinkingAgents, memberAvatarLookup]);
 
   if (!open) return null;
 
@@ -880,6 +935,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                                     key={bubble.id}
                                     author={bubble.authorName}
                                     color={color}
+                                    avatarSeed={bubble.avatarSeed}
+                                    avatarUrl={bubble.avatarUrl}
                                   />
                                 ) : (
                                   <AgentBubble
@@ -889,6 +946,8 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                                     when={bubble.timestampMs}
                                     failed={bubble.status === "failed"}
                                     color={color}
+                                    avatarSeed={bubble.avatarSeed}
+                                    avatarUrl={bubble.avatarUrl}
                                   />
                                 ),
                               )
@@ -920,8 +979,10 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                                   {memberRuns.length === 1 ? "" : "s"} synthesised
                                 </span>
                               </div>
-                              <div className="whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 text-white/90">
-                                {(leaderRun.outputText || "").trim()}
+                              <div className="agent-markdown break-words px-4 py-3 text-sm leading-6 text-white/90">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                                  {(leaderRun.outputText || "").trim()}
+                                </ReactMarkdown>
                               </div>
                             </div>
                           )}
@@ -1212,6 +1273,8 @@ function UserBubble({ text, when, color }: { text: string; when: number; color: 
           className="rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-6 text-white/90"
           style={{ backgroundColor: `${color}18`, border: `1px solid ${color}35` }}
         >
+          {/* User-typed prompts render as plain text (no markdown) so an
+              accidental `#` in the prompt doesn't become a heading. */}
           <div className="whitespace-pre-wrap break-words">{text}</div>
         </div>
         <div className="mt-1 text-right text-[10px] text-white/25">
@@ -1228,24 +1291,37 @@ function AgentBubble({
   when,
   failed,
   color,
+  avatarSeed,
+  avatarUrl,
 }: {
   author: string;
   text: string;
   when: number;
   failed: boolean;
   color: string;
+  /** v97 — stable seed so the multiavatar fallback matches the agent's
+   *  identity in the squad chat / cron surfaces. */
+  avatarSeed?: string | null;
+  /** v97 — real photo URL when the agent has one. */
+  avatarUrl?: string | null;
 }) {
   return (
     <div className="flex items-start gap-2">
       <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase"
+        className="mt-0.5 shrink-0 rounded-full"
         style={{
-          backgroundColor: failed ? "rgba(239,68,68,.15)" : `${color}20`,
-          color: failed ? "#fca5a5" : color,
-          border: failed ? "1px solid rgba(239,68,68,.35)" : `1px solid ${color}45`,
+          boxShadow: failed
+            ? "0 0 0 1.5px rgba(239,68,68,.45)"
+            : `0 0 0 1px ${color}45`,
         }}
+        title={author}
       >
-        {initialsOf(author)}
+        <AgentAvatar
+          seed={(avatarSeed ?? author ?? "agent").toString()}
+          name={author}
+          avatarUrl={avatarUrl ?? null}
+          size={28}
+        />
       </div>
       <div className="min-w-0 max-w-[82%] flex-1">
         <div className="mb-1 flex items-center gap-2 text-[11px]">
@@ -1263,7 +1339,11 @@ function AgentBubble({
               : "border border-white/10 bg-white/[0.03] text-white/82"
           }`}
         >
-          <div className="whitespace-pre-wrap break-words">{text}</div>
+          <div className="agent-markdown break-words">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+              {text}
+            </ReactMarkdown>
+          </div>
         </div>
         <div className="mt-1 text-[10px] text-white/25">
           {relativeTime(when ? new Date(when).toISOString() : null) || ""}
@@ -1273,18 +1353,30 @@ function AgentBubble({
   );
 }
 
-function ThinkingBubble({ author, color }: { author: string; color: string }) {
+function ThinkingBubble({
+  author,
+  color,
+  avatarSeed,
+  avatarUrl,
+}: {
+  author: string;
+  color: string;
+  avatarSeed?: string | null;
+  avatarUrl?: string | null;
+}) {
   return (
     <div className="flex items-start gap-2">
       <div
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold uppercase"
-        style={{
-          backgroundColor: `${color}20`,
-          color,
-          border: `1px solid ${color}45`,
-        }}
+        className="mt-0.5 shrink-0 rounded-full"
+        style={{ boxShadow: `0 0 0 1px ${color}45` }}
+        title={author}
       >
-        {initialsOf(author)}
+        <AgentAvatar
+          seed={(avatarSeed ?? author ?? "agent").toString()}
+          name={author}
+          avatarUrl={avatarUrl ?? null}
+          size={28}
+        />
       </div>
       <div className="min-w-0 max-w-[82%] flex-1">
         <div className="mb-1 text-[11px] font-medium text-white/70">{author}</div>
