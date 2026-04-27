@@ -789,8 +789,9 @@ export type CronRunApplyMessagePayload = {
 export const applyCronRunMessage = async (
   runId: number,
   payload: CronRunApplyMessagePayload,
-  token?: string | null,
 ): Promise<{ ok: boolean; cronJobId?: number; cronJobRunId?: number }> => {
+  // The cron module's requestBackendJson resolves the bearer internally,
+  // so callers don't pass a token here (unlike the squads module helper).
   return await requestBackendJson<{ ok: boolean; cronJobId?: number; cronJobRunId?: number }>(
     `/api/CronJobs/runs/${encodeURIComponent(String(runId))}/apply-message`,
     {
@@ -804,6 +805,5 @@ export const applyCronRunMessage = async (
         errorMessage: payload.errorMessage ?? null,
       }),
     },
-    token ?? null,
   );
 };
