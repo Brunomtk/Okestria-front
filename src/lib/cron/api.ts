@@ -764,3 +764,46 @@ export const formatRelativeTime = (value: string | null | undefined): string => 
   if (days < 30) return diffMs >= 0 ? `${days}d ago` : `in ${days}d`;
   return formatCronDate(value);
 };
+
+// ---------------------------------------------------------------------------
+// v91 — Cron run gateway-WS bridge.
+//
+// Same pattern the squad chat uses: when the gateway WebSocket emits a
+// final assistant message on a session that matches a known cron run,
+// the front POSTs the text here and the back finalises the run as
+// "succeeded". OpenClaw 2026.4.25 doesn't honour per-request webhookUrl
+// and the back's bearer token can't read /sessions/{key}/history
+// cross-VPS, so this client-driven bridge is the only reliable delivery
+// channel today.
+// ---------------------------------------------------------------------------
+
+export type CronRunApplyMessagePayload = {
+  text: string;
+  sessionKey?: string | null;
+  externalRunId?: string | null;
+  externalTaskId?: string | null;
+  status?: "succeeded" | "failed" | null;
+  errorMessage?: string | null;
+};
+
+export const applyCronRunMessage = async (
+  runId: number,
+  payload: CronRunApplyMessagePayload,
+  token?: string | null,
+): Promise<{ ok: boolean; cronJobId?: number; cronJobRunId?: number }> => {
+  return await requestBackendJson<{ ok: boolean; cronJobId?: number; cronJobRunId?: number }>(
+    `/api/CronJobs/runs/${encodeURIComponent(String(runId))}/apply-message`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        text: payload.text,
+        sessionKey: payload.sessionKey ?? null,
+        externalRunId: payload.externalRunId ?? null,
+        externalTaskId: payload.externalTaskId ?? null,
+        status: payload.status ?? "succeeded",
+        errorMessage: payload.errorMessage ?? null,
+      }),
+    },
+    token ?? null,
+  );
+};

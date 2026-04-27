@@ -7110,6 +7110,8 @@ export function OfficeScreen({
         agents={cronAgentOptions}
         squads={cronSquadOptions}
         onClose={() => setCronJobsModalOpen(false)}
+        gatewayClient={client}
+        gatewayConnected={status === "connected"}
       />
 
       <AgentCreateWizardModal

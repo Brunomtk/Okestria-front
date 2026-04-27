@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   cancelCronJob,
+  applyCronRunMessage,
   createCronJob,
   deleteCronJob,
   DELIVERY_LABEL,
@@ -29,7 +30,9 @@ import {
   fetchCronJobRuns,
   fetchCronJobs,
   fetchCronGatewayConfig,
-  testCronGateway,
+  // testCronGateway intentionally NOT imported — the "Test gateway"
+  // button has been removed (cron now uses the gateway WS bridge same
+  // as squad chat).
   type CronGatewayConfig,
   type CronGatewayTestResult,
   formatCronDate,
@@ -84,6 +87,11 @@ type CronJobsModalProps = {
   agents: CronAgentOption[];
   squads: CronSquadOption[];
   onClose: () => void;
+  /** v91 — optional GatewayClient. When supplied, the modal listens for
+   *  chat events on cron run sessions and forwards the assistant text to
+   *  the back's apply-message endpoint. Mirrors the squad chat bridge. */
+  gatewayClient?: { onEvent: (handler: (event: { event: string; payload?: unknown }) => void) => () => void } | null;
+  gatewayConnected?: boolean;
 };
 
 type Tab = "jobs" | "new";
@@ -121,6 +129,8 @@ export function CronJobsModal({
   agents,
   squads,
   onClose,
+  gatewayClient,
+  gatewayConnected,
 }: CronJobsModalProps) {
   const [tab, setTab] = useState<Tab>("jobs");
   // v43 gateway diagnostics. When the modal opens we pull the config
@@ -319,34 +329,7 @@ export function CronJobsModal({
     };
   }, [open]);
 
-  const handleTestGateway = useCallback(async () => {
-    setGatewayTestBusy(true);
-    setGatewayTestResult(null);
-    try {
-      const result = await testCronGateway(null);
-      setGatewayTestResult(result);
-      // A successful test updates the gateway health snapshot on the
-      // backend — re-fetch the config so the top-of-modal pill flips
-      // green without requiring a modal reopen.
-      try {
-        const cfg = await fetchCronGatewayConfig();
-        setGatewayConfig(cfg);
-      } catch {
-        /* best-effort */
-      }
-    } catch (err) {
-      setGatewayTestResult({
-        ok: false,
-        httpStatus: 0,
-        dispatchUrl: "",
-        latencyMs: 0,
-        checkedAtUtc: new Date().toISOString(),
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      setGatewayTestBusy(false);
-    }
-  }, []);
+  // v91 — handleTestGateway removed alongside the "Test gateway" button.
 
   useEffect(() => {
     if (!open) return;
@@ -369,6 +352,132 @@ export function CronJobsModal({
     }, 10_000);
     return () => window.clearInterval(intervalId);
   }, [open, companyId, jobs, loadJobs, selectedJobId, loadJobDetail]);
+
+  // v91 — gateway WS → back bridge for cron runs.
+  //
+  // Same shape as the squad chat bridge: the gateway WebSocket emits
+  // a `chat` event with state="final" when an agent's reply lands.
+  // We index every run we know about by sessionKey (with a strip of the
+  // "agent:<slug>:" prefix the gateway adds), and when an event matches
+  // we POST the assistant text to the back's apply-message endpoint.
+  // The back finalises the run as `succeeded` and the next poll picks
+  // up the new state, just like a webhook callback would have.
+  useEffect(() => {
+    if (!open || !gatewayClient || !gatewayConnected) return;
+    const runIndex = new Map<string, { runId: number; jobId: number }>();
+    for (const run of selectedJobRuns) {
+      const key = (run.sessionKey ?? "").trim();
+      if (!key) continue;
+      runIndex.set(key, { runId: run.id, jobId: run.cronJobId });
+    }
+    if (runIndex.size === 0) return;
+
+    const forwardedRunIds = new Set<number>();
+    for (const r of selectedJobRuns) {
+      if ((r.resultText ?? "").trim().length > 0) forwardedRunIds.add(r.id);
+    }
+
+    const matchSession = (rawSessionKey: string | null) => {
+      if (!rawSessionKey) return null;
+      const direct = runIndex.get(rawSessionKey);
+      if (direct) return direct;
+      const hookIdx = rawSessionKey.indexOf("hook:");
+      if (hookIdx > 0) {
+        const suffix = rawSessionKey.slice(hookIdx);
+        const hit = runIndex.get(suffix);
+        if (hit) return hit;
+      }
+      for (const [k, v] of runIndex.entries()) {
+        if (rawSessionKey.endsWith(k) || k.endsWith(rawSessionKey)) return v;
+      }
+      return null;
+    };
+
+    const extractAssistantText = (message: unknown): string | null => {
+      if (!message) return null;
+      if (typeof message === "string") return message.trim() || null;
+      if (typeof message !== "object") return null;
+      const m = message as Record<string, unknown>;
+      const role = typeof m.role === "string" ? m.role.toLowerCase() : null;
+      if (role && !role.includes("assistant") && !role.includes("agent") && !role.includes("model")) return null;
+      const content = m.content;
+      if (typeof content === "string" && content.trim().length > 0) return content.trim();
+      if (Array.isArray(content)) {
+        const parts: string[] = [];
+        for (const item of content) {
+          if (typeof item === "string") parts.push(item);
+          else if (item && typeof item === "object") {
+            const it = item as Record<string, unknown>;
+            const t = typeof it.text === "string" ? it.text : typeof it.content === "string" ? it.content : null;
+            if (t) parts.push(t);
+          }
+        }
+        const joined = parts.join("\n").trim();
+        if (joined.length > 0) return joined;
+      }
+      for (const k of ["text", "markdown", "outputText", "output_text", "message", "response"]) {
+        const v = m[k];
+        if (typeof v === "string" && v.trim().length > 0) return v.trim();
+      }
+      return null;
+    };
+
+    const unsubscribe = gatewayClient.onEvent((event) => {
+      try {
+        if (event.event !== "chat") return;
+        const payload = event.payload as
+          | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
+          | undefined;
+        if (!payload) return;
+        const sessionKey = (payload.sessionKey ?? "").trim();
+        if (!sessionKey) return;
+        const target = matchSession(sessionKey);
+        if (!target) return;
+        if (forwardedRunIds.has(target.runId)) return;
+
+        const state = (payload.state ?? "").toLowerCase();
+        if (state !== "final" && state !== "aborted" && state !== "error") return;
+
+        let text = extractAssistantText(payload.message);
+        let runStatus: "succeeded" | "failed" = "succeeded";
+        let errorMessage: string | null = null;
+        if (state === "error" || state === "aborted") {
+          runStatus = "failed";
+          errorMessage = payload.errorMessage ?? `Agent ${state}.`;
+          text = text ?? errorMessage;
+        }
+        if (!text || text.length === 0) return;
+
+        forwardedRunIds.add(target.runId);
+        void applyCronRunMessage(target.runId, {
+          text,
+          sessionKey,
+          externalRunId: payload.runId ?? null,
+          status: runStatus,
+          errorMessage,
+        })
+          .then(() => {
+            void loadJobs();
+            void loadJobDetail(target.jobId);
+          })
+          .catch((err) => {
+            forwardedRunIds.delete(target.runId);
+            console.warn("[cron-bridge] apply-message failed", err);
+          });
+      } catch (err) {
+        console.warn("[cron-bridge] handler crashed", err);
+      }
+    });
+
+    return unsubscribe;
+  }, [
+    open,
+    gatewayClient,
+    gatewayConnected,
+    selectedJobRuns,
+    loadJobs,
+    loadJobDetail,
+  ]);
 
   const handleSelectJob = useCallback((jobId: number) => {
     setSelectedJobId((current) => (current === jobId ? null : jobId));
@@ -724,20 +833,9 @@ export function CronJobsModal({
                     ) : null}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void handleTestGateway()}
-                  disabled={gatewayTestBusy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                  title="POST a synthetic payload to OpenClaw /hooks/agent and show the exact response"
-                >
-                  {gatewayTestBusy ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Zap className="h-3.5 w-3.5" />
-                  )}
-                  Test gateway
-                </button>
+                {/* v91 — "Test gateway" removed. Replies now flow via the
+                    gateway WebSocket bridge → POST /runs/{runId}/apply-message,
+                    same path squad runs use. */}
               </div>
               {gatewayTestResult ? (
                 <div
