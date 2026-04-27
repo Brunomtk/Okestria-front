@@ -310,9 +310,11 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   // This dictates whether a "leader synthesises last" indicator should
   // ever appear: workflow runs sequentially with no dedicated synthesis
   // pass, so the indicator stays hidden in that mode.
-  const taskExecutionMode = normalize(selectedTask?.executionMode ?? activeMode);
+  // Named `selectedTaskMode` to avoid colliding with the new-task form's
+  // `taskExecutionMode` state declared above.
+  const selectedTaskMode = normalize(selectedTask?.executionMode ?? activeMode);
   const isLeaderSynthesisMode =
-    taskExecutionMode === "leader" || taskExecutionMode === "all" || taskExecutionMode === "all_at_once";
+    selectedTaskMode === "leader" || selectedTaskMode === "all" || selectedTaskMode === "all_at_once";
 
   // v45 — pull the leader run out of the roster so the modal can render its
   // synthesis distinctly (members each give their bit, the leader does the

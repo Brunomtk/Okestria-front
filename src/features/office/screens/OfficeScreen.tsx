@@ -2585,8 +2585,59 @@ export function OfficeScreen({
       return null;
     };
 
+    // v89 — debug instrumentation. Mirrors every chat event into a global
+    // ring buffer so the operator can diff via dev tools:
+    //   window.__sqDbg.events.slice(-10)
+    type SqDbgEntry = {
+      ts: number;
+      eventName: string;
+      sessionKey: string | null;
+      state: string | null;
+      runId: string | null;
+      matched: boolean;
+      reason?: string;
+    };
+    const w = window as unknown as {
+      __sqDbg?: { events: SqDbgEntry[]; knownSessionKeys: string[] };
+    };
+    if (!w.__sqDbg) {
+      w.__sqDbg = { events: [], knownSessionKeys: [] };
+    }
+    w.__sqDbg.knownSessionKeys = Array.from(sessionKeyToRun.keys());
+    console.info(
+      "[squad-bridge] watching",
+      w.__sqDbg.knownSessionKeys.length,
+      "session(s)",
+      w.__sqDbg.knownSessionKeys,
+    );
+
     const unsubscribe = client.onEvent((event) => {
       try {
+        // Mirror EVERY event to the dbg ring, even non-chat ones, so we
+        // can see what the gateway is sending while the modal is open.
+        if (w.__sqDbg && event.event === "chat") {
+          const p = event.payload as
+            | { runId?: string; sessionKey?: string; state?: string }
+            | undefined;
+          const sk = p && typeof p.sessionKey === "string" ? p.sessionKey.trim() : null;
+          const entry: SqDbgEntry = {
+            ts: Date.now(),
+            eventName: event.event,
+            sessionKey: sk,
+            state: p?.state ?? null,
+            runId: p?.runId ?? null,
+            matched: !!(sk && sessionKeyToRun.get(sk)),
+          };
+          if (!entry.matched) entry.reason = "session_not_in_modal_runs";
+          w.__sqDbg.events.push(entry);
+          if (w.__sqDbg.events.length > 80) w.__sqDbg.events.shift();
+          if (entry.matched) {
+            console.info("[squad-bridge] CHAT MATCHED", entry);
+          } else {
+            console.info("[squad-bridge] chat (no match)", entry);
+          }
+        }
+
         if (event.event !== "chat") return;
         const payload = event.payload as
           | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
@@ -2596,7 +2647,10 @@ export function OfficeScreen({
         if (!sessionKey) return;
         const target = sessionKeyToRun.get(sessionKey);
         if (!target) return;
-        if (forwardedRunIds.has(target.stepId)) return;
+        if (forwardedRunIds.has(target.stepId)) {
+          console.info("[squad-bridge] already forwarded for step", target.stepId);
+          return;
+        }
 
         // Only forward final / aborted / error states — deltas would
         // create noise. We send the running text snapshot at the final
