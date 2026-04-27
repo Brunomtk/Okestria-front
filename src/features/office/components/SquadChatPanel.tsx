@@ -1,7 +1,7 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ChevronRight, Loader2, RefreshCcw, Send, Sparkles, Users2 } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { ArrowDown, ChevronRight, Loader2, RefreshCcw, Send, Sparkles, Users2 } from "lucide-react";
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
 import { ackSquadTaskRender, fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
@@ -212,11 +212,82 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
     return synthetic.filter((entry) => entry.text.trim().length > 0);
   }, [resolvedActiveTask, sessionMessages]);
 
-  useEffect(() => {
+  // v90 — auto-scroll + "Jump to latest" pinned to the AgentChatPanel
+  // pattern. The scroller stays pinned to the bottom while the user
+  // hasn't scrolled away. Once they scroll up, the pin releases and a
+  // floating button appears to jump back to the latest message.
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const pinnedRef = useRef(true);
+  const [isPinned, setIsPinned] = useState(true);
+  const scrollFrameRef = useRef<number | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    if (chatBottomRef.current) {
+      chatBottomRef.current.scrollIntoView({ block: "end" });
+      return;
+    }
     const node = scrollerRef.current;
-    if (!node || !isNearBottom(node, 140)) return;
-    node.scrollTop = node.scrollHeight;
-  }, [resolvedActiveTask, visibleTasks, loading]);
+    if (node) node.scrollTop = node.scrollHeight;
+  }, []);
+
+  const setPinned = useCallback((next: boolean) => {
+    if (pinnedRef.current === next) return;
+    pinnedRef.current = next;
+    setIsPinned(next);
+  }, []);
+
+  const updatePinnedFromScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const near = isNearBottom(
+      { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+      48,
+    );
+    setPinned(near);
+  }, [setPinned]);
+
+  const scheduleScrollToBottom = useCallback(() => {
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      scrollToBottom();
+    });
+  }, [scrollToBottom]);
+
+  // Reset pin and snap to the latest when the user switches between tasks.
+  useEffect(() => {
+    setPinned(true);
+    let frameOne: number | null = requestAnimationFrame(() => {
+      scrollToBottom();
+      frameOne = null;
+      const frameTwo = requestAnimationFrame(() => scrollToBottom());
+      scrollFrameRef.current = frameTwo;
+    });
+    return () => {
+      if (frameOne !== null) cancelAnimationFrame(frameOne);
+    };
+  }, [resolvedActiveTask?.id, scrollToBottom, setPinned]);
+
+  // While pinned, follow new content. When the user has scrolled up,
+  // leave them alone and surface the Jump button instead.
+  useEffect(() => {
+    if (pinnedRef.current) scheduleScrollToBottom();
+  }, [
+    resolvedActiveTask,
+    visibleTasks,
+    sessionMessages,
+    loading,
+    scheduleScrollToBottom,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = null;
+      }
+    };
+  }, []);
 
   // v9: ACK rendered assistant turns. We only ACK messages that are backed by
   // a real numeric id (i.e., came from the execution feed, not synthesized).
@@ -349,7 +420,11 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
           </div>
         </div>
 
-        <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+        <div
+          ref={scrollerRef}
+          onScroll={updatePinnedFromScroll}
+          className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5"
+        >
           {!resolvedActiveTask ? (
             <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 text-sm text-white/35">
               Create a squad task to open its session here.
@@ -465,8 +540,29 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                   </span>
                 </div>
               ) : null}
+
+              {/* v90 — bottom anchor for scrollIntoView pinning. */}
+              <div ref={chatBottomRef} aria-hidden className="h-px w-px" />
             </div>
           )}
+
+          {/* v90 — "Jump to latest" button, mirrors the AgentChatPanel UX.
+              Only visible when the user has scrolled away from the bottom
+              and there's content to jump to. */}
+          {!isPinned && resolvedActiveTask ? (
+            <button
+              type="button"
+              onClick={() => {
+                setPinned(true);
+                scrollToBottom();
+              }}
+              aria-label="Jump to latest"
+              className="sticky bottom-3 left-1/2 mt-2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/15 bg-[#1a1326]/95 px-3 py-1.5 text-xs font-medium tracking-wide text-white/85 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur transition hover:bg-[#241935]"
+            >
+              <ArrowDown className="h-3.5 w-3.5" />
+              Jump to latest
+            </button>
+          ) : null}
         </div>
 
         <div className="border-t border-white/10 px-5 py-4">
