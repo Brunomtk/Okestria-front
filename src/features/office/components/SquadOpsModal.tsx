@@ -105,22 +105,31 @@ const DEFAULT_COLOR = "#22d3ee";
 const normalize = (value: string | null | undefined) =>
   (value ?? "").trim().toLowerCase();
 
-const isRunningStatus = (s?: string | null) =>
-  ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(
-    normalize(s),
-  );
+const isActuallyRunningStatus = (s?: string | null) =>
+  ["running", "dispatching", "processing", "in_progress"].includes(normalize(s));
+const isQueuedStatus = (s?: string | null) =>
+  ["pending", "queued"].includes(normalize(s));
+const isAnyLiveStatus = (s?: string | null) =>
+  isActuallyRunningStatus(s) || isQueuedStatus(s);
 const isFailedStatus = (s?: string | null) =>
   ["failed", "error", "cancelled"].includes(normalize(s));
 
-/** A run is "thinking" when it has been dispatched but hasn't produced
- *  any output or error yet. This is what we actually care about for UI
- *  feedback — the raw task.status keeps saying "running" even after
- *  every agent already answered, which is useless for the user. */
+/** A run is "thinking" only when the back has actually dispatched it and
+ *  is now waiting for the agent's reply. Pending/queued steps that
+ *  haven't been triggered yet are NOT thinking — they are waiting their
+ *  turn. This matters in workflow mode, where only one step at a time is
+ *  ever actually active. */
 const runIsThinking = (run: SquadTaskRun) => {
   const out = (run.outputText || "").trim();
   const err = (run.dispatchError || "").trim();
   if (out.length > 0 || err.length > 0) return false;
-  return isRunningStatus(run.status);
+  return isActuallyRunningStatus(run.status);
+};
+const runIsQueued = (run: SquadTaskRun) => {
+  const out = (run.outputText || "").trim();
+  const err = (run.dispatchError || "").trim();
+  if (out.length > 0 || err.length > 0) return false;
+  return isQueuedStatus(run.status);
 };
 const runHasResponded = (run: SquadTaskRun) =>
   (run.outputText || "").trim().length > 0;
@@ -292,19 +301,29 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
 
   const runs = selectedTask?.runs ?? [];
   const thinkingAgents = useMemo(() => runs.filter(runIsThinking), [runs]);
+  const queuedAgents = useMemo(() => runs.filter(runIsQueued), [runs]);
   const failedAgents = useMemo(() => runs.filter(runHasFailed), [runs]);
   const respondedAgents = useMemo(() => runs.filter(runHasResponded), [runs]);
   const hasAnyDispatched = runs.length > 0;
 
+  // The squad task's execution mode (workflow / leader / all / manual).
+  // This dictates whether a "leader synthesises last" indicator should
+  // ever appear: workflow runs sequentially with no dedicated synthesis
+  // pass, so the indicator stays hidden in that mode.
+  const taskExecutionMode = normalize(selectedTask?.executionMode ?? activeMode);
+  const isLeaderSynthesisMode =
+    taskExecutionMode === "leader" || taskExecutionMode === "all" || taskExecutionMode === "all_at_once";
+
   // v45 — pull the leader run out of the roster so the modal can render its
   // synthesis distinctly (members each give their bit, the leader does the
-  // final answer once everyone is done). Falls back to first-run heuristics
-  // for older payloads where role isn't populated.
+  // final answer once everyone is done). For workflow / sequential modes
+  // there is no synthesis pass, so we don't pluck a leader.
   const leaderRun = useMemo(() => {
+    if (!isLeaderSynthesisMode) return null;
     const explicit = runs.find((r) => normalize(r.role) === "leader");
     if (explicit) return explicit;
     return runs[0] ?? null;
-  }, [runs]);
+  }, [runs, isLeaderSynthesisMode]);
   const memberRuns = useMemo(
     () => runs.filter((r) => !leaderRun || r.id !== leaderRun.id),
     [runs, leaderRun],
@@ -319,6 +338,9 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   );
   const leaderIsThinking = leaderRun ? runIsThinking(leaderRun) : false;
   const leaderIsResponded = leaderRun ? runHasResponded(leaderRun) : false;
+  // Only show "Synthesising every member's reply…" when the leader has
+  // actually been dispatched. While members are still running the leader
+  // sits as pending/queued and we say so explicitly.
   const leaderIsWaitingForMembers =
     !!leaderRun &&
     !leaderIsResponded &&
@@ -703,81 +725,101 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                             </div>
                           )}
 
-                          {/* v45 — Per-member progress strip: each agent shows
-                              its current state (pending → running → completed/
-                              failed) so the operator can watch the squad work
-                              live as the self-contained pipeline runs. */}
-                          {memberRuns.length > 0 && (
+                          {/* v47 — Per-step progress strip. Each agent shows
+                              its current state (waiting → thinking → done /
+                              failed). In workflow / sequential mode only one
+                              step is "thinking" at any moment; the others
+                              show as queued so the operator sees the order
+                              the squad will execute in. */}
+                          {runs.length > 0 && (
                             <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2.5">
                               <div className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-white/40">
-                                <span>Members</span>
+                                <span>{isLeaderSynthesisMode ? "Members" : "Steps"}</span>
                                 <span>
                                   {
-                                    memberRuns.filter((r) =>
+                                    runs.filter((r) =>
                                       ["completed", "failed", "cancelled", "skipped"].includes(
                                         normalize(r.status),
                                       ),
                                     ).length
                                   }
-                                  /{memberRuns.length} done
+                                  /{runs.length} done
                                 </span>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                {memberRuns.map((r) => {
+                                {(isLeaderSynthesisMode ? memberRuns : runs).map((r, idx) => {
                                   const s = normalize(r.status);
                                   const isDone = s === "completed";
                                   const isFail = ["failed", "cancelled"].includes(s);
-                                  const isLive =
-                                    ["running", "queued", "pending", "dispatching", "processing", "in_progress"].includes(s);
+                                  const isLiveNow = isActuallyRunningStatus(s);
+                                  const isQueued = isQueuedStatus(s);
                                   const bg = isDone
                                     ? `${color}25`
                                     : isFail
                                       ? "rgba(239,68,68,.18)"
-                                      : isLive
-                                        ? `${color}10`
-                                        : "rgba(255,255,255,.04)";
+                                      : isLiveNow
+                                        ? `${color}15`
+                                        : isQueued
+                                          ? "rgba(255,255,255,.04)"
+                                          : "rgba(255,255,255,.04)";
                                   const border = isDone
                                     ? `${color}55`
                                     : isFail
                                       ? "rgba(239,68,68,.4)"
-                                      : isLive
-                                        ? `${color}40`
-                                        : "rgba(255,255,255,.1)";
+                                      : isLiveNow
+                                        ? `${color}55`
+                                        : isQueued
+                                          ? "rgba(255,255,255,.1)"
+                                          : "rgba(255,255,255,.1)";
                                   const txt = isDone
                                     ? color
                                     : isFail
                                       ? "#fca5a5"
-                                      : isLive
+                                      : isLiveNow
                                         ? color
                                         : "rgba(255,255,255,.5)";
+                                  const stateLabel = isDone
+                                    ? "✓"
+                                    : isFail
+                                      ? "✕"
+                                      : isLiveNow
+                                        ? "thinking"
+                                        : isQueued
+                                          ? "queued"
+                                          : "";
+                                  // Workflow ordering: prefix each pill with
+                                  // its 1-based step number so the operator
+                                  // sees the cascade order at a glance.
+                                  const stepNum = !isLeaderSynthesisMode ? `${idx + 1}.` : "";
                                   return (
                                     <span
                                       key={r.id}
                                       className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium"
                                       style={{ backgroundColor: bg, borderColor: border, color: txt }}
-                                      title={`${r.agentName || "Agent"} · ${r.status}`}
+                                      title={`${stepNum} ${r.agentName || "Agent"} · ${r.status}`}
                                     >
-                                      {isLive && (
+                                      {isLiveNow && (
                                         <span
                                           className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
                                           style={{ backgroundColor: txt }}
                                         />
                                       )}
-                                      <span className="truncate max-w-[120px]">
+                                      {stepNum && <span className="opacity-50">{stepNum}</span>}
+                                      <span className="truncate max-w-[140px]">
                                         {r.agentName || `Agent #${r.agentId}`}
                                       </span>
-                                      <span className="opacity-60">
-                                        {isDone ? "✓" : isFail ? "✕" : isLive ? "…" : ""}
-                                      </span>
+                                      <span className="opacity-60">{stateLabel}</span>
                                     </span>
                                   );
                                 })}
                               </div>
 
-                              {/* Leader synthesis indicator — visible only for
-                                  leader-mode squads where the leader is parked
-                                  until members finish. */}
-                              {leaderRun && (
+                              {/* Leader synthesis indicator — only relevant
+                                  when the squad's execution mode actually has
+                                  a synthesis pass (leader / all). Workflow
+                                  has no separate synthesis — the leader's
+                                  step is just another sequential step. */}
+                              {leaderRun && isLeaderSynthesisMode && (
                                 <div className="mt-3 flex items-center gap-2 border-t border-white/5 pt-2">
                                   <span
                                     className="inline-flex h-5 items-center gap-1 rounded-full border px-2 text-[10px] font-bold uppercase tracking-wider"
@@ -855,7 +897,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                               produced its synthesis, surface it as the squad's
                               authoritative answer, separated from the
                               chronological chat above. */}
-                          {leaderRun && leaderIsResponded && (
+                          {leaderRun && leaderIsResponded && isLeaderSynthesisMode && (
                             <div
                               className="mt-4 overflow-hidden rounded-xl border"
                               style={{
