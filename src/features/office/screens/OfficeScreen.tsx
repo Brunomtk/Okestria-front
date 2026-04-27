@@ -144,6 +144,7 @@ import {
   deleteSquadTask,
   dispatchSquadTask,
   estimateSquadTaskDispatch,
+  applySquadSessionMessage,
   fetchCompanySquads,
   fetchSquadCatalog,
   fetchSquadTask,
@@ -2509,6 +2510,140 @@ export function OfficeScreen({
     squadOpsSelectedTask?.status,
     squadOpsSelectedTask?.runs,
     squadOpsSquadId,
+  ]);
+
+  // v88 — Gateway → back bridge for squad task replies.
+  //
+  // Why: OpenClaw 2026.4.25 doesn't honour per-request webhookUrl on
+  // /hooks/agent, and cross-VPS GET /sessions/{key}/history is blocked
+  // (`missing scope: operator.read`). The gateway WebSocket DOES emit
+  // every assistant message in real time though — so when the squad ops
+  // modal is open we listen for chat events, match the sessionKey to a
+  // known squad task step, and POST the assistant text to the back. The
+  // back finalises the step and cascades the workflow exactly as if it
+  // had received a hook callback.
+  useEffect(() => {
+    if (!client || status !== "connected" || !squadOpsModalOpen || !squadOpsSelectedTask) {
+      return;
+    }
+    const runs = squadOpsSelectedTask.runs ?? [];
+    if (runs.length === 0) return;
+
+    // Build a sessionKey → stepId index from the live task. We dedupe
+    // forwards-per-run with `forwardedRunIds` so the same final answer
+    // never gets POSTed twice if the gateway re-emits.
+    const sessionKeyToRun = new Map<string, { stepId: number; agentId: number }>();
+    for (const run of runs) {
+      const key = (run.externalSessionKey ?? run.sessionKey ?? "").trim();
+      if (!key) continue;
+      sessionKeyToRun.set(key, { stepId: run.id, agentId: run.agentId });
+    }
+    if (sessionKeyToRun.size === 0) return;
+
+    const forwardedRunIds = new Set<number>();
+    // Pre-populate with runs that already have output so we never re-post
+    // an answer that's already on file.
+    for (const r of runs) {
+      if ((r.outputText ?? "").trim().length > 0) forwardedRunIds.add(r.id);
+    }
+
+    const extractAssistantText = (message: unknown): string | null => {
+      if (!message) return null;
+      if (typeof message === "string") return message.trim() || null;
+      if (typeof message !== "object") return null;
+      const m = message as Record<string, unknown>;
+      // Common shapes: { role:"assistant", content:"..." } or
+      // { role:"assistant", content:[{type:"text", text:"..."}] } or
+      // { text:"..." } / { markdown:"..." }
+      const role = typeof m.role === "string" ? m.role.toLowerCase() : null;
+      if (role && !role.includes("assistant") && !role.includes("agent") && !role.includes("model")) {
+        return null;
+      }
+      const content = m.content;
+      if (typeof content === "string" && content.trim().length > 0) return content.trim();
+      if (Array.isArray(content)) {
+        const parts: string[] = [];
+        for (const item of content) {
+          if (typeof item === "string") parts.push(item);
+          else if (item && typeof item === "object") {
+            const it = item as Record<string, unknown>;
+            const t = typeof it.text === "string"
+              ? it.text
+              : typeof it.content === "string"
+                ? it.content
+                : null;
+            if (t) parts.push(t);
+          }
+        }
+        const joined = parts.join("\n").trim();
+        if (joined.length > 0) return joined;
+      }
+      for (const k of ["text", "markdown", "outputText", "output_text", "message", "response"]) {
+        const v = m[k];
+        if (typeof v === "string" && v.trim().length > 0) return v.trim();
+      }
+      return null;
+    };
+
+    const unsubscribe = client.onEvent((event) => {
+      try {
+        if (event.event !== "chat") return;
+        const payload = event.payload as
+          | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
+          | undefined;
+        if (!payload) return;
+        const sessionKey = (payload.sessionKey ?? "").trim();
+        if (!sessionKey) return;
+        const target = sessionKeyToRun.get(sessionKey);
+        if (!target) return;
+        if (forwardedRunIds.has(target.stepId)) return;
+
+        // Only forward final / aborted / error states — deltas would
+        // create noise. We send the running text snapshot at the final
+        // state, which is what the user sees in the OpenClaw UI.
+        const state = (payload.state ?? "").toLowerCase();
+        if (state !== "final" && state !== "aborted" && state !== "error") return;
+
+        let text = extractAssistantText(payload.message);
+        let runStatus: "completed" | "failed" = "completed";
+        if (state === "error" || state === "aborted") {
+          runStatus = "failed";
+          text = text ?? payload.errorMessage ?? `Agent ${state}.`;
+        }
+        if (!text || text.length === 0) return;
+
+        forwardedRunIds.add(target.stepId);
+        void applySquadSessionMessage(target.stepId, {
+          text,
+          sessionKey,
+          externalRunId: payload.runId ?? null,
+          status: runStatus,
+        })
+          .then(() => {
+            // Trigger a fast refresh so the chat picks up the new state
+            // without waiting for the next 2.5s tick.
+            if (squadOpsSquadId) {
+              void loadSquadOpsTasks(squadOpsSquadId, squadOpsSelectedTask.id);
+            }
+          })
+          .catch((err) => {
+            // If forwarding fails, allow a retry on the next event.
+            forwardedRunIds.delete(target.stepId);
+            console.warn("Squad bridge: failed to apply session message", err);
+          });
+      } catch (err) {
+        console.warn("Squad bridge: handler crashed", err);
+      }
+    });
+
+    return unsubscribe;
+  }, [
+    client,
+    status,
+    squadOpsModalOpen,
+    squadOpsSelectedTask,
+    squadOpsSquadId,
+    loadSquadOpsTasks,
   ]);
 
   const handleDeleteAgent = useCallback(

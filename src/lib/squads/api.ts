@@ -1008,3 +1008,49 @@ export const fetchSquadTaskContext = async (
     updatedAtUtc: readNullableString(response.updatedAtUtc),
   };
 };
+
+// ---------------------------------------------------------------------------
+// v88 — Squad gateway bridge.
+//
+// OpenClaw 2026.4.25 accepts `webhookUrl` in the /hooks/agent payload at
+// the schema level, but the runtime does NOT actually call that webhook
+// when the agent finishes. Cross-VPS GET /sessions/{key}/history is also
+// blocked (`missing scope: operator.read`), so the back has no way to
+// pull replies on its own.
+//
+// Workaround: the frontend's gateway WebSocket already receives every
+// assistant message as it lands. When one arrives on a session key that
+// matches an open squad task step, we POST it to this endpoint so the
+// back can finalise the step and cascade the workflow.
+// ---------------------------------------------------------------------------
+
+export type SquadSessionMessageBridgePayload = {
+  text: string;
+  sessionKey?: string | null;
+  externalRunId?: string | null;
+  externalTaskId?: string | null;
+  /** Defaults to "completed" on the back. Pass "failed" when the gateway
+   *  emitted a provider-error banner. */
+  status?: "completed" | "failed" | null;
+};
+
+export const applySquadSessionMessage = async (
+  stepId: number,
+  payload: SquadSessionMessageBridgePayload,
+  token?: string | null,
+): Promise<{ ok: boolean; executionId?: number; stepId?: number }> => {
+  return await requestBackendJson<{ ok: boolean; executionId?: number; stepId?: number }>(
+    `/api/SquadExecutions/steps/${encodeURIComponent(String(stepId))}/apply-message`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        text: payload.text,
+        sessionKey: payload.sessionKey ?? null,
+        externalRunId: payload.externalRunId ?? null,
+        externalTaskId: payload.externalTaskId ?? null,
+        status: payload.status ?? "completed",
+      }),
+    },
+    token ?? getBrowserAccessToken(),
+  );
+};
