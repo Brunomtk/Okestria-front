@@ -1428,14 +1428,24 @@ export function OfficeScreen({
     [state.agents],
   );
 
-  const cronAgentOptions = useMemo<{ id: number; name: string }[]>(() => {
-    const out: { id: number; name: string }[] = [];
+  const cronAgentOptions = useMemo<{
+    id: number;
+    name: string;
+    slug?: string | null;
+    avatarUrl?: string | null;
+  }[]>(() => {
+    const out: { id: number; name: string; slug?: string | null; avatarUrl?: string | null }[] = [];
     const seen = new Set<number>();
     for (const agent of state.agents) {
       const backendId = backendAgentByGatewayIdRef.current.get(agent.agentId);
       if (typeof backendId === "number" && !seen.has(backendId)) {
         seen.add(backendId);
-        out.push({ id: backendId, name: agent.name || `Agent ${backendId}` });
+        out.push({
+          id: backendId,
+          name: agent.name || `Agent ${backendId}`,
+          slug: agent.agentId ?? null,
+          avatarUrl: agent.avatarUrl ?? null,
+        });
       }
     }
     return out;

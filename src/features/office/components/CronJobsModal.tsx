@@ -1,40 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from "react";
 import {
   AlertTriangle,
+  ArrowDown,
   CalendarClock,
-  ChevronDown,
-  ChevronRight,
   CircleStop,
+  Clock,
   Loader2,
-  // Mail icon was used only by the removed email-tool card + badges.
+  Paperclip,
   Pause,
   Pencil,
   Play,
   Plus,
   RefreshCcw,
   Save,
+  Send,
+  Sparkles,
   Timer,
   Trash2,
-  X,
+  X as XIcon,
   Zap,
 } from "lucide-react";
 import {
-  cancelCronJob,
   applyCronRunMessage,
+  cancelCronJob,
   createCronJob,
   deleteCronJob,
   DELIVERY_LABEL,
   fetchCronJob,
-  fetchCronJobRuns,
   fetchCronJobs,
-  fetchCronGatewayConfig,
-  // testCronGateway intentionally NOT imported — the "Test gateway"
-  // button has been removed (cron now uses the gateway WS bridge same
-  // as squad chat).
-  type CronGatewayConfig,
-  type CronGatewayTestResult,
   formatCronDate,
   formatRelativeTime,
   KIND_LABEL,
@@ -46,69 +49,75 @@ import {
   triggerCronJobRun,
   updateCronJob,
   WAKE_LABEL,
+  type CreateCronJobInput,
   type CronJob,
   type CronJobDeliveryMode,
   type CronJobKind,
   type CronJobListItem,
   type CronJobRun,
   type CronJobSessionMode,
-  type CronJobStatus,
   type CronJobWakeMode,
-  type CreateCronJobInput,
   type UpdateCronJobInput,
-  // Email tool was removed from the cron UI. We intentionally do NOT
-  // import CronEmailToolConfig / CronEmailToolDefaults / resolveEmailToolDefaults
-  // anymore so dead imports don't drag the bundle or confuse readers.
 } from "@/lib/cron/api";
-import {
-  listLeadGenerationJobs,
-  listLeadsByCompany,
-  type LeadGenerationJob,
-  type LeadSummary,
-} from "@/lib/leads/lead-generation-api";
-import {
-  LeadContextAttachmentsSection,
-  type LeadContextAttachmentsValue,
-} from "./shared/LeadContextAttachmentsSection";
+import { isNearBottom } from "@/lib/dom";
 
-type CronAgentOption = {
-  id: number;
-  name: string;
+// ── Visual helpers ──────────────────────────────────────────────────────
+const ACCENT = "#f59e0b"; // warm amber to match the HUD button
+
+const INITIALS = (name: string | null | undefined) => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
-type CronSquadOption = {
-  id: string;
-  name: string;
+const HUE_FROM = (seed: string) => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
 };
 
-type CronJobsModalProps = {
-  open: boolean;
-  companyId: number | null;
-  agents: CronAgentOption[];
-  squads: CronSquadOption[];
-  onClose: () => void;
-  /** v91 — optional GatewayClient. When supplied, the modal listens for
-   *  chat events on cron run sessions and forwards the assistant text to
-   *  the back's apply-message endpoint. Mirrors the squad chat bridge. */
-  gatewayClient?: { onEvent: (handler: (event: { event: string; payload?: unknown }) => void) => () => void } | null;
-  gatewayConnected?: boolean;
+const ATTACHMENT_MAX_FILES = 6;
+const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024;
+const ATTACHMENT_TOTAL_MAX_BYTES = 25 * 1024 * 1024;
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-type Tab = "jobs" | "new";
-
-const ACCENT = "#f59e0b"; // warm amber to match HUD button
-
-const DEFAULT_TZ =
-  (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) ||
-  "UTC";
+const stripDataUrlPrefix = (dataUrl: string): string => {
+  const idx = dataUrl.indexOf(",");
+  return idx === -1 ? dataUrl : dataUrl.slice(idx + 1);
+};
+const readFileAsBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("Unexpected file read result."));
+        return;
+      }
+      resolve(stripDataUrlPrefix(result));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file."));
+    reader.readAsDataURL(file);
+  });
 
 const PRESET_SCHEDULES: { label: string; expr: string; hint: string }[] = [
-  { label: "Every 5 minutes", expr: "*/5 * * * *", hint: "Fires every five minutes" },
-  { label: "Every hour", expr: "0 * * * *", hint: "Top of every hour" },
+  { label: "Every 5 min", expr: "*/5 * * * *", hint: "Fires every five minutes" },
+  { label: "Hourly", expr: "0 * * * *", hint: "Top of every hour" },
   { label: "Daily 9am", expr: "0 9 * * *", hint: "Every day at 9:00" },
   { label: "Weekdays 8am", expr: "0 8 * * 1-5", hint: "Mon–Fri at 8:00" },
-  { label: "Monday 7am", expr: "0 7 * * 1", hint: "Every Monday at 7:00" },
+  { label: "Mondays 7am", expr: "0 7 * * 1", hint: "Every Monday at 7:00" },
 ];
+
+const DEFAULT_TZ =
+  (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
 
 const toLocalDateTimeInput = (offsetMinutes = 30): string => {
   const d = new Date(Date.now() + offsetMinutes * 60 * 1000);
@@ -123,7 +132,49 @@ const fromLocalDateTimeInput = (value: string): string | null => {
   return d.toISOString();
 };
 
-export function CronJobsModal({
+const ALLOWED_SESSION_KEY_PREFIXES = ["agent:", "hook:", "studio:", "web:"];
+const previewEffectiveSessionKey = (rawKey: string): string => {
+  const trimmed = rawKey.trim();
+  if (!trimmed) return "hook:cron-<jobId>-run-<n>";
+  const lower = trimmed.toLowerCase();
+  if (ALLOWED_SESSION_KEY_PREFIXES.some((p) => lower.startsWith(p))) return trimmed;
+  return `hook:${trimmed}`;
+};
+
+// ── Props ───────────────────────────────────────────────────────────────
+type CronAgentOption = {
+  id: number;
+  name: string;
+  slug?: string | null;
+  avatarUrl?: string | null;
+};
+
+type CronSquadOption = { id: string; name: string };
+
+type CronJobsModalProps = {
+  open: boolean;
+  companyId: number | null;
+  agents: CronAgentOption[];
+  squads: CronSquadOption[];
+  onClose: () => void;
+  /** GatewayClient — when supplied, the modal listens for chat events on cron
+   *  run sessions and forwards the assistant text to the back's apply-message
+   *  endpoint. Mirrors the squad chat bridge. */
+  gatewayClient?: {
+    onEvent: (
+      handler: (event: { event: string; payload?: unknown }) => void,
+    ) => () => void;
+  } | null;
+  gatewayConnected?: boolean;
+};
+
+// Local pending attachment (not yet base64-encoded).
+type PendingAttachment = { id: string; file: File };
+
+// ─────────────────────────────────────────────────────────────────────────
+// Main modal
+// ─────────────────────────────────────────────────────────────────────────
+function CronJobsModalInner({
   open,
   companyId,
   agents,
@@ -132,301 +183,188 @@ export function CronJobsModal({
   gatewayClient,
   gatewayConnected,
 }: CronJobsModalProps) {
-  const [tab, setTab] = useState<Tab>("jobs");
-  // v43 gateway diagnostics. When the modal opens we pull the config
-  // + health snapshot so the operator sees a "Gateway: ✅ healthy /
-  // ⚠ unhealthy / ❌ not configured" strip under the header without
-  // having to trigger a real dispatch. The "Test gateway" button fires
-  // a real no-op POST to /hooks/agent via the backend and surfaces
-  // the raw gateway response.
-  const [gatewayConfig, setGatewayConfig] = useState<CronGatewayConfig | null>(null);
-  const [gatewayConfigLoading, setGatewayConfigLoading] = useState(false);
-  const [gatewayTestResult, setGatewayTestResult] = useState<CronGatewayTestResult | null>(null);
-  const [gatewayTestBusy, setGatewayTestBusy] = useState(false);
   const [jobs, setJobs] = useState<CronJobListItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [selectedJob, setSelectedJob] = useState<CronJob | null>(null);
-  const [selectedJobRuns, setSelectedJobRuns] = useState<CronJobRun[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
-
-  // Edit dialog — holds the job currently being edited (null = no dialog).
+  const [composerError, setComposerError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
 
-  // Create form state
-  const [formName, setFormName] = useState("");
-  const [formDescription, setFormDescription] = useState("");
-  const [formKind, setFormKind] = useState<CronJobKind>("one-shot");
-  const [formRunAt, setFormRunAt] = useState(() => toLocalDateTimeInput(30));
-  const [formCron, setFormCron] = useState("0 9 * * *");
-  const [formTimezone, setFormTimezone] = useState(DEFAULT_TZ);
-  const [formSystemEvent, setFormSystemEvent] = useState("");
-  const [formSessionMode, setFormSessionMode] = useState<CronJobSessionMode>("fresh");
-  const [formSessionKey, setFormSessionKey] = useState("");
-  const [formWake, setFormWake] = useState<CronJobWakeMode>("now");
-  const [formDelivery, setFormDelivery] = useState<CronJobDeliveryMode>("announce");
-  const [formWebhookUrl, setFormWebhookUrl] = useState("");
-  const [formWebhookToken, setFormWebhookToken] = useState("");
-  const [formAgentId, setFormAgentId] = useState<string>("");
-  const [formSquadId, setFormSquadId] = useState<string>("");
-  const [formDeleteAfterRun, setFormDeleteAfterRun] = useState(true);
-  // NOTE: The email tool (`tools.email`) used to live here — it let the
-  // cron-driven agent send transactional emails via Resend and added a
-  // lot of surface area (from/fromName/subject/footer/hint) that isn't
-  // needed by the cron scheduler itself. It was removed from the modal.
-  // Cron jobs now focus strictly on scheduling agent/squad runs.
-  const [createBusy, setCreateBusy] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const agentLookup = useMemo(() => {
+    const m = new Map<number, CronAgentOption>();
+    for (const a of agents) m.set(a.id, a);
+    return m;
+  }, [agents]);
 
-  // Lead context + attachments (backend v14 context_attachments feature).
-  const [contextValue, setContextValue] = useState<LeadContextAttachmentsValue>({
-    leadId: null,
-    leadGenerationJobId: null,
-    attachments: [],
-  });
-  const [contextLeads, setContextLeads] = useState<LeadSummary[]>([]);
-  const [contextMissions, setContextMissions] = useState<LeadGenerationJob[]>([]);
-
-  const resetForm = useCallback(() => {
-    setFormName("");
-    setFormDescription("");
-    setFormKind("one-shot");
-    setFormRunAt(toLocalDateTimeInput(30));
-    setFormCron("0 9 * * *");
-    setFormTimezone(DEFAULT_TZ);
-    setFormSystemEvent("");
-    setFormSessionMode("fresh");
-    setFormSessionKey("");
-    setFormWake("now");
-    setFormDelivery("announce");
-    setFormWebhookUrl("");
-    setFormWebhookToken("");
-    setFormAgentId("");
-    setFormSquadId("");
-    setFormDeleteAfterRun(true);
-    setContextValue({ leadId: null, leadGenerationJobId: null, attachments: [] });
-    setCreateError(null);
-  }, []);
-
-  // Lazy-load lead/mission options the first time the user opens the "new"
-  // tab — avoids burning a list round-trip every time the jobs tab loads.
-  useEffect(() => {
-    if (!open || tab !== "new" || !companyId) return;
-    let cancelled = false;
-    const loadContextOptions = async () => {
-      try {
-        const [leads, missions] = await Promise.all([
-          listLeadsByCompany(companyId).catch(() => [] as LeadSummary[]),
-          listLeadGenerationJobs(companyId).catch(() => [] as LeadGenerationJob[]),
-        ]);
-        if (cancelled) return;
-        setContextLeads(leads);
-        setContextMissions(missions);
-      } catch {
-        // Non-fatal — the section simply shows no options.
-      }
-    };
-    void loadContextOptions();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, tab, companyId]);
-
-  // The three email-related effects (fetch resolveEmailToolDefaults,
-  // reset on close, eagerly prefill the form) used to live here. They
-  // were removed along with the rest of the email-tool UI — see the
-  // comment at the top of the state block.
-
-  const leadOptions = useMemo(
-    () =>
-      contextLeads.map((lead) => ({
-        id: lead.id,
-        label: lead.businessName || `Lead #${lead.id}`,
-        sublabel:
-          [lead.city, lead.state].filter(Boolean).join(", ") || lead.category || null,
-      })),
-    [contextLeads],
-  );
-
-  const missionOptions = useMemo(
-    () =>
-      contextMissions.map((mission) => ({
-        id: mission.id,
-        label: mission.title || `Mission #${mission.id}`,
-        sublabel: mission.query || null,
-      })),
-    [contextMissions],
-  );
-
+  // ── Load jobs list ────────────────────────────────────────────────────
   const loadJobs = useCallback(async () => {
     if (!companyId) return;
     setLoading(true);
     setError(null);
     try {
       const list = await fetchCronJobs(companyId);
-      // Sort: active first, then by nextRunAt, then by createdDate.
-      const sorted = [...list].sort((a, b) => {
-        const aActive = a.status === "active" ? 0 : 1;
-        const bActive = b.status === "active" ? 0 : 1;
-        if (aActive !== bActive) return aActive - bActive;
-        const aNext = a.nextRunAtUtc ? new Date(a.nextRunAtUtc).getTime() : Infinity;
-        const bNext = b.nextRunAtUtc ? new Date(b.nextRunAtUtc).getTime() : Infinity;
-        if (aNext !== bNext) return aNext - bNext;
-        return new Date(b.createdDate).getTime() - new Date(a.createdDate).getTime();
+      setJobs(list);
+      setSelectedJobId((prev) => {
+        if (prev && list.some((j) => j.id === prev)) return prev;
+        return list[0]?.id ?? null;
       });
-      setJobs(sorted);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, [companyId]);
 
+  // ── Load detail (with runs) ───────────────────────────────────────────
   const loadJobDetail = useCallback(async (jobId: number) => {
     setDetailLoading(true);
     try {
-      const [job, runs] = await Promise.all([
-        fetchCronJob(jobId),
-        fetchCronJobRuns(jobId, 20).catch(() => [] as CronJobRun[]),
-      ]);
+      const job = await fetchCronJob(jobId);
       setSelectedJob(job);
-      setSelectedJobRuns(runs);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setDetailLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    if (!open || !companyId) return;
+    if (!open) return;
     void loadJobs();
-  }, [open, companyId, loadJobs]);
-
-  // Fetch the gateway config the moment the modal opens so the banner
-  // under the tabs reflects whether /hooks is wired up at all. Kept as
-  // a best-effort call: if the endpoint 404s on older back builds the
-  // banner falls back to "config unknown" and we proceed as normal.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    const loadConfig = async () => {
-      setGatewayConfigLoading(true);
-      try {
-        const cfg = await fetchCronGatewayConfig();
-        if (!cancelled) setGatewayConfig(cfg);
-      } catch {
-        if (!cancelled) setGatewayConfig(null);
-      } finally {
-        if (!cancelled) setGatewayConfigLoading(false);
-      }
-    };
-    void loadConfig();
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  // v91 — handleTestGateway removed alongside the "Test gateway" button.
+  }, [open, loadJobs]);
 
   useEffect(() => {
-    if (!open) return;
-    if (selectedJobId == null) {
+    if (!open || selectedJobId == null) {
       setSelectedJob(null);
-      setSelectedJobRuns([]);
       return;
     }
     void loadJobDetail(selectedJobId);
   }, [open, selectedJobId, loadJobDetail]);
 
-  // Auto-refresh running jobs every 10s
+  // Auto-refresh detail every 4s while a run is in flight so the chat
+  // bubbles update from queued → running → succeeded without the user
+  // having to click around.
   useEffect(() => {
-    if (!open || !companyId) return;
-    const hasActive = jobs.some((j) => j.status === "active");
-    if (!hasActive) return;
-    const intervalId = window.setInterval(() => {
-      void loadJobs();
-      if (selectedJobId != null) void loadJobDetail(selectedJobId);
-    }, 10_000);
-    return () => window.clearInterval(intervalId);
-  }, [open, companyId, jobs, loadJobs, selectedJobId, loadJobDetail]);
+    if (!open || !selectedJob) return;
+    const hasInFlight = (selectedJob.runs ?? []).some(
+      (r) => r.status === "queued" || r.status === "running",
+    );
+    if (!hasInFlight) return;
+    const id = window.setInterval(() => {
+      void loadJobDetail(selectedJob.id);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, [open, selectedJob, loadJobDetail]);
 
-  // v91 — gateway WS → back bridge for cron runs.
-  //
-  // Same shape as the squad chat bridge: the gateway WebSocket emits
-  // a `chat` event with state="final" when an agent's reply lands.
-  // We index every run we know about by sessionKey (with a strip of the
-  // "agent:<slug>:" prefix the gateway adds), and when an event matches
-  // we POST the assistant text to the back's apply-message endpoint.
-  // The back finalises the run as `succeeded` and the next poll picks
-  // up the new state, just like a webhook callback would have.
+  // ── Gateway WS bridge — forward chat events to apply-message ──────────
   useEffect(() => {
     if (!open || !gatewayClient || !gatewayConnected) return;
+    const runs = selectedJob?.runs ?? [];
+    if (runs.length === 0) return;
+
     const runIndex = new Map<string, { runId: number; jobId: number }>();
-    for (const run of selectedJobRuns) {
-      const key = (run.sessionKey ?? "").trim();
-      if (!key) continue;
-      runIndex.set(key, { runId: run.id, jobId: run.cronJobId });
+    for (const r of runs) {
+      const k = (r.sessionKey ?? "").trim();
+      if (!k) continue;
+      runIndex.set(k, { runId: r.id, jobId: r.cronJobId });
     }
     if (runIndex.size === 0) return;
 
     const forwardedRunIds = new Set<number>();
-    for (const r of selectedJobRuns) {
-      if ((r.resultText ?? "").trim().length > 0) forwardedRunIds.add(r.id);
+    for (const r of runs) {
+      if (
+        r.status === "succeeded" ||
+        r.status === "failed" ||
+        r.status === "cancelled"
+      ) {
+        forwardedRunIds.add(r.id);
+      }
     }
 
-    const matchSession = (rawSessionKey: string | null) => {
-      if (!rawSessionKey) return null;
-      const direct = runIndex.get(rawSessionKey);
+    const matchSession = (raw: string | null) => {
+      if (!raw) return null;
+      const direct = runIndex.get(raw);
       if (direct) return direct;
-      const hookIdx = rawSessionKey.indexOf("hook:");
-      if (hookIdx > 0) {
-        const suffix = rawSessionKey.slice(hookIdx);
+      const idx = raw.indexOf("hook:");
+      if (idx > 0) {
+        const suffix = raw.slice(idx);
         const hit = runIndex.get(suffix);
         if (hit) return hit;
       }
       for (const [k, v] of runIndex.entries()) {
-        if (rawSessionKey.endsWith(k) || k.endsWith(rawSessionKey)) return v;
+        if (raw.endsWith(k) || k.endsWith(raw)) return v;
       }
       return null;
     };
 
-    const extractAssistantText = (message: unknown): string | null => {
+    const extractText = (message: unknown): string | null => {
       if (!message) return null;
       if (typeof message === "string") return message.trim() || null;
       if (typeof message !== "object") return null;
       const m = message as Record<string, unknown>;
       const role = typeof m.role === "string" ? m.role.toLowerCase() : null;
-      if (role && !role.includes("assistant") && !role.includes("agent") && !role.includes("model")) return null;
+      if (
+        role &&
+        !role.includes("assistant") &&
+        !role.includes("agent") &&
+        !role.includes("model")
+      )
+        return null;
       const content = m.content;
-      if (typeof content === "string" && content.trim().length > 0) return content.trim();
+      if (typeof content === "string" && content.trim().length > 0)
+        return content.trim();
       if (Array.isArray(content)) {
         const parts: string[] = [];
         for (const item of content) {
           if (typeof item === "string") parts.push(item);
           else if (item && typeof item === "object") {
             const it = item as Record<string, unknown>;
-            const t = typeof it.text === "string" ? it.text : typeof it.content === "string" ? it.content : null;
+            const t =
+              typeof it.text === "string"
+                ? it.text
+                : typeof it.content === "string"
+                  ? it.content
+                  : null;
             if (t) parts.push(t);
           }
         }
         const joined = parts.join("\n").trim();
         if (joined.length > 0) return joined;
       }
-      for (const k of ["text", "markdown", "outputText", "output_text", "message", "response"]) {
+      for (const k of [
+        "text",
+        "markdown",
+        "outputText",
+        "output_text",
+        "message",
+        "response",
+      ]) {
         const v = m[k];
         if (typeof v === "string" && v.trim().length > 0) return v.trim();
       }
       return null;
     };
 
+    const stripPrefix = (raw: string): string => {
+      const idx = raw.indexOf("hook:");
+      return idx > 0 ? raw.slice(idx) : raw;
+    };
+
     const unsubscribe = gatewayClient.onEvent((event) => {
       try {
         if (event.event !== "chat") return;
         const payload = event.payload as
-          | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
+          | {
+              runId?: string;
+              sessionKey?: string;
+              state?: string;
+              message?: unknown;
+              errorMessage?: string;
+            }
           | undefined;
         if (!payload) return;
         const sessionKey = (payload.sessionKey ?? "").trim();
@@ -438,23 +376,19 @@ export function CronJobsModal({
         const state = (payload.state ?? "").toLowerCase();
         if (state !== "final" && state !== "aborted" && state !== "error") return;
 
-        let text = extractAssistantText(payload.message);
-        let runStatus: "succeeded" | "failed" = "succeeded";
-        let errorMessage: string | null = null;
-        if (state === "error" || state === "aborted") {
-          runStatus = "failed";
-          errorMessage = payload.errorMessage ?? `Agent ${state}.`;
-          text = text ?? errorMessage;
-        }
-        if (!text || text.length === 0) return;
+        const text = extractText(payload.message);
+        const errorMessage = payload.errorMessage ?? null;
+
+        // For "final" we MUST have text. For aborted/error, error string
+        // is enough (we'll surface it as the run's error).
+        if (state === "final" && (!text || text.length === 0)) return;
 
         forwardedRunIds.add(target.runId);
         void applyCronRunMessage(target.runId, {
-          text,
-          sessionKey,
-          externalRunId: payload.runId ?? null,
-          status: runStatus,
-          errorMessage,
+          state: state as "final" | "aborted" | "error",
+          text: text ?? null,
+          error: errorMessage,
+          sessionKey: stripPrefix(sessionKey),
         })
           .then(() => {
             void loadJobs();
@@ -462,1677 +396,1342 @@ export function CronJobsModal({
           })
           .catch((err) => {
             forwardedRunIds.delete(target.runId);
-            console.warn("[cron-bridge] apply-message failed", err);
+            console.error("CronBridge: apply-message failed", err);
           });
       } catch (err) {
-        console.warn("[cron-bridge] handler crashed", err);
+        console.error("CronBridge: onEvent error", err);
       }
     });
 
-    return unsubscribe;
-  }, [
-    open,
-    gatewayClient,
-    gatewayConnected,
-    selectedJobRuns,
-    loadJobs,
-    loadJobDetail,
-  ]);
+    return () => unsubscribe();
+  }, [open, gatewayClient, gatewayConnected, selectedJob, loadJobs, loadJobDetail]);
 
-  const handleSelectJob = useCallback((jobId: number) => {
-    setSelectedJobId((current) => (current === jobId ? null : jobId));
-  }, []);
-
-  const runAction = useCallback(
-    async (
-      key: string,
-      action: () => Promise<unknown>,
-      postAction?: () => Promise<void>,
-    ) => {
-      setActionBusy(key);
+  // ── Lifecycle actions ─────────────────────────────────────────────────
+  const callAction = useCallback(
+    async <T,>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+      setActionBusy(label);
       setError(null);
       try {
-        await action();
+        const r = await fn();
         await loadJobs();
-        if (postAction) await postAction();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        if (selectedJobId) await loadJobDetail(selectedJobId);
+        return r;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return null;
       } finally {
         setActionBusy(null);
-      }
-    },
-    [loadJobs],
-  );
-
-  const handlePause = (jobId: number) =>
-    void runAction(
-      `pause-${jobId}`,
-      () => pauseCronJob(jobId),
-      async () => {
-        if (selectedJobId === jobId) await loadJobDetail(jobId);
-      },
-    );
-  const handleResume = (jobId: number) =>
-    void runAction(
-      `resume-${jobId}`,
-      () => resumeCronJob(jobId),
-      async () => {
-        if (selectedJobId === jobId) await loadJobDetail(jobId);
-      },
-    );
-  const handleCancel = (jobId: number) =>
-    void runAction(
-      `cancel-${jobId}`,
-      () => cancelCronJob(jobId),
-      async () => {
-        if (selectedJobId === jobId) await loadJobDetail(jobId);
-      },
-    );
-  const handleDelete = (jobId: number) => {
-    if (!confirm("Delete this cron job? This cannot be undone.")) return;
-    void runAction(
-      `delete-${jobId}`,
-      () => deleteCronJob(jobId),
-      async () => {
-        if (selectedJobId === jobId) setSelectedJobId(null);
-      },
-    );
-  };
-  const handleRunNow = (jobId: number) =>
-    void runAction(
-      `run-${jobId}`,
-      () => triggerCronJobRun(jobId),
-      async () => {
-        if (selectedJobId === jobId) await loadJobDetail(jobId);
-      },
-    );
-
-  // Open the edit dialog for the currently selected job (or fetch if needed).
-  const handleOpenEdit = useCallback(
-    async (jobId: number) => {
-      try {
-        const job =
-          selectedJob && selectedJob.id === jobId ? selectedJob : await fetchCronJob(jobId);
-        setEditingJob(job);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    },
-    [selectedJob],
-  );
-
-  // After a successful save: refresh list + detail so the new values show up
-  // immediately in the expanded row.
-  const handleEditSaved = useCallback(
-    async (jobId: number) => {
-      setEditingJob(null);
-      await loadJobs();
-      if (selectedJobId === jobId) {
-        await loadJobDetail(jobId);
       }
     },
     [loadJobs, loadJobDetail, selectedJobId],
   );
 
-  const canCreate =
-    !!companyId &&
-    formName.trim().length > 0 &&
-    formSystemEvent.trim().length > 0 &&
-    (formKind === "one-shot"
-      ? !!fromLocalDateTimeInput(formRunAt)
-      : formCron.trim().length > 0);
+  const handlePause = useCallback(
+    (id: number) => callAction(`pause-${id}`, () => pauseCronJob(id)),
+    [callAction],
+  );
+  const handleResume = useCallback(
+    (id: number) => callAction(`resume-${id}`, () => resumeCronJob(id)),
+    [callAction],
+  );
+  const handleCancel = useCallback(
+    (id: number) => {
+      if (!window.confirm("Cancel this cron job? It will stop firing immediately.")) return;
+      void callAction(`cancel-${id}`, () => cancelCronJob(id));
+    },
+    [callAction],
+  );
+  const handleDelete = useCallback(
+    async (id: number) => {
+      if (!window.confirm("Delete this cron job and all its run history? This cannot be undone."))
+        return;
+      await callAction(`delete-${id}`, async () => {
+        await deleteCronJob(id);
+        if (selectedJobId === id) setSelectedJobId(null);
+        return true;
+      });
+    },
+    [callAction, selectedJobId],
+  );
 
-  const handleCreate = useCallback(async () => {
-    if (!companyId || !canCreate) return;
-    setCreateBusy(true);
-    setCreateError(null);
-    try {
-      const payload: CreateCronJobInput = {
-        companyId,
-        name: formName.trim(),
-        description: formDescription.trim() || null,
-        kind: formKind,
-        cronExpression: formKind === "recurring" ? formCron.trim() : null,
-        timezone: formKind === "recurring" ? formTimezone.trim() || null : null,
-        runAtUtc:
-          formKind === "one-shot" ? fromLocalDateTimeInput(formRunAt) : null,
-        sessionMode: formSessionMode,
-        sessionKey:
-          formSessionMode === "named" && formSessionKey.trim()
-            ? formSessionKey.trim()
-            : null,
-        systemEvent: formSystemEvent.trim(),
-        wakeMode: formWake,
-        deliveryMode: formDelivery,
-        webhookUrl:
-          formDelivery === "webhook" && formWebhookUrl.trim()
-            ? formWebhookUrl.trim()
-            : null,
-        webhookToken:
-          formDelivery === "webhook" && formWebhookToken.trim()
-            ? formWebhookToken.trim()
-            : null,
-        deleteAfterRun: formKind === "one-shot" ? formDeleteAfterRun : false,
-        agentId:
-          formAgentId.trim() && !Number.isNaN(Number(formAgentId))
-            ? Number(formAgentId)
-            : null,
-        squadId: formSquadId.trim() || null,
-        leadId: contextValue.leadId,
-        leadGenerationJobId: contextValue.leadGenerationJobId,
-        attachments:
-          contextValue.attachments.length > 0 ? contextValue.attachments : null,
-        // No tools — the cron UI no longer configures the email tool.
-        // Sending null keeps the backend compatible (it accepts null or
-        // an empty object) and leaves other cron-managed metadata alone.
-        tools: null,
-      };
-      await createCronJob(payload);
-      resetForm();
-      await loadJobs();
-      setTab("jobs");
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCreateBusy(false);
-    }
-  }, [
-    canCreate,
-    companyId,
-    contextValue,
-    formAgentId,
-    formCron,
-    formDelivery,
-    formDeleteAfterRun,
-    formDescription,
-    formKind,
-    formName,
-    formRunAt,
-    formSessionKey,
-    formSessionMode,
-    formSquadId,
-    formSystemEvent,
-    formTimezone,
-    formWake,
-    formWebhookToken,
-    formWebhookUrl,
-    loadJobs,
-    resetForm,
-  ]);
-
-  const scheduleSummary = useMemo(() => {
-    if (formKind === "one-shot") {
-      const parsed = fromLocalDateTimeInput(formRunAt);
-      if (!parsed) return "Pick a date and time";
-      return `Runs once · ${formatCronDate(parsed)}`;
-    }
-    return `${formCron.trim() || "?"} · ${formTimezone || DEFAULT_TZ}`;
-  }, [formKind, formRunAt, formCron, formTimezone]);
+  const handleRunNow = useCallback(
+    async (id: number, override?: string) => {
+      const trimmed = override?.trim() || undefined;
+      await callAction(`run-${id}`, () =>
+        triggerCronJobRun(id, { systemEventOverride: trimmed }),
+      );
+    },
+    [callAction],
+  );
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
-        style={{ borderColor: `${ACCENT}30` }}
-      >
-        {/* ── Header ── */}
-        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
-          <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl"
-            style={{ backgroundColor: `${ACCENT}20`, border: `1.5px solid ${ACCENT}50` }}
-          >
-            <Timer className="h-5 w-5" style={{ color: ACCENT }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-semibold text-white">
-              Cron jobs
-            </h2>
-            <p className="text-xs text-white/40">
-              Scheduled one-shot reminders and recurring background tasks.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadJobs()}
-            disabled={loading}
-            title="Refresh"
-            className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        {/* ── Tabs ── */}
-        <div className="flex border-b border-white/10">
-          <button
-            type="button"
-            onClick={() => setTab("jobs")}
-            className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
-              tab === "jobs" ? "border-b-2 text-white" : "text-white/40 hover:text-white/60"
-            }`}
-            style={tab === "jobs" ? { borderColor: ACCENT } : undefined}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              Jobs
-              <span
-                className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold"
-                style={{ backgroundColor: `${ACCENT}25`, color: ACCENT }}
-              >
-                {jobs.length}
-              </span>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cron-modal-title"
+    >
+      <div className="flex h-full max-h-[92vh] w-full max-w-[1160px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0c0810] shadow-[0_40px_120px_rgba(0,0,0,0.7)]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div className="flex items-center gap-2.5">
+            <span
+              className="flex h-9 w-9 items-center justify-center rounded-full"
+              style={{ backgroundColor: `${ACCENT}22`, border: `1px solid ${ACCENT}44` }}
+              aria-hidden
+            >
+              <CalendarClock className="h-4 w-4" style={{ color: ACCENT }} />
             </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("new")}
-            className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
-              tab === "new" ? "border-b-2 text-white" : "text-white/40 hover:text-white/60"
-            }`}
-            style={tab === "new" ? { borderColor: ACCENT } : undefined}
-          >
-            New job
-          </button>
+            <div>
+              <h2 id="cron-modal-title" className="text-base font-semibold text-white">
+                Cron jobs
+              </h2>
+              <p className="text-[11px] text-white/40">
+                Schedule agent-driven runs and watch the replies land in chat.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => loadJobs()}
+              disabled={loading}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-2.5 text-[11px] text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+              title="Refresh list"
+            >
+              <RefreshCcw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-medium text-white transition"
+              style={{ backgroundColor: `${ACCENT}33`, border: `1px solid ${ACCENT}66` }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>New cron</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="ml-1 flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/[0.03] text-white/65 transition hover:bg-white/10 hover:text-white"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
 
-        {/* ── Gateway diagnostics strip ──
-            Always visible (sits above the tab content) so the operator
-            sees at a glance whether the OpenClaw bridge is even wired
-            up. The "Test gateway" button fires a real synthetic POST to
-            /hooks/agent and shows the round-trip below. */}
-        {(() => {
-          if (gatewayConfigLoading && !gatewayConfig) {
-            return (
-              <div className="border-b border-white/10 px-6 py-3 text-xs text-white/45">
-                <Loader2 className="mr-2 inline h-3.5 w-3.5 animate-spin" />
-                Checking OpenClaw gateway…
-              </div>
-            );
-          }
-          if (!gatewayConfig) return null;
-
-          const healthStatus = gatewayConfig.health?.status ?? "unknown";
-          // In self-contained mode the gateway is informational only —
-          // cron runs don't depend on it. Surface that explicitly so
-          // "Unreachable" doesn't scare the operator into thinking
-          // their schedule is broken.
-          const statusLabel = gatewayConfig.selfContainedMode
-            ? { text: "Self-contained AI", tone: "emerald" as const }
-            : !gatewayConfig.hooksConfigured
-              ? { text: "Not configured", tone: "rose" as const }
-              : healthStatus === "healthy"
-                ? { text: "Online", tone: "emerald" as const }
-                : healthStatus === "degraded"
-                  ? { text: "Degraded", tone: "amber" as const }
-                  : healthStatus === "unhealthy"
-                    ? { text: "Unreachable", tone: "rose" as const }
-                    : { text: "Unknown", tone: "amber" as const };
-
-          const tonePalette = {
-            emerald: { border: "border-emerald-400/30", bg: "bg-emerald-500/[0.07]", text: "text-emerald-200" },
-            amber: { border: "border-amber-400/30", bg: "bg-amber-500/[0.08]", text: "text-amber-200" },
-            rose: { border: "border-rose-400/30", bg: "bg-rose-500/[0.08]", text: "text-rose-200" },
-          };
-          const tone = tonePalette[statusLabel.tone];
-
-          return (
-            <div className="border-b border-white/10 px-6 py-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider ${tone.border} ${tone.bg} ${tone.text}`}
-                    >
-                      Gateway · {statusLabel.text}
-                    </span>
-                    {gatewayConfig.hooksBaseUrl ? (
-                      <span className="truncate text-[11px] text-white/45">
-                        {gatewayConfig.hooksBaseUrl}
-                      </span>
-                    ) : null}
-                  </div>
-                  {gatewayConfig.selfContainedMode ? (
-                    <div className="mt-1 text-[11px] text-emerald-200/80">
-                      Cron runs are executed in-process via the configured AI provider — no OpenClaw dispatch required. Set <code>Okestria__CronSelfContained=false</code> on the backend env to switch back to gateway dispatch.
-                    </div>
-                  ) : null}
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
-                    <span>
-                      Hook token:{" "}
-                      <span className={gatewayConfig.hasHookToken ? "text-emerald-300" : "text-rose-300"}>
-                        {gatewayConfig.hasHookToken ? "set" : "missing"}
-                      </span>
-                    </span>
-                    <span>
-                      Upstream token:{" "}
-                      <span className={gatewayConfig.hasUpstreamToken ? "text-emerald-300" : "text-rose-300"}>
-                        {gatewayConfig.hasUpstreamToken ? "set" : "missing"}
-                      </span>
-                    </span>
-                    {gatewayConfig.expectedCallbackUrl ? (
-                      <span className="truncate">
-                        Callback: <code className="text-white/55">{gatewayConfig.expectedCallbackUrl}</code>
-                      </span>
-                    ) : null}
-                    {gatewayConfig.health?.lastCheckedUtc ? (
-                      <span>
-                        Checked: {formatRelativeTime(gatewayConfig.health.lastCheckedUtc)}
-                      </span>
-                    ) : null}
-                    {typeof gatewayConfig.health?.lastLatencyMs === "number" ? (
-                      <span>Latency: {gatewayConfig.health.lastLatencyMs}ms</span>
-                    ) : null}
-                  </div>
-                </div>
-                {/* v91 — "Test gateway" removed. Replies now flow via the
-                    gateway WebSocket bridge → POST /runs/{runId}/apply-message,
-                    same path squad runs use. */}
-              </div>
-              {gatewayTestResult ? (
-                <div
-                  className={`mt-2 rounded-lg border px-3 py-2 text-[11px] leading-5 ${
-                    gatewayTestResult.ok
-                      ? "border-emerald-400/30 bg-emerald-500/[0.07] text-emerald-100"
-                      : "border-rose-400/30 bg-rose-500/[0.07] text-rose-100"
-                  }`}
-                >
-                  <div className="font-semibold">
-                    {gatewayTestResult.ok
-                      ? `✅ Gateway responded ${gatewayTestResult.httpStatus} in ${gatewayTestResult.latencyMs}ms`
-                      : `❌ ${gatewayTestResult.error ?? `Gateway responded ${gatewayTestResult.httpStatus}`}`}
-                  </div>
-                  {gatewayTestResult.dispatchUrl ? (
-                    <div className="mt-0.5 text-white/60">
-                      URL: <code>{gatewayTestResult.dispatchUrl}</code>
-                    </div>
-                  ) : null}
-                  {gatewayTestResult.resolvedAgentId ? (
-                    <div className="text-white/60">
-                      Agent id resolved: <code>{gatewayTestResult.resolvedAgentId}</code>
-                    </div>
-                  ) : null}
-                  {gatewayTestResult.agentResolutionError ? (
-                    <div className="text-amber-200/80">
-                      ⚠ {gatewayTestResult.agentResolutionError}
-                    </div>
-                  ) : null}
-                  {gatewayTestResult.responseBodyPreview ? (
-                    <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-black/30 px-2 py-1 text-[10px] text-white/70">
-                      {gatewayTestResult.responseBodyPreview}
-                    </pre>
-                  ) : null}
-                </div>
-              ) : null}
+        {/* Body — list rail + chat panel */}
+        <div className="flex min-h-0 flex-1">
+          {/* List rail */}
+          <aside className="flex w-72 flex-none flex-col overflow-hidden border-r border-white/10 bg-black/30">
+            <div className="flex items-center justify-between px-4 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+              <span>Scheduled</span>
+              <span>{jobs.length}</span>
             </div>
-          );
-        })()}
-
-        {/* ── Content ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
-          {error && (
-            <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="leading-6">{error}</span>
-            </div>
-          )}
-
-          {tab === "jobs" && (
-            <div className="space-y-2">
-              {jobs.length === 0 && !loading ? (
-                <div className="rounded-xl border border-dashed border-white/10 px-4 py-10 text-center">
-                  <div
-                    className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl"
-                    style={{ backgroundColor: `${ACCENT}15`, border: `1.5px solid ${ACCENT}30` }}
-                  >
-                    <CalendarClock className="h-5 w-5" style={{ color: ACCENT }} />
-                  </div>
-                  <div className="text-sm font-medium text-white">No cron jobs yet</div>
-                  <div className="mt-1 text-xs text-white/35">
-                    Schedule a one-shot reminder or a recurring background task.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setTab("new")}
-                    className="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition"
-                    style={{ backgroundColor: `${ACCENT}25`, border: `1px solid ${ACCENT}40` }}
-                  >
-                    <Plus className="h-4 w-4" />
-                    New job
-                  </button>
+            <div className="flex-1 overflow-y-auto px-2 py-2">
+              {loading && jobs.length === 0 ? (
+                <div className="flex items-center justify-center px-3 py-10 text-xs text-white/40">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-white/10 px-3 py-6 text-center text-xs text-white/40">
+                  No cron jobs yet. Hit
+                  <span className="mx-1 inline-flex items-center gap-1 rounded-full border border-white/15 px-1.5 text-[10px] uppercase tracking-wider text-white/60">
+                    <Plus className="h-2.5 w-2.5" /> New cron
+                  </span>
+                  to schedule one.
                 </div>
               ) : (
-                jobs.map((job) => {
-                  const isExpanded = selectedJobId === job.id;
-                  const statusColor = STATUS_COLOR[job.status];
-                  return (
-                    <div
+                <ul className="space-y-1">
+                  {jobs.map((job) => (
+                    <CronListRow
                       key={job.id}
-                      className={`overflow-hidden rounded-xl border transition ${
-                        isExpanded
-                          ? "bg-white/[0.04]"
-                          : "border-white/[0.06] bg-transparent hover:border-white/12 hover:bg-white/[0.03]"
-                      }`}
-                      style={isExpanded ? { borderColor: `${ACCENT}40` } : undefined}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleSelectJob(job.id)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left"
-                      >
-                        <span className="text-white/30">
-                          {isExpanded ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-sm font-medium text-white">
-                              {job.name || `Job #${job.id}`}
-                            </div>
-                            <span
-                              className="shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider"
-                              style={{
-                                borderColor: `${statusColor}40`,
-                                backgroundColor: `${statusColor}15`,
-                                color: statusColor,
-                              }}
-                            >
-                              {STATUS_LABEL[job.status]}
-                            </span>
-                            {/* ToolsBadge used to show here for jobs
-                                with the email tool enabled. Removed. */}
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-[11px] text-white/35">
-                            <span>{KIND_LABEL[job.kind]}</span>
-                            <span className="text-white/20">·</span>
-                            <span>
-                              {job.kind === "recurring"
-                                ? job.cronExpression || "—"
-                                : job.runAtUtc
-                                  ? formatRelativeTime(job.runAtUtc)
-                                  : "—"}
-                            </span>
-                            {job.runCount > 0 && (
-                              <>
-                                <span className="text-white/20">·</span>
-                                <span>
-                                  {job.runCount} run{job.runCount === 1 ? "" : "s"}
-                                </span>
-                              </>
-                            )}
-                            {job.failureCount > 0 && (
-                              <>
-                                <span className="text-white/20">·</span>
-                                <span className="text-red-300">
-                                  {job.failureCount} failed
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </button>
-
-                      {isExpanded && (
-                        <div className="space-y-3 border-t border-white/[0.06] bg-black/20 px-4 py-4">
-                          {detailLoading && !selectedJob ? (
-                            <div className="flex items-center justify-center py-6 text-white/40">
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                            </div>
-                          ) : selectedJob ? (
-                            <>
-                              {selectedJob.description && (
-                                <div className="text-xs leading-5 text-white/60">
-                                  {selectedJob.description}
-                                </div>
-                              )}
-
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-white/60">
-                                <DetailRow
-                                  label="Schedule"
-                                  value={
-                                    selectedJob.kind === "recurring"
-                                      ? `${selectedJob.cronExpression ?? ""} (${selectedJob.timezone ?? DEFAULT_TZ})`
-                                      : formatCronDate(selectedJob.runAtUtc)
-                                  }
-                                />
-                                <DetailRow
-                                  label="Next run"
-                                  value={
-                                    selectedJob.nextRunAtUtc
-                                      ? `${formatCronDate(selectedJob.nextRunAtUtc)} · ${formatRelativeTime(selectedJob.nextRunAtUtc)}`
-                                      : "—"
-                                  }
-                                />
-                                <DetailRow
-                                  label="Session"
-                                  value={SESSION_LABEL[selectedJob.sessionMode]}
-                                />
-                                <DetailRow
-                                  label="Delivery"
-                                  value={DELIVERY_LABEL[selectedJob.deliveryMode]}
-                                />
-                                <DetailRow
-                                  label="Wake"
-                                  value={WAKE_LABEL[selectedJob.wakeMode]}
-                                />
-                                <DetailRow
-                                  label="Last result"
-                                  value={
-                                    selectedJob.lastRunStatus
-                                      ? `${selectedJob.lastRunStatus}${
-                                          selectedJob.lastRunAtUtc
-                                            ? ` · ${formatRelativeTime(selectedJob.lastRunAtUtc)}`
-                                            : ""
-                                        }`
-                                      : "never run"
-                                  }
-                                />
-                                <DetailRow
-                                  label="Gateway sync"
-                                  value={
-                                    selectedJob.openClawJobId
-                                      ? `mirrored · ${selectedJob.openClawJobId}`
-                                      : "local only"
-                                  }
-                                />
-                              </div>
-
-                              {selectedJob.systemEvent && (
-                                <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
-                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                                    System event
-                                  </div>
-                                  <div className="whitespace-pre-wrap text-[12px] leading-5 text-white/85">
-                                    {selectedJob.systemEvent}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* "Tools · Email (Resend)" detail block
-                                  was rendered here for jobs that had the
-                                  email tool configured. Removed along
-                                  with the rest of the email-tool UI. */}
-
-                              {selectedJob.lastErrorMessage && (
-                                <div className="rounded-lg border border-red-400/30 bg-red-500/10 p-3 text-[11px] text-red-100">
-                                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider">
-                                    Last error
-                                  </div>
-                                  <div className="whitespace-pre-wrap leading-5">
-                                    {selectedJob.lastErrorMessage}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Actions */}
-                              <div className="flex flex-wrap gap-2 pt-1">
-                                <ActionButton
-                                  icon={<Play className="h-3.5 w-3.5" />}
-                                  label="Run now"
-                                  tone="accent"
-                                  busy={actionBusy === `run-${job.id}`}
-                                  onClick={() => handleRunNow(job.id)}
-                                />
-                                <ActionButton
-                                  icon={<Pencil className="h-3.5 w-3.5" />}
-                                  label="Edit"
-                                  tone="muted"
-                                  busy={false}
-                                  onClick={() => void handleOpenEdit(job.id)}
-                                />
-                                {job.status === "active" && (
-                                  <ActionButton
-                                    icon={<Pause className="h-3.5 w-3.5" />}
-                                    label="Pause"
-                                    tone="muted"
-                                    busy={actionBusy === `pause-${job.id}`}
-                                    onClick={() => handlePause(job.id)}
-                                  />
-                                )}
-                                {job.status === "paused" && (
-                                  <ActionButton
-                                    icon={<Play className="h-3.5 w-3.5" />}
-                                    label="Resume"
-                                    tone="muted"
-                                    busy={actionBusy === `resume-${job.id}`}
-                                    onClick={() => handleResume(job.id)}
-                                  />
-                                )}
-                                {(job.status === "active" || job.status === "paused") && (
-                                  <ActionButton
-                                    icon={<CircleStop className="h-3.5 w-3.5" />}
-                                    label="Cancel"
-                                    tone="muted"
-                                    busy={actionBusy === `cancel-${job.id}`}
-                                    onClick={() => handleCancel(job.id)}
-                                  />
-                                )}
-                                <ActionButton
-                                  icon={<Trash2 className="h-3.5 w-3.5" />}
-                                  label="Delete"
-                                  tone="danger"
-                                  busy={actionBusy === `delete-${job.id}`}
-                                  onClick={() => handleDelete(job.id)}
-                                />
-                              </div>
-
-                              {/* Runs */}
-                              {selectedJobRuns.length > 0 && (
-                                <div className="pt-2">
-                                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-white/40">
-                                    Recent runs
-                                  </div>
-                                  <div className="divide-y divide-white/[0.06] rounded-lg border border-white/[0.08]">
-                                    {selectedJobRuns.slice(0, 8).map((run) => (
-                                      <RunRow key={run.id} run={run} />
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
+                      job={job}
+                      agent={job.agentId ? agentLookup.get(job.agentId) : null}
+                      selected={selectedJobId === job.id}
+                      onSelect={() => setSelectedJobId(job.id)}
+                    />
+                  ))}
+                </ul>
               )}
             </div>
-          )}
-
-          {tab === "new" && (
-            <div className="space-y-4">
-              {createError && (
-                <div className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span className="leading-6">{createError}</span>
-                </div>
-              )}
-
-              <Field label="Name" required>
-                <input
-                  type="text"
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="Daily brief for Ops"
-                  className={inputClass}
-                />
-              </Field>
-
-              <Field label="Description" hint="Internal note — not sent to the agent.">
-                <textarea
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Remind me to check the morning inbox."
-                  rows={2}
-                  className={`${inputClass} resize-none`}
-                />
-              </Field>
-
-              {/* Kind toggle */}
-              <div className="grid grid-cols-2 gap-2">
-                <KindButton
-                  active={formKind === "one-shot"}
-                  onClick={() => setFormKind("one-shot")}
-                  icon={<Timer className="h-4 w-4" />}
-                  label="Run once"
-                  hint="Fire at an exact date & time"
-                />
-                <KindButton
-                  active={formKind === "recurring"}
-                  onClick={() => setFormKind("recurring")}
-                  icon={<RefreshCcw className="h-4 w-4" />}
-                  label="Recurring"
-                  hint="Cron expression, repeats forever"
-                />
+            {error ? (
+              <div className="m-2 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-[11px] text-red-200/85">
+                {error}
               </div>
+            ) : null}
+          </aside>
 
-              {formKind === "one-shot" ? (
-                <Field label="Run at" required hint="Your local time — stored as UTC.">
-                  <input
-                    type="datetime-local"
-                    value={formRunAt}
-                    onChange={(e) => setFormRunAt(e.target.value)}
-                    className={inputClass}
-                  />
-                </Field>
-              ) : (
-                <>
-                  <Field label="Cron expression" required hint="Standard 5-field syntax (min hour day month dow).">
-                    <input
-                      type="text"
-                      value={formCron}
-                      onChange={(e) => setFormCron(e.target.value)}
-                      placeholder="0 9 * * *"
-                      className={`${inputClass} font-mono tracking-wider`}
-                    />
-                  </Field>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PRESET_SCHEDULES.map((p) => (
-                      <button
-                        key={p.expr}
-                        type="button"
-                        onClick={() => setFormCron(p.expr)}
-                        title={p.hint}
-                        className={`rounded-full border px-2.5 py-1 text-[10px] font-medium transition ${
-                          formCron.trim() === p.expr
-                            ? "border-[var(--accent)] bg-[var(--accent)]/15 text-white"
-                            : "border-white/10 bg-white/[0.03] text-white/55 hover:text-white"
-                        }`}
-                        style={{ ["--accent" as string]: ACCENT } as React.CSSProperties}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                  <Field label="Timezone" hint="IANA zone (e.g. America/Los_Angeles).">
-                    <input
-                      type="text"
-                      value={formTimezone}
-                      onChange={(e) => setFormTimezone(e.target.value)}
-                      placeholder="America/Los_Angeles"
-                      className={inputClass}
-                    />
-                  </Field>
-                </>
-              )}
-
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/60">
-                <span className="font-semibold text-white/70">Schedule preview:</span>{" "}
-                {scheduleSummary}
-              </div>
-
-              <Field
-                label="System event"
-                required
-                hint="The message the cron will deliver to the agent when it fires."
-              >
-                <textarea
-                  value={formSystemEvent}
-                  onChange={(e) => setFormSystemEvent(e.target.value)}
-                  placeholder="Reminder: check the cron docs draft."
-                  rows={3}
-                  className={`${inputClass} resize-none`}
-                />
-              </Field>
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Session mode">
-                  <select
-                    value={formSessionMode}
-                    onChange={(e) =>
-                      setFormSessionMode(e.target.value as CronJobSessionMode)
-                    }
-                    className={inputClass}
-                  >
-                    <option value="fresh">Fresh session per run</option>
-                    <option value="main">Main session</option>
-                    <option value="named">Named session</option>
-                  </select>
-                </Field>
-                <Field label="Wake mode">
-                  <select
-                    value={formWake}
-                    onChange={(e) => setFormWake(e.target.value as CronJobWakeMode)}
-                    className={inputClass}
-                  >
-                    <option value="now">Wake immediately</option>
-                    <option value="idle">Only when idle</option>
-                    <option value="next-turn">Wait for next turn</option>
-                  </select>
-                </Field>
-              </div>
-
-              {formSessionMode === "named" && (
-                <Field
-                  label="Session key"
-                  hint="Prefixes accepted by the gateway: agent:, hook:, studio:, web:. If you only type an identifier (e.g. daily-brief) the backend normalizes it automatically."
-                >
-                  <input
-                    type="text"
-                    value={formSessionKey}
-                    onChange={(e) => setFormSessionKey(e.target.value)}
-                    placeholder="daily-brief or hook:okestria-cron-daily-brief"
-                    className={`${inputClass} font-mono`}
-                  />
-                  {formSessionKey.trim() && (
-                    <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
-                      Gateway will see:{" "}
-                      <span className="text-white/70">
-                        {previewEffectiveSessionKey(formSessionKey)}
-                      </span>
-                    </div>
-                  )}
-                </Field>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Agent (optional)">
-                  <select
-                    value={formAgentId}
-                    onChange={(e) => setFormAgentId(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">— None —</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={String(a.id)}>
-                        {a.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Squad (optional)">
-                  <select
-                    value={formSquadId}
-                    onChange={(e) => setFormSquadId(e.target.value)}
-                    className={inputClass}
-                  >
-                    <option value="">— None —</option>
-                    {squads.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
-
-              <Field label="Delivery">
-                <select
-                  value={formDelivery}
-                  onChange={(e) =>
-                    setFormDelivery(e.target.value as CronJobDeliveryMode)
-                  }
-                  className={inputClass}
-                >
-                  <option value="announce">Announce in chat</option>
-                  <option value="webhook">Webhook callback</option>
-                  <option value="none">Silent (no delivery)</option>
-                </select>
-              </Field>
-
-              {formDelivery === "webhook" && (
-                <div className="grid grid-cols-1 gap-3">
-                  <Field label="Webhook URL">
-                    <input
-                      type="text"
-                      value={formWebhookUrl}
-                      onChange={(e) => setFormWebhookUrl(e.target.value)}
-                      placeholder="https://your-host/callbacks/cron"
-                      className={`${inputClass} font-mono`}
-                    />
-                  </Field>
-                  <Field label="Webhook bearer token (optional)">
-                    <input
-                      type="text"
-                      value={formWebhookToken}
-                      onChange={(e) => setFormWebhookToken(e.target.value)}
-                      placeholder="tok_…"
-                      className={`${inputClass} font-mono`}
-                    />
-                  </Field>
-                </div>
-              )}
-
-              {formKind === "one-shot" && (
-                <label className="flex cursor-pointer items-center gap-2 text-xs text-white/70">
-                  <input
-                    type="checkbox"
-                    checked={formDeleteAfterRun}
-                    onChange={(e) => setFormDeleteAfterRun(e.target.checked)}
-                    className="h-3.5 w-3.5 accent-amber-400"
-                  />
-                  Delete the job automatically after it runs
-                </label>
-              )}
-
-              <LeadContextAttachmentsSection
-                value={contextValue}
-                onChange={setContextValue}
-                leadOptions={leadOptions}
-                missionOptions={missionOptions}
-                accent="amber"
-                disabled={createBusy}
-                description="Pin a lead or mission so every firing of this cron sees the same briefing, and drop up to 6 files the agent can open at runtime (15MB each, 25MB total)."
+          {/* Chat panel */}
+          <main className="flex min-w-0 flex-1 flex-col">
+            {selectedJob ? (
+              <CronChatPanel
+                job={selectedJob}
+                agent={selectedJob.agentId ? agentLookup.get(selectedJob.agentId) : null}
+                detailLoading={detailLoading}
+                actionBusy={actionBusy}
+                composerError={composerError}
+                onComposerError={setComposerError}
+                onRunNow={handleRunNow}
+                onPause={handlePause}
+                onResume={handleResume}
+                onCancel={handleCancel}
+                onDelete={handleDelete}
+                onEdit={() => setEditingJob(selectedJob)}
+                onRefresh={() => loadJobDetail(selectedJob.id)}
               />
-
-              {/* The EmailToolCard used to live here — it let operators
-                  configure an inline Resend email sender for the cron
-                  agent. Removed from the cron modal per product
-                  decision: cron jobs now only schedule agent / squad
-                  runs. Outreach emails have their own dedicated Lead
-                  follow-up cadence in LeadOpsModal. */}
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetForm();
-                    setTab("jobs");
-                  }}
-                  className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleCreate()}
-                  disabled={!canCreate || createBusy}
-                  className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
-                  style={{ backgroundColor: ACCENT }}
-                >
-                  {createBusy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Zap className="h-4 w-4" />
-                  )}
-                  Schedule job
-                </button>
+            ) : (
+              <div className="flex h-full items-center justify-center px-6">
+                <div className="max-w-md rounded-3xl border border-dashed border-white/10 px-6 py-10 text-center text-sm text-white/45">
+                  <CalendarClock className="mx-auto mb-2 h-5 w-5 text-white/30" />
+                  <div className="font-medium text-white/60">Pick a cron job</div>
+                  <div className="mt-1 text-xs">
+                    Or create a new one — the agent will run on schedule and the reply will appear here as a chat bubble.
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </main>
         </div>
-      </section>
+      </div>
 
-      {/* Edit dialog — opens on top of the main modal when a job is picked */}
-      {editingJob && (
-        <EditCronJobDialog
+      {/* Create dialog */}
+      {createOpen && companyId ? (
+        <CronJobFormDialog
+          mode="create"
+          companyId={companyId}
+          agents={agents}
+          squads={squads}
+          onClose={() => setCreateOpen(false)}
+          onSaved={async (job) => {
+            setCreateOpen(false);
+            await loadJobs();
+            setSelectedJobId(job.id);
+          }}
+        />
+      ) : null}
+
+      {/* Edit dialog */}
+      {editingJob && companyId ? (
+        <CronJobFormDialog
+          mode="edit"
+          companyId={companyId}
           job={editingJob}
           agents={agents}
           squads={squads}
           onClose={() => setEditingJob(null)}
-          onSaved={() => void handleEditSaved(editingJob.id)}
+          onSaved={async (job) => {
+            setEditingJob(null);
+            await loadJobs();
+            await loadJobDetail(job.id);
+          }}
         />
-      )}
+      ) : null}
     </div>
   );
 }
 
-const inputClass =
-  "w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-white/25 focus:border-white/25";
-
-function Field({
-  label,
-  required,
-  hint,
-  children,
+// ─────────────────────────────────────────────────────────────────────────
+// List row
+// ─────────────────────────────────────────────────────────────────────────
+function CronListRow({
+  job,
+  agent,
+  selected,
+  onSelect,
 }: {
-  label: string;
-  required?: boolean;
-  hint?: string;
-  children: React.ReactNode;
+  job: CronJobListItem;
+  agent: CronAgentOption | null | undefined;
+  selected: boolean;
+  onSelect: () => void;
 }) {
-  return (
-    <label className="block space-y-1.5">
-      <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-white/50">
-        {label}
-        {required ? <span className="text-amber-300">*</span> : null}
-      </div>
-      {children}
-      {hint ? <div className="text-[10px] text-white/35">{hint}</div> : null}
-    </label>
-  );
-}
+  const seed = (agent?.name ?? agent?.slug ?? job.name ?? "?").toString();
+  const hue = HUE_FROM(seed);
+  const initials = INITIALS(agent?.name ?? job.name);
+  const status = job.status;
+  const statusDot = STATUS_COLOR[status] ?? "#94a3b8";
+  const scheduleLabel =
+    job.kind === "one-shot"
+      ? job.runAtUtc
+        ? formatCronDate(job.runAtUtc)
+        : "One-shot"
+      : job.cronExpression || "Recurring";
+  const nextRel = formatRelativeTime(job.nextRunAtUtc) || "—";
 
-function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col">
-      <span className="text-[9px] font-semibold uppercase tracking-wider text-white/35">
-        {label}
-      </span>
-      <span className="truncate">{value}</span>
-    </div>
-  );
-}
-
-function KindButton({
-  active,
-  onClick,
-  icon,
-  label,
-  hint,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-left transition ${
-        active
-          ? "border-amber-400/50 bg-amber-500/10 text-white"
-          : "border-white/10 bg-white/[0.02] text-white/60 hover:bg-white/5"
-      }`}
-    >
-      <span className={active ? "text-amber-300" : "text-white/40"}>{icon}</span>
-      <span className="flex-1">
-        <span className="block text-sm font-semibold">{label}</span>
-        <span className="block text-[11px] leading-4 text-white/40">{hint}</span>
-      </span>
-    </button>
-  );
-}
-
-function ActionButton({
-  icon,
-  label,
-  tone,
-  busy,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  tone: "accent" | "muted" | "danger";
-  busy?: boolean;
-  onClick: () => void;
-}) {
-  const toneClass =
-    tone === "accent"
-      ? "border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20"
-      : tone === "danger"
-        ? "border-red-400/30 bg-red-500/10 text-red-200 hover:bg-red-500/20"
-        : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={busy}
-      className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${toneClass}`}
-    >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
-      {label}
-    </button>
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        className={`group flex w-full items-start gap-2.5 rounded-2xl px-2.5 py-2.5 text-left transition ${
+          selected
+            ? "bg-white/[0.06] ring-1 ring-white/15"
+            : "hover:bg-white/[0.03]"
+        }`}
+      >
+        <div className="relative mt-0.5 flex-none">
+          {agent?.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={agent.avatarUrl}
+              alt=""
+              className="h-9 w-9 rounded-full border border-white/10 object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[11px] font-semibold uppercase"
+              style={{
+                backgroundColor: `hsl(${hue}, 60%, 22%)`,
+                border: `1.5px solid hsl(${hue}, 70%, 45%)`,
+                color: `hsl(${hue}, 80%, 80%)`,
+              }}
+            >
+              {initials}
+            </div>
+          )}
+          <span
+            className="absolute -right-0.5 -bottom-0.5 h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: statusDot, border: "1.5px solid #0c0810" }}
+            title={STATUS_LABEL[status]}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium text-white/85">{job.name}</span>
+            {job.kind === "recurring" ? (
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55">
+                {KIND_LABEL.recurring}
+              </span>
+            ) : null}
+          </div>
+          <div className="truncate text-[11px] text-white/45">
+            <Clock className="mr-1 inline-block h-3 w-3 align-text-bottom text-white/35" />
+            {scheduleLabel}
+          </div>
+          <div className="mt-0.5 truncate text-[10.5px] text-white/35">
+            Next: {nextRel}
+            {job.runCount > 0 ? <span className="ml-2">· {job.runCount} runs</span> : null}
+          </div>
+        </div>
+      </button>
+    </li>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// EditCronJobDialog
-//
-// Secondary modal-on-top-of-modal that edits the editable subset of a
-// CronJob. It pre-fills from the current job, sends only changed fields
-// through `updateCronJob`, and bubbles a `onSaved` event so the parent
-// can refresh both the list and the expanded detail view.
+// Chat panel — header + run timeline + composer
 // ─────────────────────────────────────────────────────────────────────────
-
-type EditCronJobDialogProps = {
+function CronChatPanel({
+  job,
+  agent,
+  detailLoading,
+  actionBusy,
+  composerError,
+  onComposerError,
+  onRunNow,
+  onPause,
+  onResume,
+  onCancel,
+  onDelete,
+  onEdit,
+  onRefresh,
+}: {
   job: CronJob;
-  agents: CronAgentOption[];
-  squads: CronSquadOption[];
-  onClose: () => void;
-  onSaved: () => void;
-};
+  agent: CronAgentOption | null | undefined;
+  detailLoading: boolean;
+  actionBusy: string | null;
+  composerError: string | null;
+  onComposerError: (msg: string | null) => void;
+  onRunNow: (id: number, override?: string) => void | Promise<void>;
+  onPause: (id: number) => void | Promise<unknown>;
+  onResume: (id: number) => void | Promise<unknown>;
+  onCancel: (id: number) => void | Promise<unknown>;
+  onDelete: (id: number) => void | Promise<unknown>;
+  onEdit: () => void;
+  onRefresh: () => void;
+}) {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const [pinned, setPinned] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [running, setRunning] = useState(false);
 
-// Convert an ISO string back to the value a <input type="datetime-local"/>
-// expects (YYYY-MM-DDTHH:mm in local time).
-const isoToLocalDateTimeInput = (iso: string | null): string => {
-  if (!iso) return toLocalDateTimeInput(30);
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return toLocalDateTimeInput(30);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
+  const seed = (agent?.name ?? agent?.slug ?? job.name).toString();
+  const hue = HUE_FROM(seed);
+  const initials = INITIALS(agent?.name ?? job.name);
 
-function EditCronJobDialog({
+  const status = job.status;
+  const statusColor = STATUS_COLOR[status] ?? "#94a3b8";
+
+  const scheduleLabel = useMemo(() => {
+    if (job.kind === "one-shot") {
+      return job.runAtUtc ? `Runs once at ${formatCronDate(job.runAtUtc)}` : "Run once";
+    }
+    return `Cron: ${job.cronExpression ?? "?"} (${job.timezone ?? "UTC"})`;
+  }, [job]);
+
+  const sortedRuns = useMemo(() => {
+    const list = [...(job.runs ?? [])];
+    list.sort((a, b) => {
+      const ta = a.finishedAtUtc
+        ? new Date(a.finishedAtUtc).getTime()
+        : a.startedAtUtc
+          ? new Date(a.startedAtUtc).getTime()
+          : new Date(a.createdDate).getTime();
+      const tb = b.finishedAtUtc
+        ? new Date(b.finishedAtUtc).getTime()
+        : b.startedAtUtc
+          ? new Date(b.startedAtUtc).getTime()
+          : new Date(b.createdDate).getTime();
+      if (ta !== tb) return ta - tb;
+      return a.runNumber - b.runNumber;
+    });
+    return list;
+  }, [job]);
+
+  const scrollToBottom = useCallback(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, []);
+
+  useEffect(() => {
+    if (!pinned) return;
+    scrollToBottom();
+  }, [sortedRuns, pinned, scrollToBottom]);
+
+  const onScrollerScroll = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    setPinned(
+      isNearBottom(
+        { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight },
+        80,
+      ),
+    );
+  }, []);
+
+  const send = useCallback(async () => {
+    const trimmed = draft.trim();
+    onComposerError(null);
+    if (!trimmed) {
+      onComposerError("Type something for this run.");
+      return;
+    }
+    setRunning(true);
+    try {
+      // Attachments override is not yet supported on TriggerRun (the
+      // back's manual trigger endpoint accepts only systemEventOverride).
+      // Keep the chips as a visual reminder — they'll roll into the next
+      // edit save instead.
+      await onRunNow(job.id, trimmed);
+      setDraft("");
+    } finally {
+      setRunning(false);
+    }
+  }, [draft, job.id, onRunNow, onComposerError]);
+
+  const totalAttachmentBytes = useMemo(
+    () => attachments.reduce((sum, a) => sum + a.file.size, 0),
+    [attachments],
+  );
+
+  const isPaused = status === "paused";
+  const isCancelled = status === "cancelled" || status === "completed" || status === "failed";
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* Header strip */}
+      <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-4">
+        <div className="relative flex-none">
+          {agent?.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={agent.avatarUrl}
+              alt=""
+              className="h-11 w-11 rounded-full border border-white/15 object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+              style={{
+                backgroundColor: `hsl(${hue}, 60%, 22%)`,
+                border: `1.5px solid hsl(${hue}, 70%, 45%)`,
+                color: `hsl(${hue}, 80%, 80%)`,
+              }}
+            >
+              {initials}
+            </div>
+          )}
+          <span
+            className="absolute -right-1 -bottom-1 h-3 w-3 rounded-full"
+            style={{ backgroundColor: statusColor, border: "2px solid #0c0810" }}
+            title={STATUS_LABEL[status]}
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="truncate text-base font-semibold text-white">{job.name}</h3>
+            <span
+              className="rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wider"
+              style={{
+                borderColor: `${statusColor}55`,
+                backgroundColor: `${statusColor}18`,
+                color: statusColor,
+              }}
+            >
+              {STATUS_LABEL[status]}
+            </span>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/55">
+              {KIND_LABEL[job.kind]}
+            </span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/45">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="h-3 w-3" /> {scheduleLabel}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Timer className="h-3 w-3" /> Next: {formatRelativeTime(job.nextRunAtUtc) || "—"}
+            </span>
+            {agent ? (
+              <span className="inline-flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> {agent.name}
+              </span>
+            ) : null}
+            <span className="inline-flex items-center gap-1">
+              {DELIVERY_LABEL[job.deliveryMode]}
+            </span>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onRunNow(job.id)}
+            disabled={isCancelled || actionBusy === `run-${job.id}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/75 transition hover:bg-white/10 disabled:opacity-40"
+            title="Run this cron once now"
+          >
+            {actionBusy === `run-${job.id}` ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Zap className="h-3 w-3" />
+            )}
+            <span>Run now</span>
+          </button>
+          {isPaused ? (
+            <button
+              type="button"
+              onClick={() => onResume(job.id)}
+              disabled={actionBusy === `resume-${job.id}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/75 transition hover:bg-white/10 disabled:opacity-40"
+            >
+              <Play className="h-3 w-3" />
+              <span>Resume</span>
+            </button>
+          ) : status === "active" ? (
+            <button
+              type="button"
+              onClick={() => onPause(job.id)}
+              disabled={actionBusy === `pause-${job.id}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/75 transition hover:bg-white/10 disabled:opacity-40"
+            >
+              <Pause className="h-3 w-3" />
+              <span>Pause</span>
+            </button>
+          ) : null}
+          {!isCancelled ? (
+            <button
+              type="button"
+              onClick={() => onCancel(job.id)}
+              disabled={actionBusy === `cancel-${job.id}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/75 transition hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+            >
+              <CircleStop className="h-3 w-3" />
+              <span>Cancel</span>
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/75 transition hover:bg-white/10"
+          >
+            <Pencil className="h-3 w-3" />
+            <span>Edit</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(job.id)}
+            disabled={actionBusy === `delete-${job.id}`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-3 text-[11px] text-white/65 transition hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={detailLoading}
+            className="ml-1 flex h-8 w-8 items-center justify-center rounded-full border border-white/12 bg-white/[0.03] text-white/65 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+            title="Refresh"
+            aria-label="Refresh"
+          >
+            <RefreshCcw className={`h-3 w-3 ${detailLoading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Job system event preview */}
+      {job.systemEvent ? (
+        <div className="border-b border-white/10 bg-white/[0.02] px-5 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
+            System event
+          </div>
+          <div className="mt-1 max-h-24 overflow-y-auto whitespace-pre-wrap text-[12.5px] leading-6 text-white/70">
+            {job.systemEvent}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Run timeline */}
+      <div
+        ref={scrollerRef}
+        onScroll={onScrollerScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto px-5 py-5"
+      >
+        {sortedRuns.length === 0 ? (
+          <div className="flex h-full items-center justify-center rounded-3xl border border-dashed border-white/10 text-sm text-white/35">
+            No runs yet. Hit "Run now" or wait for the schedule to fire.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {sortedRuns.map((run) => (
+              <RunBubble
+                key={run.id}
+                run={run}
+                agent={agent}
+                hue={hue}
+                initials={initials}
+              />
+            ))}
+            <div ref={chatBottomRef} aria-hidden className="h-px w-px" />
+          </div>
+        )}
+
+        {!pinned && sortedRuns.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPinned(true);
+              scrollToBottom();
+            }}
+            aria-label="Jump to latest"
+            className="sticky bottom-3 left-1/2 mt-2 inline-flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-white/15 bg-[#1a1326]/95 px-3 py-1.5 text-xs font-medium tracking-wide text-white/85 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur transition hover:bg-[#241935]"
+          >
+            <ArrowDown className="h-3.5 w-3.5" />
+            Jump to latest
+          </button>
+        ) : null}
+      </div>
+
+      {/* Composer */}
+      <div className="border-t border-white/10 px-5 py-4">
+        {composerError ? (
+          <div className="mb-2 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs text-red-200/90">
+            {composerError}
+          </div>
+        ) : null}
+        {attachments.length > 0 ? (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((att) => (
+              <span
+                key={att.id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] text-white/80"
+              >
+                <Paperclip className="h-3 w-3 text-white/55" />
+                <span className="max-w-[200px] truncate" title={att.file.name}>
+                  {att.file.name}
+                </span>
+                <span className="text-white/40">{formatBytes(att.file.size)}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttachments((prev) => prev.filter((a) => a.id !== att.id))
+                  }
+                  className="rounded-full p-0.5 text-white/45 transition hover:bg-white/10 hover:text-white"
+                  aria-label={`Remove ${att.file.name}`}
+                >
+                  <XIcon className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            <span className="self-center text-[10px] text-white/35">
+              {formatBytes(totalAttachmentBytes)} of {formatBytes(ATTACHMENT_TOTAL_MAX_BYTES)}
+            </span>
+          </div>
+        ) : null}
+
+        <div
+          className="flex items-end gap-2 rounded-[24px] border bg-black/25 px-3 py-2.5 transition focus-within:border-white/25"
+          style={{ borderColor: `${ACCENT}33` }}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => {
+              const picked = Array.from(event.target.files ?? []);
+              event.target.value = "";
+              if (picked.length === 0) return;
+              let nextErr: string | null = null;
+              const accepted: PendingAttachment[] = [];
+              let runningTotal = totalAttachmentBytes;
+              for (const file of picked) {
+                if (attachments.length + accepted.length >= ATTACHMENT_MAX_FILES) {
+                  nextErr = `Up to ${ATTACHMENT_MAX_FILES} files per run.`;
+                  break;
+                }
+                if (file.size > ATTACHMENT_MAX_BYTES) {
+                  nextErr = `${file.name} is over 15 MB (per-file limit).`;
+                  continue;
+                }
+                if (runningTotal + file.size > ATTACHMENT_TOTAL_MAX_BYTES) {
+                  nextErr = "Combined attachments would exceed the 25 MB total limit.";
+                  break;
+                }
+                runningTotal += file.size;
+                accepted.push({
+                  id: `${file.name}-${file.size}-${file.lastModified}`,
+                  file,
+                });
+              }
+              onComposerError(nextErr);
+              if (accepted.length > 0) {
+                setAttachments((prev) => [...prev, ...accepted]);
+              }
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach files for the next run (saved with the cron on edit)"
+            aria-label="Attach files"
+            className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/60 transition hover:bg-white/10 hover:text-white"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+            placeholder="Override prompt for the next run · Enter to fire, Shift+Enter for newline"
+            rows={2}
+            className="min-h-[44px] max-h-[180px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-white outline-none placeholder:text-white/25"
+          />
+
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={!draft.trim() || running}
+            className="flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+            style={{
+              backgroundColor: `${ACCENT}33`,
+              border: `1px solid ${ACCENT}66`,
+            }}
+            aria-label="Run with override"
+          >
+            {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            <span>Run</span>
+          </button>
+        </div>
+        <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40">
+          <Sparkles className="h-3 w-3" />
+          <span>
+            Without an override the cron uses its saved system event. Attachments need to be
+            saved on the cron (use Edit) to ride along on every run.
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Single run bubble
+// ─────────────────────────────────────────────────────────────────────────
+function RunBubble({
+  run,
+  agent,
+  hue,
+  initials,
+}: {
+  run: CronJobRun;
+  agent: CronAgentOption | null | undefined;
+  hue: number;
+  initials: string;
+}) {
+  const status = run.status;
+  const out = (run.resultText ?? "").trim();
+  const err = (run.errorMessage ?? "").trim();
+  const isFailed = status === "failed";
+  const isRunning = status === "queued" || status === "running";
+  const isCancelled = status === "cancelled" || status === "skipped";
+  const ts = run.finishedAtUtc || run.startedAtUtc || run.createdDate;
+
+  const avatarBg = `hsl(${hue}, 60%, 22%)`;
+  const avatarBorder = `hsl(${hue}, 70%, 45%)`;
+  const avatarText = `hsl(${hue}, 80%, 80%)`;
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="relative flex-none">
+        {agent?.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={agent.avatarUrl}
+            alt=""
+            className="h-10 w-10 rounded-full border border-white/15 object-cover"
+            title={agent.name ?? undefined}
+          />
+        ) : (
+          <div
+            className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+            style={{
+              backgroundColor: isFailed ? "rgba(239,68,68,.18)" : avatarBg,
+              border: `1.5px solid ${isFailed ? "rgba(239,68,68,.45)" : avatarBorder}`,
+              color: isFailed ? "#fca5a5" : avatarText,
+            }}
+            title={agent?.name ?? undefined}
+          >
+            {initials}
+          </div>
+        )}
+        {isRunning ? (
+          <span
+            className="absolute -right-0.5 -bottom-0.5 h-3 w-3 animate-pulse rounded-full"
+            style={{ backgroundColor: "#22d3ee", border: "1.5px solid #0c0810" }}
+            title="Working on it"
+          />
+        ) : null}
+      </div>
+      <div className="min-w-0 max-w-[84%] flex-1">
+        <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className="font-semibold text-white/85">{agent?.name ?? "Agent"}</span>
+          <span className="text-white/35">·</span>
+          <span className="text-white/45">Run #{run.runNumber}</span>
+          <span className="text-white/35">·</span>
+          <span className="text-white/45 capitalize">{run.triggerSource}</span>
+          {ts ? <span className="text-white/30">· {formatCronDate(ts)}</span> : null}
+          {isFailed ? (
+            <span className="rounded-full border border-red-400/30 bg-red-500/15 px-1.5 py-0.5 text-[9px] tracking-wider text-red-200">
+              failed
+            </span>
+          ) : null}
+          {isCancelled ? (
+            <span className="rounded-full border border-white/15 bg-white/[0.04] px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-white/55">
+              {status}
+            </span>
+          ) : null}
+          {run.httpStatus ? (
+            <span className="rounded-full border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[9px] text-white/50">
+              HTTP {run.httpStatus}
+            </span>
+          ) : null}
+        </div>
+
+        {out.length > 0 ? (
+          <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.03] px-5 py-4 text-sm leading-7 text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+            <div className="whitespace-pre-wrap break-words">{out}</div>
+          </div>
+        ) : isFailed ? (
+          <div className="rounded-[20px] rounded-tl-md border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm leading-7 text-red-100/90">
+            <div className="whitespace-pre-wrap break-words">
+              {err || "This run failed without a message."}
+            </div>
+          </div>
+        ) : isRunning ? (
+          <div
+            className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border px-4 py-2.5 text-sm"
+            style={{
+              borderColor: `${avatarBorder}55`,
+              backgroundColor: `${avatarBg}aa`,
+              color: avatarText,
+            }}
+          >
+            <span className="inline-flex gap-1">
+              <span
+                className="h-1.5 w-1.5 animate-bounce rounded-full"
+                style={{ backgroundColor: avatarText, animationDelay: "0ms" }}
+              />
+              <span
+                className="h-1.5 w-1.5 animate-bounce rounded-full"
+                style={{ backgroundColor: avatarText, animationDelay: "150ms" }}
+              />
+              <span
+                className="h-1.5 w-1.5 animate-bounce rounded-full"
+                style={{ backgroundColor: avatarText, animationDelay: "300ms" }}
+              />
+            </span>
+            <span className="opacity-80">
+              {status === "queued" ? "queued — waiting in line" : "thinking..."}
+            </span>
+          </div>
+        ) : (
+          <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.02] px-4 py-2.5 text-sm italic text-white/45">
+            (no message)
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Create / edit dialog
+// ─────────────────────────────────────────────────────────────────────────
+function CronJobFormDialog({
+  mode,
+  companyId,
   job,
   agents,
   squads,
   onClose,
   onSaved,
-}: EditCronJobDialogProps) {
-  // ── Form state, seeded from the job ──
-  const [name, setName] = useState(job.name ?? "");
-  const [description, setDescription] = useState(job.description ?? "");
-  const [runAt, setRunAt] = useState(() =>
-    job.kind === "one-shot" ? isoToLocalDateTimeInput(job.runAtUtc) : toLocalDateTimeInput(30),
-  );
-  const [cronExpr, setCronExpr] = useState(job.cronExpression ?? "0 9 * * *");
-  const [timezone, setTimezone] = useState(job.timezone ?? DEFAULT_TZ);
-  const [systemEvent, setSystemEvent] = useState(job.systemEvent ?? "");
-  const [sessionMode, setSessionMode] = useState<CronJobSessionMode>(job.sessionMode);
-  const [sessionKey, setSessionKey] = useState(job.sessionKey ?? "");
-  const [wakeMode, setWakeMode] = useState<CronJobWakeMode>(job.wakeMode);
-  const [deliveryMode, setDeliveryMode] = useState<CronJobDeliveryMode>(job.deliveryMode);
-  const [webhookUrl, setWebhookUrl] = useState(job.webhookUrl ?? "");
-  const [webhookToken, setWebhookToken] = useState(job.webhookToken ?? "");
-  const [agentId, setAgentId] = useState<string>(
-    job.agentId != null ? String(job.agentId) : "",
-  );
-  const [squadId, setSquadId] = useState<string>(job.squadId ?? "");
-  const [deleteAfterRun, setDeleteAfterRun] = useState(job.deleteAfterRun);
-
-  // Email-tool state was removed along with the rest of the email-tool
-  // UI. The edit dialog no longer touches `job.tools` at all — existing
-  // cron rows with a saved email config are preserved on the server,
-  // we just don't surface the editor for it.
-
+}: {
+  mode: "create" | "edit";
+  companyId: number;
+  job?: CronJob;
+  agents: CronAgentOption[];
+  squads: CronSquadOption[];
+  onClose: () => void;
+  onSaved: (job: CronJob) => void;
+}) {
+  const [name, setName] = useState(job?.name ?? "");
+  const [description, setDescription] = useState(job?.description ?? "");
+  const [kind, setKind] = useState<CronJobKind>(job?.kind ?? "one-shot");
+  const [runAt, setRunAt] = useState(() => {
+    if (job?.runAtUtc) {
+      const d = new Date(job.runAtUtc);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return toLocalDateTimeInput(30);
+  });
+  const [cronExpr, setCronExpr] = useState(job?.cronExpression ?? "0 9 * * *");
+  const [tz, setTz] = useState(job?.timezone ?? DEFAULT_TZ);
+  const [systemEvent, setSystemEvent] = useState(job?.systemEvent ?? "");
+  const [sessionMode, setSessionMode] = useState<CronJobSessionMode>(job?.sessionMode ?? "fresh");
+  const [sessionKey, setSessionKey] = useState(job?.sessionKey ?? "");
+  const [wakeMode, setWakeMode] = useState<CronJobWakeMode>(job?.wakeMode ?? "now");
+  const [deliveryMode, setDeliveryMode] = useState<CronJobDeliveryMode>(job?.deliveryMode ?? "announce");
+  const [webhookUrl, setWebhookUrl] = useState(job?.webhookUrl ?? "");
+  const [webhookToken, setWebhookToken] = useState("");
+  const [agentId, setAgentId] = useState<string>(job?.agentId ? String(job.agentId) : "");
+  const [squadId, setSquadId] = useState<string>(job?.squadId ?? "");
+  const [deleteAfterRun, setDeleteAfterRun] = useState(job?.deleteAfterRun ?? true);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const canSave =
-    name.trim().length > 0 &&
-    systemEvent.trim().length > 0 &&
-    (job.kind === "one-shot"
-      ? !!fromLocalDateTimeInput(runAt)
-      : cronExpr.trim().length > 0);
+  const titleLabel = mode === "create" ? "Schedule a new cron" : `Edit “${job?.name ?? ""}”`;
 
-  const handleSave = useCallback(async () => {
-    if (!canSave) return;
+  const handleSubmit = useCallback(async () => {
+    setError(null);
+    if (!name.trim()) {
+      setError("Give the cron job a name.");
+      return;
+    }
+    if (!systemEvent.trim()) {
+      setError("Add a system event prompt — that's what the agent will receive.");
+      return;
+    }
+    if (kind === "one-shot" && !runAt) {
+      setError("Pick a run time for the one-shot job.");
+      return;
+    }
+    if (kind === "recurring" && !cronExpr.trim()) {
+      setError("Add a cron expression.");
+      return;
+    }
+    if (sessionMode === "named" && !sessionKey.trim()) {
+      setError("Named sessions need a session key.");
+      return;
+    }
+    if (deliveryMode === "webhook" && !webhookUrl.trim()) {
+      setError("Webhook delivery needs a URL.");
+      return;
+    }
+
     setBusy(true);
-    setErr(null);
     try {
-      // Build the update payload — only include fields that actually changed.
-      const payload: UpdateCronJobInput = {};
-
-      const nextName = name.trim();
-      if (nextName !== (job.name ?? "")) payload.name = nextName;
-
-      const nextDescription = description.trim() || null;
-      if (nextDescription !== (job.description ?? null)) {
-        payload.description = nextDescription;
+      const runAtIso = kind === "one-shot" ? fromLocalDateTimeInput(runAt) : null;
+      if (mode === "create") {
+        const input: CreateCronJobInput = {
+          companyId,
+          name: name.trim(),
+          description: description.trim() || null,
+          kind,
+          cronExpression: kind === "recurring" ? cronExpr.trim() : null,
+          timezone: tz || null,
+          runAtUtc: runAtIso,
+          sessionMode,
+          sessionKey: sessionMode === "named" ? sessionKey.trim() || null : null,
+          systemEvent: systemEvent.trim(),
+          wakeMode,
+          deliveryMode,
+          webhookUrl: deliveryMode === "webhook" ? webhookUrl.trim() : null,
+          webhookToken: deliveryMode === "webhook" && webhookToken.trim() ? webhookToken.trim() : null,
+          deleteAfterRun,
+          agentId: agentId ? Number(agentId) : null,
+          squadId: squadId || null,
+        };
+        const created = await createCronJob(input);
+        onSaved(created);
+      } else if (job) {
+        const patch: UpdateCronJobInput = {
+          name: name.trim(),
+          description: description.trim() || null,
+          cronExpression: kind === "recurring" ? cronExpr.trim() : null,
+          timezone: tz || null,
+          runAtUtc: runAtIso,
+          sessionMode,
+          sessionKey: sessionMode === "named" ? sessionKey.trim() || null : null,
+          systemEvent: systemEvent.trim(),
+          wakeMode,
+          deliveryMode,
+          webhookUrl: deliveryMode === "webhook" ? webhookUrl.trim() : null,
+          deleteAfterRun,
+        };
+        if (webhookToken.trim()) patch.webhookToken = webhookToken.trim();
+        if (!agentId) patch.clearAgent = true;
+        else patch.agentId = Number(agentId);
+        if (!squadId) patch.clearSquad = true;
+        else patch.squadId = squadId;
+        const updated = await updateCronJob(job.id, patch);
+        onSaved(updated);
       }
-
-      if (job.kind === "one-shot") {
-        const nextRunAt = fromLocalDateTimeInput(runAt);
-        if (nextRunAt !== job.runAtUtc) payload.runAtUtc = nextRunAt;
-        if (deleteAfterRun !== job.deleteAfterRun) {
-          payload.deleteAfterRun = deleteAfterRun;
-        }
-      } else {
-        const nextCron = cronExpr.trim() || null;
-        if (nextCron !== (job.cronExpression ?? null)) {
-          payload.cronExpression = nextCron;
-        }
-        const nextTz = timezone.trim() || null;
-        if (nextTz !== (job.timezone ?? null)) payload.timezone = nextTz;
-      }
-
-      const nextSystemEvent = systemEvent.trim();
-      if (nextSystemEvent !== (job.systemEvent ?? "")) {
-        payload.systemEvent = nextSystemEvent;
-      }
-
-      if (sessionMode !== job.sessionMode) payload.sessionMode = sessionMode;
-      const nextSessionKey =
-        sessionMode === "named" && sessionKey.trim() ? sessionKey.trim() : null;
-      if (nextSessionKey !== (job.sessionKey ?? null)) {
-        payload.sessionKey = nextSessionKey;
-      }
-
-      if (wakeMode !== job.wakeMode) payload.wakeMode = wakeMode;
-      if (deliveryMode !== job.deliveryMode) payload.deliveryMode = deliveryMode;
-
-      const nextWebhookUrl =
-        deliveryMode === "webhook" && webhookUrl.trim() ? webhookUrl.trim() : null;
-      if (nextWebhookUrl !== (job.webhookUrl ?? null)) {
-        payload.webhookUrl = nextWebhookUrl;
-      }
-      const nextWebhookToken =
-        deliveryMode === "webhook" && webhookToken.trim() ? webhookToken.trim() : null;
-      if (nextWebhookToken !== (job.webhookToken ?? null)) {
-        payload.webhookToken = nextWebhookToken;
-        if (nextWebhookToken === null) payload.clearWebhookToken = true;
-      }
-
-      // Agent / squad retarget.
-      const nextAgentId =
-        agentId.trim() && !Number.isNaN(Number(agentId)) ? Number(agentId) : null;
-      if (nextAgentId !== (job.agentId ?? null)) {
-        if (nextAgentId === null) {
-          payload.clearAgent = true;
-        } else {
-          payload.agentId = nextAgentId;
-        }
-      }
-      const nextSquadId = squadId.trim() || null;
-      if (nextSquadId !== (job.squadId ?? null)) {
-        if (nextSquadId === null) {
-          payload.clearSquad = true;
-        } else {
-          payload.squadId = nextSquadId;
-        }
-      }
-
-      // Tools bundle is no longer touched from the edit dialog — see
-      // the comment in the state block above. Whatever the row has on
-      // the server stays as-is; we only edit schedule/session/agent
-      // metadata here.
-
-      if (Object.keys(payload).length === 0) {
-        // Nothing to do — just close.
-        onSaved();
-        return;
-      }
-
-      await updateCronJob(job.id, payload);
-      onSaved();
-    } catch (error) {
-      setErr(error instanceof Error ? error.message : String(error));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }, [
-    agentId,
-    canSave,
-    cronExpr,
-    deleteAfterRun,
-    deliveryMode,
-    description,
+    mode,
     job,
+    companyId,
     name,
-    onSaved,
+    description,
+    kind,
     runAt,
-    sessionKey,
-    sessionMode,
-    squadId,
+    cronExpr,
+    tz,
     systemEvent,
-    timezone,
+    sessionMode,
+    sessionKey,
     wakeMode,
-    webhookToken,
+    deliveryMode,
     webhookUrl,
+    webhookToken,
+    deleteAfterRun,
+    agentId,
+    squadId,
+    onSaved,
   ]);
 
-  const scheduleSummary =
-    job.kind === "one-shot"
-      ? (() => {
-          const parsed = fromLocalDateTimeInput(runAt);
-          if (!parsed) return "Pick a date and time";
-          return `Runs once · ${formatCronDate(parsed)}`;
-        })()
-      : `${cronExpr.trim() || "?"} · ${timezone || DEFAULT_TZ}`;
-
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/85 px-4 py-6 backdrop-blur-md">
-      <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-
-      <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
-        style={{ borderColor: `${ACCENT}30` }}
-      >
-        {/* Header */}
-        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
-          <div
-            className="flex h-11 w-11 items-center justify-center rounded-xl"
-            style={{ backgroundColor: `${ACCENT}20`, border: `1.5px solid ${ACCENT}50` }}
-          >
-            <Pencil className="h-4 w-4" style={{ color: ACCENT }} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold text-white">
-              Edit cron job
-            </h2>
-            <p className="truncate text-xs text-white/40">
-              {job.name || `Job #${job.id}`} · {KIND_LABEL[job.kind]}
-            </p>
-          </div>
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="flex h-full max-h-[88vh] w-full max-w-[760px] flex-col overflow-hidden rounded-[24px] border border-white/12 bg-[#0c0810] shadow-[0_30px_90px_rgba(0,0,0,0.6)]">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-white">{titleLabel}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-white/12 bg-white/[0.03] text-white/65 hover:bg-white/10 hover:text-white"
+            aria-label="Close"
           >
-            <X className="h-5 w-5" />
+            <XIcon className="h-3.5 w-3.5" />
           </button>
         </div>
-
-        {/* Body */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
-          {err && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span className="leading-6">{err}</span>
-            </div>
-          )}
-
-          <Field label="Name" required>
+        <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3 overflow-y-auto px-5 py-4 text-sm">
+          <Field label="Name" full>
             <input
-              type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={inputClass}
+              placeholder="e.g. Daily morning brief"
+              className="cron-input"
             />
           </Field>
-
-          <Field label="Description" hint="Internal note — not sent to the agent.">
-            <textarea
-              value={description}
+          <Field label="Description" full>
+            <input
+              value={description ?? ""}
               onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className={`${inputClass} resize-none`}
+              placeholder="Optional"
+              className="cron-input"
             />
           </Field>
 
-          {job.kind === "one-shot" ? (
-            <Field label="Run at" required hint="Your local time — stored as UTC.">
+          <Field label="Kind">
+            <select
+              value={kind}
+              onChange={(e) => setKind(e.target.value as CronJobKind)}
+              className="cron-input"
+            >
+              <option value="one-shot">{KIND_LABEL["one-shot"]}</option>
+              <option value="recurring">{KIND_LABEL["recurring"]}</option>
+            </select>
+          </Field>
+          <Field label="Timezone">
+            <input
+              value={tz}
+              onChange={(e) => setTz(e.target.value)}
+              placeholder="UTC"
+              className="cron-input"
+            />
+          </Field>
+
+          {kind === "one-shot" ? (
+            <Field label="Run at" full>
               <input
                 type="datetime-local"
                 value={runAt}
                 onChange={(e) => setRunAt(e.target.value)}
-                className={inputClass}
+                className="cron-input"
               />
             </Field>
           ) : (
-            <>
-              <Field
-                label="Cron expression"
-                required
-                hint="Standard 5-field syntax (min hour day month dow)."
-              >
-                <input
-                  type="text"
-                  value={cronExpr}
-                  onChange={(e) => setCronExpr(e.target.value)}
-                  className={`${inputClass} font-mono tracking-wider`}
-                />
-              </Field>
-              <Field label="Timezone" hint="IANA zone (e.g. America/Los_Angeles).">
-                <input
-                  type="text"
-                  value={timezone}
-                  onChange={(e) => setTimezone(e.target.value)}
-                  className={inputClass}
-                />
-              </Field>
-            </>
+            <Field label="Cron expression" full>
+              <input
+                value={cronExpr}
+                onChange={(e) => setCronExpr(e.target.value)}
+                placeholder="0 9 * * *"
+                className="cron-input font-mono"
+              />
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {PRESET_SCHEDULES.map((preset) => (
+                  <button
+                    type="button"
+                    key={preset.expr}
+                    onClick={() => setCronExpr(preset.expr)}
+                    className="rounded-full border border-white/12 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/65 hover:bg-white/10"
+                    title={preset.hint}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
           )}
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] text-white/60">
-            <span className="font-semibold text-white/70">Schedule preview:</span>{" "}
-            {scheduleSummary}
-          </div>
+          <Field label="Agent">
+            <select
+              value={agentId}
+              onChange={(e) => setAgentId(e.target.value)}
+              className="cron-input"
+            >
+              <option value="">— None —</option>
+              {agents.map((a) => (
+                <option key={a.id} value={String(a.id)}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Squad (optional)">
+            <select
+              value={squadId}
+              onChange={(e) => setSquadId(e.target.value)}
+              className="cron-input"
+            >
+              <option value="">— None —</option>
+              {squads.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </Field>
 
-          <Field
-            label="System event"
-            required
-            hint="The message the cron will deliver to the agent when it fires."
-          >
+          <Field label="System event prompt" full>
             <textarea
               value={systemEvent}
               onChange={(e) => setSystemEvent(e.target.value)}
-              rows={3}
-              className={`${inputClass} resize-none`}
+              rows={4}
+              placeholder='e.g. Reply with one short sentence: "PING-OK from <your name>".'
+              className="cron-input min-h-[88px] resize-y"
             />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Session mode">
-              <select
-                value={sessionMode}
-                onChange={(e) => setSessionMode(e.target.value as CronJobSessionMode)}
-                className={inputClass}
-              >
-                <option value="fresh">Fresh session per run</option>
-                <option value="main">Main session</option>
-                <option value="named">Named session</option>
-              </select>
-            </Field>
-            <Field label="Wake mode">
-              <select
-                value={wakeMode}
-                onChange={(e) => setWakeMode(e.target.value as CronJobWakeMode)}
-                className={inputClass}
-              >
-                <option value="now">Wake immediately</option>
-                <option value="idle">Only when idle</option>
-                <option value="next-turn">Wait for next turn</option>
-              </select>
-            </Field>
-          </div>
-
-          {sessionMode === "named" && (
-            <Field
-              label="Session key"
-              hint="Prefixes accepted by the gateway: agent:, hook:, studio:, web:. If you only type an identifier (e.g. daily-brief) the backend normalizes it automatically."
+          <Field label="Session mode">
+            <select
+              value={sessionMode}
+              onChange={(e) => setSessionMode(e.target.value as CronJobSessionMode)}
+              className="cron-input"
             >
+              {(Object.keys(SESSION_LABEL) as CronJobSessionMode[]).map((k) => (
+                <option key={k} value={k}>
+                  {SESSION_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Wake mode">
+            <select
+              value={wakeMode}
+              onChange={(e) => setWakeMode(e.target.value as CronJobWakeMode)}
+              className="cron-input"
+            >
+              {(Object.keys(WAKE_LABEL) as CronJobWakeMode[]).map((k) => (
+                <option key={k} value={k}>
+                  {WAKE_LABEL[k]}
+                </option>
+              ))}
+            </select>
+          </Field>
+
+          {sessionMode === "named" ? (
+            <Field label="Session key" full>
               <input
-                type="text"
                 value={sessionKey}
                 onChange={(e) => setSessionKey(e.target.value)}
-                placeholder="daily-brief or hook:okestria-cron-daily-brief"
-                className={`${inputClass} font-mono`}
+                placeholder="my-team:daily-digest"
+                className="cron-input font-mono"
               />
-              {sessionKey.trim() && (
-                <div className="mt-1 font-mono text-[10px] leading-4 text-white/45">
-                  Gateway will see:{" "}
-                  <span className="text-white/70">
-                    {previewEffectiveSessionKey(sessionKey)}
-                  </span>
-                </div>
-              )}
+              <div className="mt-1 text-[10px] text-white/40">
+                Effective: <span className="font-mono text-white/65">{previewEffectiveSessionKey(sessionKey)}</span>
+              </div>
             </Field>
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Agent (optional)">
-              <select
-                value={agentId}
-                onChange={(e) => setAgentId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">— None —</option>
-                {agents.map((a) => (
-                  <option key={a.id} value={String(a.id)}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Squad (optional)">
-              <select
-                value={squadId}
-                onChange={(e) => setSquadId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">— None —</option>
-                {squads.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
+          ) : null}
 
           <Field label="Delivery">
             <select
               value={deliveryMode}
               onChange={(e) => setDeliveryMode(e.target.value as CronJobDeliveryMode)}
-              className={inputClass}
+              className="cron-input"
             >
-              <option value="announce">Announce in chat</option>
-              <option value="webhook">Webhook callback</option>
-              <option value="none">Silent (no delivery)</option>
+              {(Object.keys(DELIVERY_LABEL) as CronJobDeliveryMode[]).map((k) => (
+                <option key={k} value={k}>
+                  {DELIVERY_LABEL[k]}
+                </option>
+              ))}
             </select>
           </Field>
-
-          {deliveryMode === "webhook" && (
-            <div className="grid grid-cols-1 gap-3">
-              <Field label="Webhook URL">
-                <input
-                  type="text"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://your-host/callbacks/cron"
-                  className={`${inputClass} font-mono`}
-                />
-              </Field>
-              <Field label="Webhook bearer token (optional)">
-                <input
-                  type="text"
-                  value={webhookToken}
-                  onChange={(e) => setWebhookToken(e.target.value)}
-                  placeholder="tok_…"
-                  className={`${inputClass} font-mono`}
-                />
-              </Field>
-            </div>
-          )}
-
-          {job.kind === "one-shot" && (
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-white/70">
+          <Field label="Auto-delete on success">
+            <label className="flex h-9 items-center gap-2 rounded-xl border border-white/12 bg-white/[0.03] px-3 text-xs text-white/70">
               <input
                 type="checkbox"
                 checked={deleteAfterRun}
                 onChange={(e) => setDeleteAfterRun(e.target.checked)}
                 className="h-3.5 w-3.5 accent-amber-400"
               />
-              Delete the job automatically after it runs
+              <span>Remove job after a successful one-shot run</span>
             </label>
-          )}
+          </Field>
 
-          {/* EmailToolCard removed. Email sending from cron jobs was
-              replaced by the Lead follow-up cadence (LeadOpsModal). */}
+          {deliveryMode === "webhook" ? (
+            <>
+              <Field label="Webhook URL" full>
+                <input
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="cron-input"
+                />
+              </Field>
+              <Field label="Webhook bearer (optional)" full>
+                <input
+                  value={webhookToken}
+                  onChange={(e) => setWebhookToken(e.target.value)}
+                  placeholder="Stored encrypted on the back"
+                  className="cron-input"
+                />
+              </Field>
+            </>
+          ) : null}
+
+          {error ? (
+            <div className="col-span-2 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs text-red-200/90">
+              <AlertTriangle className="mr-1 inline h-3 w-3" />
+              {error}
+            </div>
+          ) : null}
         </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-6 py-4">
+        <div className="flex items-center justify-end gap-2 border-t border-white/10 px-5 py-3">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-4 py-2 text-sm text-white/55 transition hover:bg-white/5 hover:text-white"
+            className="inline-flex h-8 items-center rounded-full border border-white/12 bg-white/[0.03] px-3 text-xs text-white/70 hover:bg-white/10"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={() => void handleSave()}
-            disabled={!canSave || busy}
-            className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ backgroundColor: ACCENT }}
+            onClick={() => void handleSubmit()}
+            disabled={busy}
+            className="inline-flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: `${ACCENT}33`, border: `1px solid ${ACCENT}66` }}
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Save changes
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            <span>{mode === "create" ? "Create cron" : "Save"}</span>
           </button>
         </div>
-      </section>
-    </div>
-  );
-}
-
-function RunRow({ run }: { run: CronJobRun }) {
-  const status = run.status;
-  const color =
-    status === "succeeded"
-      ? "#22c55e"
-      : status === "failed"
-        ? "#ef4444"
-        : status === "running" || status === "queued"
-          ? "#22d3ee"
-          : "#94a3b8";
-
-  const hint = buildGatewayErrorHint(run.errorMessage ?? null, run.httpStatus ?? null);
-
-  return (
-    <div className="flex flex-col gap-1 px-3 py-2 text-[11px]">
-      <div className="flex items-center gap-3">
-        <span
-          className="inline-flex h-1.5 w-1.5 shrink-0 rounded-full"
-          style={{ backgroundColor: color }}
-        />
-        <span className="w-8 shrink-0 text-white/35">#{run.runNumber}</span>
-        <span
-          className="shrink-0 font-semibold uppercase tracking-wider"
-          style={{ color }}
-        >
-          {status}
-        </span>
-        {typeof run.httpStatus === "number" && run.httpStatus > 0 && (
-          <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-1.5 py-0.5 text-[9px] font-semibold tracking-wider text-white/55">
-            HTTP {run.httpStatus}
-          </span>
-        )}
-        <span className="ml-auto text-white/40">
-          {formatRelativeTime(run.startedAtUtc ?? run.createdDate)}
-        </span>
       </div>
-      {run.errorMessage && (
-        <div className="ml-5 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1.5 text-[10px] leading-4 text-red-100">
-          <div className="whitespace-pre-wrap break-words">{run.errorMessage}</div>
-          {hint && (
-            <div className="mt-1 border-t border-red-400/20 pt-1 text-red-200/80">
-              {hint}
-            </div>
-          )}
-        </div>
-      )}
+      <style jsx>{`
+        :global(.cron-input) {
+          width: 100%;
+          height: 36px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: rgba(255, 255, 255, 0.03);
+          color: rgba(255, 255, 255, 0.9);
+          padding: 0 12px;
+          font-size: 13px;
+          outline: none;
+          transition: background 120ms ease, border-color 120ms ease;
+        }
+        :global(.cron-input:focus) {
+          border-color: rgba(245, 158, 11, 0.5);
+          background: rgba(255, 255, 255, 0.06);
+        }
+        :global(textarea.cron-input) {
+          height: auto;
+          padding: 10px 12px;
+          line-height: 1.5;
+        }
+      `}</style>
     </div>
   );
 }
 
-/**
- * Turns the verbose backend dispatch error into an actionable hint (in PT-BR
- * so it's understandable for the operator). Recognizes the v26 "Gateway
- * responded 404 at /hooks/agent" and the missing-runtime-agent-id case.
- */
-function buildGatewayErrorHint(
-  errorMessage: string | null,
-  httpStatus: number | null,
-): string | null {
-  if (!errorMessage) return null;
-  const lower = errorMessage.toLowerCase();
-  if (httpStatus === 404 || lower.includes("404")) {
-    if (lower.includes("/hooks/agent") || lower.includes("host=")) {
-      return "Tip: check OPENCLAW_HOOKS_BASE_URL / OPENCLAW_HOOKS_TOKEN and confirm the agent is registered in OpenClaw with the same agentId.";
-    }
-    return "Tip: endpoint not found on the gateway. Check that the hooks are published and the token has permission.";
-  }
-  if (lower.includes("sessionkey must start with")) {
-    return "Tip: back v27 already normalizes the sessionKey to the hook:okestria-cron-… prefix. If you're still seeing this error, upgrade the backend to v27 or above.";
-  }
-  if (lower.includes("no runtime agent id")) {
-    return "Tip: this cron doesn't have an agentId known to OpenClaw. Open the agent and set gatewayAgentId in its profile (or make sure it has a valid slug).";
-  }
-  if (lower.includes("runtime hooks not configured")) {
-    return "Tip: runtime hooks aren't configured yet. Once OPENCLAW_HOOKS_BASE_URL and OPENCLAW_HOOKS_TOKEN are set, this run will complete via webhook.";
-  }
-  return null;
+function Field({
+  label,
+  children,
+  full,
+}: {
+  label: string;
+  children: React.ReactNode;
+  full?: boolean;
+}) {
+  return (
+    <label className={`flex flex-col gap-1 ${full ? "col-span-2" : ""}`}>
+      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
 }
 
-/**
- * Mirrors the backend v27 normalization (NormalizeNamedSessionKey) so the UI
- * can show the operator the exact sessionKey that will be sent to the
- * OpenClaw gateway for a "named" cron. Keys already using a valid prefix
- * (agent: / hook: / studio: / web:) pass through untouched; anything else is
- * wrapped under `hook:okestria-cron-…`.
- */
-const ALLOWED_SESSION_KEY_PREFIXES = ["agent:", "hook:", "studio:", "web:"];
-
-function previewEffectiveSessionKey(rawKey: string): string {
-  const trimmed = rawKey.trim();
-  if (!trimmed) return "hook:okestria-cron-<job-id>";
-  const lower = trimmed.toLowerCase();
-  if (ALLOWED_SESSION_KEY_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
-    return trimmed;
-  }
-  return `hook:okestria-cron-${trimmed}`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Removed: the old email-tool helpers and UI that used to live below.
-// Specifically:
-//   • `BuildToolsPayloadInput` + `buildToolsPayload` — emitted a
-//     CronJobToolsConfig with an `email` bundle.
-//   • `toolsBundlesEqual` — compared two CronJobToolsConfig values to
-//     decide whether to patch `tools` on update.
-//   • `EmailToolCard` — the ~330-line collapsible card used in both
-//     the create form and the edit dialog.
-//   • `ToolsBadge` — the tiny "EMAIL" pill in the job list + detail.
-//
-// Cron jobs no longer expose any email-tool configuration; operator
-// outreach happens through LeadOpsModal (follow-up cadence + insights).
-// Removing the dead code shrinks the bundle and makes it obvious to
-// readers that cron jobs are now purely about agent/squad scheduling.
-// ─────────────────────────────────────────────────────────────────────────
+export const CronJobsModal = memo(CronJobsModalInner);
