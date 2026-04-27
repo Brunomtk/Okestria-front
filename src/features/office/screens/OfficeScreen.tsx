@@ -6731,29 +6731,25 @@ export function OfficeScreen({
                       }
                     />
                   ) : focusedSquadChatTarget ? (
-                    focusedSquadSessionAgent ? (
-                      <AgentChatPanel
-                        agent={focusedSquadSessionAgent}
-                        isSelected
-                        canSend={false}
-                        models={gatewayModels}
-                        stopBusy={false}
-                        stopDisabledReason="Squad task sessions are opened in read-only mode here."
-                        onLoadMoreHistory={() => {}}
-                        onOpenSettings={() => {}}
-                        onNewSession={() => {}}
-                        onModelChange={() => {}}
-                        onThinkingChange={() => {}}
-                        onDraftChange={() => {}}
-                        onSend={() => {}}
-                        onStopRun={() => {}}
-                        onAvatarShuffle={() => {}}
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center px-8 text-center text-sm text-white/40">
-                        Select or create a squad task to open its session like an agent conversation.
-                      </div>
-                    )
+                    // v90 — render the SquadChatPanel which renders one
+                    // bubble per run (Step N · Author · text), exactly like
+                    // the squad ops modal. The previous AgentChatPanel
+                    // approach mirrored a synthetic agent's session and only
+                    // showed the squad's final response.
+                    <SquadChatPanel
+                      squad={focusedSquadChatTarget}
+                      activeTaskId={activeFocusedSquadTask?.id ?? null}
+                      activeSessionKey={activeFocusedSquadTask?.sessionKey ?? null}
+                      taskCache={focusedSquadChatTasks}
+                      onTaskFocusChange={(taskId) => {
+                        if (!focusedSquadChatEntryId) return;
+                        setActiveSquadChatTaskBySquadId((current) => ({
+                          ...current,
+                          [focusedSquadChatEntryId]: taskId ?? null,
+                        }));
+                      }}
+                      onOpenOps={(squadId) => handleOpenSquadOps(squadId)}
+                    />
                   ) : focusedRemoteChatTarget && focusedRemoteChatState ? (
                     <RemoteAgentChatPanel
                       agentName={focusedRemoteChatTarget.name}
