@@ -652,15 +652,21 @@ export function CronJobsModal({
           if (!gatewayConfig) return null;
 
           const healthStatus = gatewayConfig.health?.status ?? "unknown";
-          const statusLabel = !gatewayConfig.hooksConfigured
-            ? { text: "Not configured", tone: "rose" as const }
-            : healthStatus === "healthy"
-              ? { text: "Online", tone: "emerald" as const }
-              : healthStatus === "degraded"
-                ? { text: "Degraded", tone: "amber" as const }
-                : healthStatus === "unhealthy"
-                  ? { text: "Unreachable", tone: "rose" as const }
-                  : { text: "Unknown", tone: "amber" as const };
+          // In self-contained mode the gateway is informational only —
+          // cron runs don't depend on it. Surface that explicitly so
+          // "Unreachable" doesn't scare the operator into thinking
+          // their schedule is broken.
+          const statusLabel = gatewayConfig.selfContainedMode
+            ? { text: "Self-contained AI", tone: "emerald" as const }
+            : !gatewayConfig.hooksConfigured
+              ? { text: "Not configured", tone: "rose" as const }
+              : healthStatus === "healthy"
+                ? { text: "Online", tone: "emerald" as const }
+                : healthStatus === "degraded"
+                  ? { text: "Degraded", tone: "amber" as const }
+                  : healthStatus === "unhealthy"
+                    ? { text: "Unreachable", tone: "rose" as const }
+                    : { text: "Unknown", tone: "amber" as const };
 
           const tonePalette = {
             emerald: { border: "border-emerald-400/30", bg: "bg-emerald-500/[0.07]", text: "text-emerald-200" },
@@ -685,6 +691,11 @@ export function CronJobsModal({
                       </span>
                     ) : null}
                   </div>
+                  {gatewayConfig.selfContainedMode ? (
+                    <div className="mt-1 text-[11px] text-emerald-200/80">
+                      Cron runs are executed in-process via the configured AI provider — no OpenClaw dispatch required. Set <code>Okestria__CronSelfContained=false</code> on the backend env to switch back to gateway dispatch.
+                    </div>
+                  ) : null}
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-white/40">
                     <span>
                       Hook token:{" "}

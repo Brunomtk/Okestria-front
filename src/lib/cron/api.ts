@@ -349,6 +349,11 @@ export type CronGatewayConfig = {
   hasUpstreamToken: boolean;
   expectedCallbackUrl?: string | null;
   health?: CronGatewayHealth | null;
+  // v44. When true the backend runs cron jobs entirely in-process via
+  // its AI provider (no /hooks/agent POST). The frontend surfaces this
+  // so operators understand why "gateway unreachable" warnings don't
+  // necessarily mean cron is broken.
+  selfContainedMode?: boolean;
 };
 
 export type CronGatewayTestResult = {
