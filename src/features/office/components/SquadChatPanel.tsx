@@ -1,7 +1,62 @@
 "use client";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowDown, ChevronRight, Loader2, RefreshCcw, Send, Sparkles, Users2 } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react";
+import {
+  ArrowDown,
+  Crown,
+  Loader2,
+  Paperclip,
+  RefreshCcw,
+  Send,
+  Users2,
+  Workflow,
+  X as XIcon,
+  Zap,
+} from "lucide-react";
+
+// v90.1 — small visual helpers used across the squad chat surface.
+const SQUAD_INITIALS = (name: string | null | undefined) => {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
+// Stable hash → hue, so each agent always renders with the same colour.
+const SQUAD_HUE_FROM = (seed: string) => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) {
+    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
+};
+
+const MODE_LABEL: Record<string, string> = {
+  workflow: "Workflow",
+  leader: "Leader first",
+  all: "All at once",
+  all_at_once: "All at once",
+  manual: "Manual",
+  sequential: "Workflow",
+};
+
+const MODE_DESCRIPTION: Record<string, string> = {
+  workflow: "Each agent runs in order, building on the previous step.",
+  leader: "Leader runs first; members work from the leader's brief.",
+  all: "Every member runs in parallel and answers independently.",
+  all_at_once: "Every member runs in parallel and answers independently.",
+  manual: "Agents stay idle until you trigger them by hand.",
+  sequential: "Each agent runs in order, building on the previous step.",
+};
+
+const ATTACHMENT_MAX_FILES = 6;
+const ATTACHMENT_MAX_BYTES = 15 * 1024 * 1024; // 15 MB per file
+const ATTACHMENT_TOTAL_MAX_BYTES = 25 * 1024 * 1024; // 25 MB total
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 import type { SquadSummary, SquadTask } from "@/lib/squads/api";
 import { ackSquadTaskRender, fetchSquadTask, fetchSquadTasks } from "@/lib/squads/api";
 import { isNearBottom } from "@/lib/dom";
@@ -39,6 +94,14 @@ const isFailed = (value: string | null | undefined) => ["failed", "error", "canc
 
 function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMessages, sessionLoading, sessionError, taskCache, onTaskFocusChange, onSendMessage, onOpenOps }: SquadChatPanelProps) {
   const [draft, setDraft] = useState("");
+  // v90.1 — attachment staging. We surface the same UX the squad ops modal
+  // exposes (clip button → up to 6 files / 15MB each / 25MB total) so the
+  // user can attach context without leaving the chat. Files stay client-
+  // side until they hit "Send" — at that point they ride along with the
+  // task creation payload upstream.
+  const [attachments, setAttachments] = useState<Array<{ id: string; file: File }>>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [tasks, setTasks] = useState<SquadTask[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -331,6 +394,32 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
     }
   };
 
+  // v90.1 — execution mode resolution + icon. Always trust the task's
+  // override, fall back to the squad default, fall back to "leader".
+  const taskMode = (resolvedActiveTask?.executionMode || squad.executionMode || "leader").toLowerCase();
+  const modeLabel = MODE_LABEL[taskMode] ?? taskMode;
+  const modeDescription = MODE_DESCRIPTION[taskMode] ?? "";
+  const ModeIcon = taskMode === "workflow" || taskMode === "sequential" ? Workflow
+    : taskMode === "leader" ? Crown
+    : taskMode === "all" || taskMode === "all_at_once" ? Zap
+    : Users2;
+  const accent = squad.color?.trim() || "#8f84ff";
+
+  // v90.1 — agent → metadata index for richer per-bubble cards.
+  const memberByAgentId = useMemo(() => {
+    const map = new Map<number, { name: string; isLeader: boolean; gatewayAgentId: string | null }>();
+    for (const m of squad.members) {
+      if (typeof m.backendAgentId === "number") {
+        map.set(m.backendAgentId, {
+          name: m.name,
+          isLeader: m.isLeader,
+          gatewayAgentId: m.gatewayAgentId,
+        });
+      }
+    }
+    return map;
+  }, [squad.members]);
+
   return (
     <div className="flex h-full min-h-0 bg-[#120c08]">
       {/* v90 — single-pane squad chat. The outer office sidebar already
@@ -340,22 +429,54 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-white/10 px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[#8f84ff]">
-                <Users2 className="h-3.5 w-3.5" />
-                <span>Squad · {squad.name}</span>
-                <span className="text-white/30">·</span>
-                <span className="text-white/45 normal-case tracking-normal">
-                  {squad.members.length} members
-                </span>
+            <div className="flex min-w-0 items-start gap-3">
+              {/* Squad emblem — emoji on a tinted square. Mirrors what
+                  the sidebar shows so the user instantly recognises which
+                  squad they're chatting with. */}
+              <div
+                className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl text-2xl"
+                style={{
+                  backgroundColor: `${accent}22`,
+                  border: `1.5px solid ${accent}55`,
+                }}
+              >
+                {squad.iconEmoji?.trim() || "🚀"}
               </div>
-              <div className="mt-1 truncate text-2xl font-semibold text-white">
-                {resolvedActiveTask ? resolvedActiveTask.title || `Task #${resolvedActiveTask.id}` : "Pick a squad task"}
-              </div>
-              <div className="mt-1 text-xs text-white/45">
-                {resolvedActiveTask
-                  ? `${resolvedActiveTask.executionMode || squad.executionMode || "leader"} • ${fmtDate(resolvedActiveTask.createdDate)}`
-                  : "Use Squad Ops to create a task — its session opens here."}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.24em]" style={{ color: accent }}>
+                  <Users2 className="h-3.5 w-3.5" />
+                  <span>Squad · {squad.name}</span>
+                  <span className="text-white/30">·</span>
+                  <span className="text-white/45 normal-case tracking-normal">
+                    {squad.members.length} members
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-2xl font-semibold text-white">
+                  {resolvedActiveTask ? resolvedActiveTask.title || `Task #${resolvedActiveTask.id}` : "Pick a squad task"}
+                </div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/55">
+                  {/* Execution mode pill — shows up at the top so the
+                      operator always knows whether replies arrive in
+                      sequence (workflow), leader-first, all-at-once, or
+                      manual. */}
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em]"
+                    style={{
+                      borderColor: `${accent}55`,
+                      backgroundColor: `${accent}15`,
+                      color: accent,
+                    }}
+                    title={modeDescription}
+                  >
+                    <ModeIcon className="h-3 w-3" />
+                    {modeLabel}
+                  </span>
+                  {resolvedActiveTask ? (
+                    <span className="text-white/45">{fmtDate(resolvedActiveTask.createdDate)}</span>
+                  ) : (
+                    <span className="text-white/35">Use Squad Ops to create a task — its session opens here.</span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -443,10 +564,9 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                 <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200/90">{sessionError}</div>
               ) : null}
 
-              {/* v90 — render one bubble per run so the squad chat shows
-                  every agent's reply, not just the squad's final response.
-                  Order by step number so workflow output reads top-to-bottom
-                  the same way the user defined it. */}
+              {/* v90.1 — render one bubble per run with a circular agent
+                  avatar (initials fallback, deterministic colour). Workflow
+                  step numbers are surfaced inline. */}
               {(() => {
                 const orderedRuns = [...(resolvedActiveTask.runs ?? [])].sort((a, b) => {
                   const ta = a.finishedAtUtc ? new Date(a.finishedAtUtc).getTime() : 0;
@@ -462,53 +582,99 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
                   const author = run.agentName || `Agent #${run.agentId}`;
                   const stepLabel = `Step ${idx + 1}`;
                   const fmtTs = run.finishedAtUtc || run.startedAtUtc;
+                  const meta = memberByAgentId.get(run.agentId);
+                  const isLeader = !!meta?.isLeader;
+                  const initials = SQUAD_INITIALS(author);
+                  const hue = SQUAD_HUE_FROM(author);
+                  const avatarBg = `hsl(${hue}, 60%, 22%)`;
+                  const avatarBorder = `hsl(${hue}, 70%, 45%)`;
+                  const avatarText = `hsl(${hue}, 80%, 80%)`;
+                  const isRunningNow = isRunning(status);
+                  const failedRun = !out && (err.length > 0 || isFailed(status));
 
-                  if (out.length > 0) {
-                    return (
-                      <div key={`run-${run.id}`} className="max-w-[84%]">
-                        <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-5 py-4 text-sm text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-                          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/35">
-                            <span>{stepLabel}</span>
-                            <span className="opacity-50">·</span>
-                            <span className="text-white/55">{author}</span>
+                  return (
+                    <div key={`run-${run.id}`} className="flex items-start gap-3">
+                      {/* Avatar */}
+                      <div className="relative flex-none">
+                        <div
+                          className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold uppercase shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+                          style={{
+                            backgroundColor: failedRun ? "rgba(239,68,68,.18)" : avatarBg,
+                            border: `1.5px solid ${failedRun ? "rgba(239,68,68,.45)" : avatarBorder}`,
+                            color: failedRun ? "#fca5a5" : avatarText,
+                          }}
+                          title={author}
+                        >
+                          {initials}
+                        </div>
+                        {isLeader ? (
+                          <span
+                            className="absolute -right-1 -top-1 inline-flex h-4 w-4 items-center justify-center rounded-full"
+                            style={{ backgroundColor: accent, color: "#0a0612" }}
+                            title="Squad leader"
+                          >
+                            <Crown className="h-2.5 w-2.5" />
+                          </span>
+                        ) : null}
+                        {isRunningNow ? (
+                          <span
+                            className="absolute -bottom-0.5 -right-0.5 h-3 w-3 animate-pulse rounded-full"
+                            style={{ backgroundColor: "#22d3ee", border: "1.5px solid #0c1820" }}
+                            title="Working on it"
+                          />
+                        ) : null}
+                      </div>
+
+                      {/* Bubble */}
+                      <div className="min-w-0 max-w-[84%] flex-1">
+                        <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                          <span className="font-semibold text-white/85">{author}</span>
+                          {isLeader ? (
+                            <span
+                              className="rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wider"
+                              style={{ borderColor: `${accent}55`, backgroundColor: `${accent}18`, color: accent }}
+                            >
+                              leader
+                            </span>
+                          ) : null}
+                          <span className="text-white/35">·</span>
+                          <span className="text-white/45">{stepLabel}</span>
+                          {fmtTs ? <span className="text-white/30">· {fmtDate(fmtTs)}</span> : null}
+                          {failedRun ? (
+                            <span className="rounded-full border border-red-400/30 bg-red-500/15 px-1.5 py-0.5 text-[9px] tracking-wider text-red-200">
+                              failed
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {out.length > 0 ? (
+                          <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.03] px-5 py-4 text-sm leading-7 text-white/82 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
+                            <div className="whitespace-pre-wrap break-words">{out}</div>
                           </div>
-                          <div className="whitespace-pre-wrap leading-7">{out}</div>
-                          <div className="mt-3 text-xs text-white/30">{fmtDate(fmtTs)}</div>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (err.length > 0 || isFailed(status)) {
-                    return (
-                      <div key={`run-${run.id}`} className="max-w-[84%]">
-                        <div className="rounded-[24px] border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm text-red-100/90">
-                          <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-red-200/70">
-                            <span>{stepLabel}</span>
-                            <span className="opacity-50">·</span>
-                            <span>{author}</span>
-                            <span className="rounded-full border border-red-400/30 bg-red-500/15 px-1.5 py-0.5 text-[9px] tracking-wider">failed</span>
+                        ) : failedRun ? (
+                          <div className="rounded-[20px] rounded-tl-md border border-red-400/25 bg-red-500/10 px-5 py-4 text-sm leading-7 text-red-100/90">
+                            <div className="whitespace-pre-wrap break-words">
+                              {err || "This agent failed without a message."}
+                            </div>
                           </div>
-                          <div className="whitespace-pre-wrap leading-7">{err || "This agent failed without a message."}</div>
-                          <div className="mt-3 text-xs text-red-200/40">{fmtDate(fmtTs)}</div>
-                        </div>
+                        ) : isRunningNow ? (
+                          <div
+                            className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border px-4 py-2.5 text-sm"
+                            style={{ borderColor: `${avatarBorder}55`, backgroundColor: `${avatarBg}aa`, color: avatarText }}
+                          >
+                            <span className="inline-flex gap-1">
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ backgroundColor: avatarText, animationDelay: "0ms" }} />
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ backgroundColor: avatarText, animationDelay: "150ms" }} />
+                              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ backgroundColor: avatarText, animationDelay: "300ms" }} />
+                            </span>
+                            <span className="opacity-80">
+                              {status === "queued" || status === "pending" ? "queued — waiting in line" : "thinking..."}
+                            </span>
+                          </div>
+                        ) : null}
                       </div>
-                    );
-                  }
-
-                  if (isRunning(status)) {
-                    return (
-                      <div key={`run-${run.id}`} className="max-w-[84%]">
-                        <div className="inline-flex items-center gap-3 rounded-[24px] border border-cyan-400/15 bg-cyan-500/5 px-5 py-3 text-sm text-cyan-100/85">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-70">{stepLabel} · {author}</span>
-                          <span className="text-cyan-200/80">{status === "queued" || status === "pending" ? "queued" : "thinking..."}</span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  return null;
+                    </div>
+                  );
                 });
               })()}
 
@@ -566,23 +732,122 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
         </div>
 
         <div className="border-t border-white/10 px-5 py-4">
-          <div className="flex items-end gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-3">
+          {/* Attachment chips + error — stacked above the composer so the
+              user always sees what's about to be uploaded. */}
+          {attachmentError ? (
+            <div className="mb-2 rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs text-red-200/90">
+              {attachmentError}
+            </div>
+          ) : null}
+          {attachments.length > 0 ? (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {attachments.map((att) => (
+                <span
+                  key={att.id}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[11px] text-white/80"
+                >
+                  <Paperclip className="h-3 w-3 text-white/55" />
+                  <span className="max-w-[200px] truncate" title={att.file.name}>
+                    {att.file.name}
+                  </span>
+                  <span className="text-white/40">{formatBytes(att.file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachments((prev) => prev.filter((a) => a.id !== att.id));
+                      setAttachmentError(null);
+                    }}
+                    className="rounded-full p-0.5 text-white/45 transition hover:bg-white/10 hover:text-white"
+                    aria-label={`Remove ${att.file.name}`}
+                  >
+                    <XIcon className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          <div
+            className="flex items-end gap-2 rounded-[24px] border bg-black/25 px-3 py-2.5 transition focus-within:border-white/25"
+            style={{ borderColor: `${accent}33` }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                const picked = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (picked.length === 0) return;
+                let nextErr: string | null = null;
+                const accepted: typeof attachments = [];
+                let runningTotal = attachments.reduce((sum, a) => sum + a.file.size, 0);
+                for (const file of picked) {
+                  if (attachments.length + accepted.length >= ATTACHMENT_MAX_FILES) {
+                    nextErr = `Up to ${ATTACHMENT_MAX_FILES} files per task.`;
+                    break;
+                  }
+                  if (file.size > ATTACHMENT_MAX_BYTES) {
+                    nextErr = `${file.name} is over 15 MB (per-file limit).`;
+                    continue;
+                  }
+                  if (runningTotal + file.size > ATTACHMENT_TOTAL_MAX_BYTES) {
+                    nextErr = "Combined attachments would exceed the 25 MB total limit.";
+                    break;
+                  }
+                  runningTotal += file.size;
+                  accepted.push({ id: `${file.name}-${file.size}-${file.lastModified}`, file });
+                }
+                setAttachmentError(nextErr);
+                if (accepted.length > 0) {
+                  setAttachments((prev) => [...prev, ...accepted]);
+                }
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach files (max 6 · 15 MB each · 25 MB total)"
+              aria-label="Attach files"
+              className="flex h-9 w-9 flex-none items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-white/60 transition hover:bg-white/10 hover:text-white"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+
             <textarea
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Create a new squad task and open its session..."
-              className="min-h-[72px] flex-1 resize-none bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+              placeholder="Describe the next squad task — Enter to dispatch, Shift+Enter for a new line"
+              rows={2}
+              className="min-h-[44px] max-h-[180px] flex-1 resize-none bg-transparent py-1.5 text-sm leading-6 text-white outline-none placeholder:text-white/25"
             />
+
             <button
               type="button"
               onClick={send}
               disabled={!draft.trim()}
-              className="rounded-full border border-[#4b3b86]/45 bg-[#1b1327] p-3 text-white transition hover:bg-[#241935] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+              style={{
+                backgroundColor: `${accent}33`,
+                border: `1px solid ${accent}66`,
+              }}
+              aria-label="Send"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-3.5 w-3.5" />
+              <span>Send</span>
             </button>
           </div>
+
+          {/* Mode hint — small caption that demystifies the chosen mode. */}
+          {modeDescription ? (
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/40">
+              <ModeIcon className="h-3 w-3" />
+              <span>{modeLabel}: {modeDescription}</span>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
