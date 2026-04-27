@@ -246,6 +246,148 @@ export type RunCronJobInput = {
   systemEventOverride?: string;
 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// Authenticated REST helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+const normalizeErrorText = async (response: Response): Promise<string> => {
+  const text = (await response.text()).trim();
+  return text.replace(/^"|"$/g, "") || `Request failed with status ${response.status}`;
+};
+
+const performCronFetch = async (
+  path: string,
+  init: RequestInit | undefined,
+  bearer: string | null,
+): Promise<Response> => {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+  return fetch(`${getOkestriaApiBaseUrl()}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
+};
+
+const requestBackendJson = async <T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> => {
+  // Proactively refresh the access token if it's close to expiry so long-lived
+  // cron editing sessions don't get booted mid-action.
+  let bearer: string | null = null;
+  try {
+    bearer = (await ensureFreshAccessToken()) ?? getBrowserAccessToken();
+  } catch {
+    bearer = getBrowserAccessToken();
+  }
+
+  let response = await performCronFetch(path, init, bearer);
+
+  // If the server rejects with 401, force a refresh and retry once.
+  if (response.status === 401) {
+    try {
+      const refreshed = await ensureFreshAccessToken(Number.POSITIVE_INFINITY);
+      if (refreshed && refreshed !== bearer) {
+        response = await performCronFetch(path, init, refreshed);
+      }
+    } catch {
+      // swallow — fall through to the error path below
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(await normalizeErrorText(response));
+  }
+
+  if (response.status === 204) return undefined as unknown as T;
+  const text = await response.text();
+  if (!text) return undefined as unknown as T;
+  return JSON.parse(text) as T;
+};
+
+const escapeQuery = (value: string) => encodeURIComponent(value);
+
+// ─────────────────────────────────────────────────────────────────────────
+// CRUD endpoints
+// ─────────────────────────────────────────────────────────────────────────
+
+export const fetchCronJobs = async (
+  companyId: number,
+  filters?: { kind?: CronJobKind; status?: CronJobStatus },
+): Promise<CronJobListItem[]> => {
+  const params = new URLSearchParams();
+  if (filters?.kind) params.set("kind", filters.kind);
+  if (filters?.status) params.set("status", filters.status);
+  const qs = params.toString();
+  const path = `/api/CronJobs/by-company/${companyId}${qs ? `?${qs}` : ""}`;
+  return requestBackendJson<CronJobListItem[]>(path, { method: "GET" });
+};
+
+export const fetchCronJob = async (jobId: number): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs/${jobId}`, { method: "GET" });
+};
+
+export const createCronJob = async (input: CreateCronJobInput): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+};
+
+export const updateCronJob = async (
+  jobId: number,
+  input: UpdateCronJobInput,
+): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs/${jobId}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+};
+
+export const pauseCronJob = async (jobId: number): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs/${jobId}/pause`, {
+    method: "POST",
+  });
+};
+
+export const resumeCronJob = async (jobId: number): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs/${jobId}/resume`, {
+    method: "POST",
+  });
+};
+
+export const cancelCronJob = async (jobId: number): Promise<CronJob> => {
+  return requestBackendJson<CronJob>(`/api/CronJobs/${jobId}/cancel`, {
+    method: "POST",
+  });
+};
+
+export const deleteCronJob = async (jobId: number): Promise<void> => {
+  await requestBackendJson<void>(`/api/CronJobs/${jobId}`, { method: "DELETE" });
+};
+
+export const triggerCronJobRun = async (
+  jobId: number,
+  input?: RunCronJobInput,
+): Promise<CronJobRun | null> => {
+  return requestBackendJson<CronJobRun | null>(`/api/CronJobs/${jobId}/run`, {
+    method: "POST",
+    body: JSON.stringify(input ?? {}),
+  });
+};
+
+export const fetchCronJobRuns = async (
+  jobId: number,
+  take: number = 25,
+): Promise<CronJobRun[]> => {
+  const safeTake = Math.max(1, Math.min(200, Math.floor(take)));
+  return requestBackendJson<CronJobRun[]>(
+    `/api/CronJobs/${jobId}/runs?take=${escapeQuery(String(safeTake))}`,
+    { method: "GET" },
+  );
+};
 
 // ── UI helpers ──
 
