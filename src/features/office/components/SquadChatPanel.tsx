@@ -262,93 +262,90 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
 
   return (
     <div className="flex h-full min-h-0 bg-[#120c08]">
-      <div className="flex w-[320px] min-w-[280px] max-w-[360px] flex-col border-r border-white/10 bg-black/20">
-        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[#8f84ff]">
-              <Users2 className="h-3.5 w-3.5" />
-              <span>Squad</span>
-            </div>
-            <div className="mt-1 truncate text-xl font-semibold text-white">{squad.name}</div>
-            <div className="text-xs text-white/45">{squad.members.length} members • task sessions</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void loadTasks()}
-              className="rounded-xl border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:bg-white/5"
-            >
-              <span className="inline-flex items-center gap-2">
-                <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-              </span>
-            </button>
-            {onOpenOps ? (
-              <button
-                type="button"
-                onClick={() => onOpenOps(squad.id)}
-                className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200 transition hover:bg-cyan-500/20"
-              >
-                Ops
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          {error ? <div className="mb-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
-          {visibleTasks.length === 0 && !loading ? (
-            <div className="rounded-2xl border border-dashed border-white/10 px-4 py-8 text-center text-sm text-white/35">
-              No squad task sessions yet.
-            </div>
-          ) : null}
-          <div className="space-y-2">
-            {visibleTasks.map((task) => {
-              const selected = resolvedActiveTask?.id === task.id;
-              const latestRun = task.runs[0] ?? null;
-              const sessionKey = latestRun?.externalSessionKey?.trim() ?? "";
-              return (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => onTaskFocusChange?.(task.id)}
-                  className={`w-full rounded-2xl border px-4 py-3 text-left transition ${selected ? "border-[#8f84ff]/45 bg-[#221936]" : "border-white/8 bg-white/[0.03] hover:bg-white/[0.05]"}`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-semibold text-white">{task.title || `Task #${task.id}`}</div>
-                      <div className="mt-1 line-clamp-2 text-xs leading-5 text-white/45">{task.prompt || "No prompt"}</div>
-                    </div>
-                    <ChevronRight className={`mt-0.5 h-4 w-4 flex-none ${selected ? "text-[#b4acff]" : "text-white/25"}`} />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.16em] text-white/35">
-                    <span>{task.status || "pending"}</span>
-                    <span>#{task.id}</span>
-                  </div>
-                  {sessionKey ? <div className="mt-2 truncate font-mono text-[10px] text-cyan-200/75">{sessionKey}</div> : null}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
+      {/* v90 — single-pane squad chat. The outer office sidebar already
+          owns the agents/squads list, so we no longer ship a duplicated
+          sidebar inside the panel. The active task is picked from one
+          dropdown in the header. */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="border-b border-white/10 px-5 py-4">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[#8f84ff]">Task session</div>
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-[#8f84ff]">
+                <Users2 className="h-3.5 w-3.5" />
+                <span>Squad · {squad.name}</span>
+                <span className="text-white/30">·</span>
+                <span className="text-white/45 normal-case tracking-normal">
+                  {squad.members.length} members
+                </span>
+              </div>
               <div className="mt-1 truncate text-2xl font-semibold text-white">
-                {resolvedActiveTask ? resolvedActiveTask.title || `Task #${resolvedActiveTask.id}` : "New squad task"}
+                {resolvedActiveTask ? resolvedActiveTask.title || `Task #${resolvedActiveTask.id}` : "Pick a squad task"}
               </div>
               <div className="mt-1 text-xs text-white/45">
-                {resolvedActiveTask ? `${resolvedActiveTask.executionMode || squad.executionMode || "leader"} • ${fmtDate(resolvedActiveTask.createdDate)}` : "Send a message below to create and open a squad task session."}
+                {resolvedActiveTask
+                  ? `${resolvedActiveTask.executionMode || squad.executionMode || "leader"} • ${fmtDate(resolvedActiveTask.createdDate)}`
+                  : "Use Squad Ops to create a task — its session opens here."}
               </div>
             </div>
-            {resolvedActiveTask ? (
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/55">
-                {resolvedActiveTask.status || "pending"}
-              </div>
-            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Single task selector — the only place to switch the
+                  active task within this squad. */}
+              {visibleTasks.length > 0 ? (
+                <select
+                  value={resolvedActiveTask?.id ?? ""}
+                  onChange={(event) => {
+                    const next = Number(event.target.value);
+                    if (Number.isFinite(next)) onTaskFocusChange?.(next);
+                  }}
+                  className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/85 outline-none transition hover:border-white/25 focus:border-white/40"
+                  title="Choose which squad task to view"
+                >
+                  {visibleTasks.map((task) => {
+                    const label = task.title?.trim()
+                      ? task.title.trim()
+                      : `Task #${task.id}`;
+                    const status = task.status?.trim() || "pending";
+                    return (
+                      <option key={task.id} value={task.id}>
+                        {label} — {status}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void loadTasks()}
+                className="rounded-xl border border-white/10 px-3 py-2 text-xs text-white/65 transition hover:bg-white/5"
+                title="Refresh tasks"
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+              </button>
+
+              {onOpenOps ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenOps(squad.id)}
+                  className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.18em] text-cyan-200 transition hover:bg-cyan-500/20"
+                >
+                  Ops
+                </button>
+              ) : null}
+
+              {resolvedActiveTask ? (
+                <div
+                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                    isFailed(resolvedActiveTask.status)
+                      ? "border-red-400/25 bg-red-500/10 text-red-200"
+                      : "border-white/10 bg-white/5 text-white/55"
+                  }`}
+                >
+                  {resolvedActiveTask.status || "pending"}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -359,18 +356,8 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] px-5 py-4 shadow-[0_18px_60px_rgba(0,0,0,0.18)]">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs uppercase tracking-[0.2em] text-white/35">Opened session</div>
-                    <div className="mt-1 truncate font-mono text-sm text-cyan-200/85">{activeSessionKey?.trim() || "Waiting for session key..."}</div>
-                  </div>
-                  <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${isFailed(resolvedActiveTask.status) ? "border-red-400/25 bg-red-500/10 text-red-200" : "border-white/10 bg-white/5 text-white/55"}`}>
-                    {resolvedActiveTask.status || "pending"}
-                  </div>
-                </div>
-              </div>
-
+              {/* User prompt bubble — opens the conversation, just like
+                  the squad ops timeline. */}
               <div className="ml-auto max-w-[78%] rounded-[24px] border border-[#4b3b86]/35 bg-[#1a1326] px-5 py-4 text-sm text-white/80 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
                 <div className="text-base font-semibold text-white">{resolvedActiveTask.title}</div>
                 {resolvedActiveTask.prompt ? <div className="mt-2 whitespace-pre-wrap leading-7 text-white/72">{resolvedActiveTask.prompt}</div> : null}
