@@ -582,8 +582,11 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
+      {/* v98 — widened from max-w-2xl (672px) to max-w-5xl (1024px) so
+          long markdown answers (lists, tables, code blocks) breathe and
+          don't wrap mid-sentence in the bubble. */}
       <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
         style={{ borderColor: `${color}30` }}
       >
         {/* ── Header ── */}
@@ -1268,7 +1271,7 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
 function UserBubble({ text, when, color }: { text: string; when: number; color: string }) {
   return (
     <div className="flex justify-end">
-      <div className="max-w-[82%]">
+      <div className="max-w-[88%]">
         <div
           className="rounded-2xl rounded-tr-sm px-4 py-3 text-sm leading-6 text-white/90"
           style={{ backgroundColor: `${color}18`, border: `1px solid ${color}35` }}
@@ -1323,7 +1326,7 @@ function AgentBubble({
           size={28}
         />
       </div>
-      <div className="min-w-0 max-w-[82%] flex-1">
+      <div className="min-w-0 max-w-[88%] flex-1">
         <div className="mb-1 flex items-center gap-2 text-[11px]">
           <span className="font-medium text-white/70">{author}</span>
           {failed && (
@@ -1378,7 +1381,7 @@ function ThinkingBubble({
           size={28}
         />
       </div>
-      <div className="min-w-0 max-w-[82%] flex-1">
+      <div className="min-w-0 max-w-[88%] flex-1">
         <div className="mb-1 text-[11px] font-medium text-white/70">{author}</div>
         <div
           className="inline-flex items-center gap-2 rounded-2xl rounded-tl-sm border px-4 py-3 text-sm"
