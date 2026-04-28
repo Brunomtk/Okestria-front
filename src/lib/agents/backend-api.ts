@@ -564,3 +564,87 @@ export const deletePersistedCompanyAgentByGatewayId = async (params: {
 
   return false;
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// v104 — Delete-agent preview (paired with back v60)
+//
+// The back's `GET /api/Agents/delete/{id}/preview` answers a
+// `DeleteAgentSummaryDTO` describing what the cascade-delete will wipe
+// (cron jobs + their runs, squad memberships, files). We call this
+// before the destructive `DELETE` so the operator can read a precise
+// "this also deletes 2 cron jobs (12 runs) and removes the agent from
+// 1 squad" prompt.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type DeleteAgentSummary = {
+  agentId: number;
+  agentName: string | null;
+  agentSlug: string | null;
+  agentExists: boolean;
+  deleted: boolean;
+  cronJobsAffected: number;
+  cronJobRunsAffected: number;
+  squadMembershipsAffected: number;
+  filesAffected: number;
+  hasProfile: boolean;
+  cronJobNames: string[];
+  squadNames: string[];
+  warning: string | null;
+};
+
+const normalizeDeleteSummary = (raw: unknown): DeleteAgentSummary | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    agentId: typeof r.agentId === "number" ? r.agentId : 0,
+    agentName: typeof r.agentName === "string" ? r.agentName : null,
+    agentSlug: typeof r.agentSlug === "string" ? r.agentSlug : null,
+    agentExists: Boolean(r.agentExists),
+    deleted: Boolean(r.deleted),
+    cronJobsAffected: typeof r.cronJobsAffected === "number" ? r.cronJobsAffected : 0,
+    cronJobRunsAffected: typeof r.cronJobRunsAffected === "number" ? r.cronJobRunsAffected : 0,
+    squadMembershipsAffected:
+      typeof r.squadMembershipsAffected === "number" ? r.squadMembershipsAffected : 0,
+    filesAffected: typeof r.filesAffected === "number" ? r.filesAffected : 0,
+    hasProfile: Boolean(r.hasProfile),
+    cronJobNames: Array.isArray(r.cronJobNames)
+      ? (r.cronJobNames.filter((n) => typeof n === "string") as string[])
+      : [],
+    squadNames: Array.isArray(r.squadNames)
+      ? (r.squadNames.filter((n) => typeof n === "string") as string[])
+      : [],
+    warning: typeof r.warning === "string" ? r.warning : null,
+  };
+};
+
+/**
+ * v104. Looks up the backend agent record that matches `gatewayAgentId`
+ * and asks the back what the cascade-delete would wipe. Returns null if
+ * the agent isn't persisted on the back yet (gateway-only agent).
+ */
+export const previewPersistedCompanyAgentDelete = async (params: {
+  gatewayAgentId: string;
+  token?: string | null;
+  companyId?: number | null;
+}): Promise<DeleteAgentSummary | null> => {
+  const companyId = params.companyId ?? getBrowserCompanyId();
+  if (!companyId) return null;
+
+  const companyAgents = await fetchCompanyAgents(companyId, params.token);
+  for (const agent of companyAgents) {
+    try {
+      const details = await fetchCompanyAgentDetails(agent.id, params.token);
+      if (extractGatewayAgentId(details) !== params.gatewayAgentId.trim()) continue;
+      const raw = await requestBackendJson<unknown>(
+        `/api/Agents/delete/${agent.id}/preview`,
+        { method: "GET" },
+        params.token,
+      );
+      return normalizeDeleteSummary(raw);
+    } catch {
+      // try the next candidate
+    }
+  }
+
+  return null;
+};

@@ -80,6 +80,11 @@ import {
   CREATE_AGENT_DEFAULT_PERMISSIONS,
 } from "@/features/agents/operations/createAgentBootstrapOperation";
 import { deleteAgentRecordViaStudio } from "@/features/agents/operations/deleteAgentOperation";
+// v104 — replaces the old `window.confirm` for agent deletion with a
+// custom modal that previews the cascade (cron jobs, runs, squads,
+// files) before the destructive POST.
+import { useAgentDeleteConfirmModal } from "@/features/agents/components/AgentDeleteConfirmModal";
+import { previewPersistedCompanyAgentDelete } from "@/lib/agents/backend-api";
 import { planAgentSettingsMutation } from "@/features/agents/operations/agentSettingsMutationWorkflow";
 import {
   executeHistorySyncCommands,
@@ -2748,6 +2753,16 @@ export function OfficeScreen({
     loadSquadOpsTasks,
   ]);
 
+  // v104 — modal de confirmação de delete agent (vê AgentDeleteConfirmModal).
+  const {
+    renderModal: renderAgentDeleteConfirmModal,
+    requestDelete: requestAgentDeleteConfirmation,
+    close: closeAgentDeleteConfirmModal,
+  } = useAgentDeleteConfirmModal({
+    fetchPreview: async (gatewayAgentId) =>
+      previewPersistedCompanyAgentDelete({ gatewayAgentId }),
+  });
+
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {
       const decision = planAgentSettingsMutation(
@@ -2772,9 +2787,14 @@ export function OfficeScreen({
         (entry) => entry.agentId === decision.normalizedAgentId,
       );
       if (!agent) return;
-      const confirmed = window.confirm(
-        `Delete ${agent.name}? This removes the agent record and clears its scheduled automations. Workspace files are not affected.`,
-      );
+      // v104 — usa modal custom em vez de window.confirm. O modal puxa
+      // a prévia do back v60 (cron jobs, runs, squads, files) antes de
+      // pedir confirmação.
+      const confirmed = await requestAgentDeleteConfirmation({
+        agentName: agent.name,
+        agentSlug: agent.agentId,
+        gatewayAgentId: agent.agentId,
+      });
       if (!confirmed) return;
 
       await runAgentConfigMutationLifecycle({
@@ -2830,17 +2850,23 @@ export function OfficeScreen({
             });
           },
           executeMutation: async () => {
-            await deleteAgentRecordViaStudio({
-              client,
-              agentId: decision.normalizedAgentId,
-              logError: (message, error) => console.error(message, error),
-            });
-            await loadCompanyScopedAgentScope(true);
-            clearDeletedAgentUiState(decision.normalizedAgentId);
-            dispatch({
-              type: "removeAgent",
-              agentId: decision.normalizedAgentId,
-            });
+            try {
+              await deleteAgentRecordViaStudio({
+                client,
+                agentId: decision.normalizedAgentId,
+                logError: (message, error) => console.error(message, error),
+              });
+              await loadCompanyScopedAgentScope(true);
+              clearDeletedAgentUiState(decision.normalizedAgentId);
+              dispatch({
+                type: "removeAgent",
+                agentId: decision.normalizedAgentId,
+              });
+            } finally {
+              // v104 — fecha o modal de confirmação no sucesso OU
+              // no erro (no erro o setError já mostra o toast).
+              closeAgentDeleteConfirmModal();
+            }
           },
           shouldAwaitRemoteRestart: async () => false,
           reloadAgents: () => loadAgents({ forceSettings: true }),
@@ -2852,11 +2878,13 @@ export function OfficeScreen({
     [
       clearDeletedAgentUiState,
       client,
+      closeAgentDeleteConfirmModal,
       createAgentBlock,
       dispatch,
       enqueueConfigMutation,
       hasDeleteMutationBlock,
       loadAgents,
+      requestAgentDeleteConfirmation,
       setError,
       state.agents,
       status,
@@ -7147,6 +7175,9 @@ export function OfficeScreen({
         gatewayClient={client}
         gatewayConnected={status === "connected"}
       />
+
+      {/* v104 — confirmação de delete agent (mostra prévia da cascata). */}
+      {renderAgentDeleteConfirmModal()}
 
       <AgentCreateWizardModal
         key={createAgentWizardNonce}

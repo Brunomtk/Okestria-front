@@ -219,7 +219,20 @@ function CronJobsModalInner({
       const job = await fetchCronJob(jobId);
       setSelectedJob(job);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      // v102 — a 404 here means the job was deleted (likely by this
+      // operator a moment ago). Clear the selection silently instead
+      // of surfacing a scary "Not Found" toast — the list reload will
+      // already have reflected the deletion.
+      const message = e instanceof Error ? e.message : String(e);
+      if (
+        /\b404\b|not[\s-]?found/i.test(message) ||
+        message.includes("Request failed with status 404")
+      ) {
+        setSelectedJob((prev) => (prev?.id === jobId ? null : prev));
+        setSelectedJobId((prev) => (prev === jobId ? null : prev));
+      } else {
+        setError(message);
+      }
     } finally {
       setDetailLoading(false);
     }
@@ -264,21 +277,22 @@ function CronJobsModalInner({
 
   // ── Gateway WS bridge — forward chat events to apply-message ──────────
   //
-  // v101 — back v57 keeps a single sessionKey per cron (all runs share
-  // it). The old runId fast path is wrong here: the runIndex would map
-  // many runs to one key and the "forwardedSessionKeys" cache would
-  // block every run after the first.
+  // v103 — back v59 switched the cron sessionKey prefix from `hook:`
+  // to `agent:` (so the gateway groups the session under the selected
+  // agent instead of dumping it under "main"). The bridge now:
   //
-  // New shape:
-  //   1. Filter incoming events to the cron prefix family
-  //      (`hook:cron-` / `hook:okestria-cron-`) so squad events
-  //      keep flowing through their own bridge.
-  //   2. Always POST by sessionKey via /by-session/apply-message.
-  //      The back resolves the most-recent NON-terminal run; if there
-  //      isn't one (replay of an old final), it bails idempotently.
-  //   3. Idempotency lives on a per-(sessionKey + state + text-hash)
-  //      key so the SAME final isn't re-delivered, but a new run on the
-  //      same session always goes through.
+  //   1. Detects cron events by looking for the `:cron-{N}` segment
+  //      anywhere in the sessionKey. That covers both the new shape
+  //      (`agent:news-pulse:cron-19`) and the legacy hook shape
+  //      (`hook:cron-19`, `hook:okestria-cron-19`). Squad events
+  //      (`hook:sqexec-…`) stay out — they flow through the squad bridge.
+  //   2. Posts the raw sessionKey to /by-session/apply-message and lets
+  //      the back's tolerant resolver match it. We no longer strip
+  //      `agent:<slug>:` on the front because the back v59 handles all
+  //      strip variants server-side.
+  //   3. Idempotency stays on a per-(sessionKey + state + text-hash)
+  //      fingerprint so the SAME final isn't re-delivered, but a new
+  //      run on the same persistent session always goes through.
   useEffect(() => {
     if (!open || !gatewayClient || !gatewayConnected) return;
 
@@ -330,10 +344,20 @@ function CronJobsModalInner({
       return null;
     };
 
-    const stripPrefix = (raw: string): string => {
-      const idx = raw.indexOf("hook:");
-      return idx > 0 ? raw.slice(idx) : raw;
-    };
+    // v103 — anything that contains a `:cron-{N}` segment counts as a
+    // cron event. The SAME regex matches:
+    //   agent:news-pulse:cron-19         (v59 default)
+    //   agent:news-pulse:main             (v59 main mode — drops here
+    //                                      via fingerprint dedup unless
+    //                                      the operator wants chat
+    //                                      mirroring; we keep it OUT of
+    //                                      the cron filter to avoid
+    //                                      forwarding regular chat).
+    //   hook:cron-19                      (legacy v54-v57)
+    //   hook:okestria-cron-19             (legacy v54)
+    //   agent:news-pulse:agent:news-pulse:cron-19  (gateway echo)
+    const CRON_KEY_PATTERN = /(?:^|:)cron-\d+(?::|$)/i;
+    const isCronSessionKey = (raw: string): boolean => CRON_KEY_PATTERN.test(raw);
 
     // Cheap deterministic fingerprint so the same `final` event isn't
     // posted twice if the gateway replays it. Different runs on the
@@ -376,29 +400,22 @@ function CronJobsModalInner({
         const errorMessage = payload.errorMessage ?? null;
         if (state === "final" && (!text || text.length === 0)) return;
 
-        const stripped = stripPrefix(sessionKey);
-        // Filter to cron-shaped sessionKeys. Squad events flow through
-        // the squad bridge separately.
-        if (
-          !stripped.startsWith("hook:cron-") &&
-          !stripped.startsWith("hook:okestria-cron-")
-        ) {
-          return;
-        }
+        // v103 — single regex filter, prefix-agnostic. Squad events
+        // (`hook:sqexec-…`) miss the `cron-{N}` pattern and stay out.
+        if (!isCronSessionKey(sessionKey)) return;
 
         // Idempotency: same fingerprint = duplicate replay.
-        const fp = fingerprint(stripped, state, text);
+        const fp = fingerprint(sessionKey, state, text);
         if (seenFingerprints.has(fp)) return;
         seenFingerprints.add(fp);
 
-        // v101 — always go through /by-session. The back resolves the
-        // most-recent non-terminal run with this sessionKey; if there
-        // isn't one, the call returns null and we move on.
+        // Send the raw key — the back v59 resolver tolerates any
+        // gateway-prepended `agent:<slug>:` prefix.
         void applyCronRunMessageBySession({
           state: state as "final" | "aborted" | "error",
           text: text ?? null,
           error: errorMessage,
-          sessionKey: stripped,
+          sessionKey,
         })
           .then((updated) => {
             void loadJobs();
@@ -453,17 +470,30 @@ function CronJobsModalInner({
     },
     [callAction],
   );
+  // v102 — handleDelete bypasses callAction. The shared helper
+  // re-fetches the selected job's detail at the end, which would 404
+  // when we just deleted the row the operator was viewing.
   const handleDelete = useCallback(
     async (id: number) => {
       if (!window.confirm("Delete this cron job and all its run history? This cannot be undone."))
         return;
-      await callAction(`delete-${id}`, async () => {
+      setActionBusy(`delete-${id}`);
+      setError(null);
+      try {
         await deleteCronJob(id);
-        if (selectedJobId === id) setSelectedJobId(null);
-        return true;
-      });
+        // Clear local state of the deleted job BEFORE reloading the
+        // list, so the auto-refresh effects don't re-fetch its detail
+        // and surface a 404.
+        setSelectedJob((prev) => (prev?.id === id ? null : prev));
+        setSelectedJobId((prev) => (prev === id ? null : prev));
+        await loadJobs();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setActionBusy(null);
+      }
     },
-    [callAction, selectedJobId],
+    [loadJobs],
   );
 
   const handleRunNow = useCallback(
