@@ -6456,11 +6456,16 @@ export function OfficeScreen({
               aria-hidden="true"
             />
 
+            {/* v99 — chat modal widened from 1180px to 1480px and the
+                agents/squads rail trimmed from w-64 (256px) to w-56
+                (224px) so the chat takes more of the screen. The modal
+                now scales to ~92vw on smaller windows so it never feels
+                cramped. */}
             <div
-              className="relative z-10 flex max-h-[92vh] w-full max-w-[1180px] overflow-hidden rounded-2xl border border-amber-700/30 bg-[#0b0703] shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
-              style={{ height: "min(760px, calc(100vh - 48px))" }}
+              className="relative z-10 flex max-h-[92vh] w-full max-w-[1480px] overflow-hidden rounded-2xl border border-amber-700/30 bg-[#0b0703] shadow-[0_30px_120px_rgba(0,0,0,0.65)]"
+              style={{ height: "min(840px, calc(100vh - 48px))", width: "min(1480px, 92vw)" }}
             >
-              <div className="flex w-64 shrink-0 flex-col border-r border-white/10 bg-black/20">
+              <div className="flex w-56 shrink-0 flex-col border-r border-white/10 bg-black/20">
                 <div className="border-b border-white/10 px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
