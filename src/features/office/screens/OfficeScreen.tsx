@@ -2495,6 +2495,13 @@ export function OfficeScreen({
     setSquadOpsDispatchApprovalMode(null);
   }, []);
 
+  // v107 — ambient script queue lives ABOVE the squad/lead handlers so
+  // the deps arrays of those `useCallback`s can reference it without
+  // tripping a "used before declaration" TypeScript error. Push
+  // helpers (pushLeadScout / pushMailRunner / pushSquadHuddle) are
+  // called from the existing long-running flows further down.
+  const ambientScript = useAmbientCueQueue();
+
   const handleConfirmDispatchSquadTask = useCallback(
     async (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => {
       setSquadOpsDispatchBusy(true);
@@ -2785,11 +2792,11 @@ export function OfficeScreen({
       previewPersistedCompanyAgentDelete({ gatewayAgentId }),
   });
 
-  // v106 — ambient script queue. Push helpers fire from the existing
-  // long-running flows (lead generation, email batch send, squad task
-  // dispatch) — see the call sites further down. The hook auto-prunes
-  // cues older than 90 s so the queue stays small.
-  const ambientScript = useAmbientCueQueue();
+  // v106/v107 — ambient script queue moved up to the very top of the
+  // hook section so callbacks defined later in this component
+  // (handleConfirmDispatchSquadTask, etc.) can list it in their deps
+  // arrays without a "used before declaration" TypeScript error.
+  // (See the actual `const ambientScript = …` declaration above.)
 
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {
