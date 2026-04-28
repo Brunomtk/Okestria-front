@@ -582,12 +582,13 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   return (
     <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      {/* v98 — widened from max-w-2xl (672px) to max-w-5xl (1024px) so
-          long markdown answers (lists, tables, code blocks) breathe and
-          don't wrap mid-sentence in the bubble. */}
+      {/* v100 — Squad Ops modal aligned to the squad chat width
+          (1480 px max, 92vw on smaller screens). Same generous space
+          the chat surface uses, so the timeline of a long task no
+          longer wraps every other line. */}
       <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
-        style={{ borderColor: `${color}30` }}
+        className="relative z-10 flex max-h-[92vh] w-full max-w-[1480px] flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
+        style={{ borderColor: `${color}30`, width: "min(1480px, 92vw)" }}
       >
         {/* ── Header ── */}
         <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">

@@ -518,7 +518,13 @@ function CronJobsModalInner({
       aria-modal="true"
       aria-labelledby="cron-modal-title"
     >
-      <div className="flex h-full max-h-[92vh] w-full max-w-[1160px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0c0810] shadow-[0_40px_120px_rgba(0,0,0,0.7)]">
+      {/* v100 — cron modal widened to match the squad chat
+          (1480px max, 92vw on smaller screens) so the run timeline
+          breathes the same way the squad chat does. */}
+      <div
+        className="flex h-full max-h-[92vh] w-full max-w-[1480px] flex-col overflow-hidden rounded-[28px] border border-white/12 bg-[#0c0810] shadow-[0_40px_120px_rgba(0,0,0,0.7)]"
+        style={{ width: "min(1480px, 92vw)" }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-2.5">
@@ -873,8 +879,9 @@ function CronChatPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Header strip */}
-      <div className="flex flex-wrap items-center gap-3 border-b border-white/10 px-5 py-4">
+      {/* Header strip — v100: single-line with the action buttons no
+          longer wrapping. The wider modal (1480px) makes this safe. */}
+      <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
         <div className="relative flex-none">
           <AgentAvatar
             seed={seed}
@@ -922,7 +929,7 @@ function CronChatPanel({
             </span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-none items-center gap-1.5">
           <button
             type="button"
             onClick={() => onRunNow(job.id)}
