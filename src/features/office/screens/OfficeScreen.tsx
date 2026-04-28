@@ -85,6 +85,10 @@ import { deleteAgentRecordViaStudio } from "@/features/agents/operations/deleteA
 // files) before the destructive POST.
 import { useAgentDeleteConfirmModal } from "@/features/agents/components/AgentDeleteConfirmModal";
 import { previewPersistedCompanyAgentDelete } from "@/lib/agents/backend-api";
+// v106 — ambient script queue: lead scouts, mail runners, squad huddle.
+// Pushed when long-running operations start so the floor reflects the
+// activity ("something is happening!").
+import { useAmbientCueQueue } from "@/features/office/hooks/useAmbientCueQueue";
 import { planAgentSettingsMutation } from "@/features/agents/operations/agentSettingsMutationWorkflow";
 import {
   executeHistorySyncCommands,
@@ -2497,6 +2501,17 @@ export function OfficeScreen({
       setSquadOpsError(null);
       try {
         await dispatchSquadTask(taskId, buildSquadDispatchPayload(mode));
+        // v106 — squad just kicked off → ambient huddle on the floor.
+        if (activeSquadOpsSquad) {
+          ambientScript.pushSquadHuddle({
+            squadId: String(activeSquadOpsSquad.id),
+            squadName: activeSquadOpsSquad.name ?? "Squad",
+            agentSlugs: (activeSquadOpsSquad.members ?? [])
+              .map((m) => m.gatewayAgentId)
+              .filter((s): s is string => typeof s === "string" && s.length > 0),
+            label: `Dispatch · task #${taskId}`,
+          });
+        }
         setSquadOpsDispatchEstimate(null);
         setSquadOpsDispatchApprovalMode(null);
         await loadSquadOpsTasks(squadOpsSquadId ?? String(activeSquadOpsSquad?.id ?? ""), taskId);
@@ -2508,7 +2523,14 @@ export function OfficeScreen({
         setSquadOpsDispatchBusy(false);
       }
     },
-    [activeSquadOpsSquad?.id, buildSquadDispatchPayload, loadSquadOpsRuntimeStatus, loadSquadOpsTasks, squadOpsSquadId],
+    [
+      activeSquadOpsSquad,
+      ambientScript,
+      buildSquadDispatchPayload,
+      loadSquadOpsRuntimeStatus,
+      loadSquadOpsTasks,
+      squadOpsSquadId,
+    ],
   );
 
   useEffect(() => {
@@ -2762,6 +2784,12 @@ export function OfficeScreen({
     fetchPreview: async (gatewayAgentId) =>
       previewPersistedCompanyAgentDelete({ gatewayAgentId }),
   });
+
+  // v106 — ambient script queue. Push helpers fire from the existing
+  // long-running flows (lead generation, email batch send, squad task
+  // dispatch) — see the call sites further down. The hook auto-prunes
+  // cues older than 90 s so the queue stays small.
+  const ambientScript = useAmbientCueQueue();
 
   const handleDeleteAgent = useCallback(
     async (agentId: string) => {
@@ -6065,6 +6093,7 @@ export function OfficeScreen({
           initialFurniture={initialOfficeFurniture}
           animationState={officeAnimationState}
           deskAssignmentByDeskUid={deskAssignmentByDeskUid}
+          ambientCues={ambientScript.cues}
           githubReviewAgentId={githubReviewAgentId}
           qaTestingAgentId={qaTestingAgentId}
           phoneBoothAgentId={activePhoneBoothAgentId}
@@ -6374,6 +6403,20 @@ export function OfficeScreen({
         agents={state.agents}
         onSelectAgent={handleOpenAgentChat}
         onClose={() => setLeadOpsModalOpen(false)}
+        onLeadGenerationStarted={(info) =>
+          ambientScript.pushLeadScout({
+            jobId: info.jobId,
+            targetLeadCount: info.targetLeadCount,
+            label: info.label,
+          })
+        }
+        onEmailBatchStarted={(info) =>
+          ambientScript.pushMailRunner({
+            batchId: info.batchId,
+            emailsToSend: info.emailsToSend,
+            label: info.label,
+          })
+        }
       />
 
 

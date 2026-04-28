@@ -73,6 +73,12 @@ type LeadOpsModalProps = {
     },
   ) => void;
   onClose: () => void;
+  /** v106 — forwarded to LeadOpsPanel so the office floor can play the
+   *  "lead scout" ambient script when a generation mission is created. */
+  onLeadGenerationStarted?: (info: { jobId: number | null; targetLeadCount: number | null; label: string }) => void;
+  /** v106 — forwarded to LeadOpsPanel so the office floor can play the
+   *  "mail runner" ambient script when an outreach email batch is sent. */
+  onEmailBatchStarted?: (info: { batchId: number | null; emailsToSend: number | null; label: string }) => void;
 };
 
 type TopTab = "leadops" | "followup";
@@ -350,6 +356,8 @@ export function LeadOpsModal({
   agents,
   onSelectAgent,
   onClose,
+  onLeadGenerationStarted,
+  onEmailBatchStarted,
 }: LeadOpsModalProps) {
   const [topTab, setTopTab] = useState<TopTab>("leadops");
   const [followUpTab, setFollowUpTab] = useState<FollowUpTab>("overview");
@@ -1408,6 +1416,8 @@ export function LeadOpsModal({
                 companyName={companyName ?? undefined}
                 onSelectAgent={onSelectAgent}
                 embedded
+                onLeadGenerationStarted={onLeadGenerationStarted}
+                onEmailBatchStarted={onEmailBatchStarted}
               />
             </div>
           ) : (

@@ -242,6 +242,9 @@ import {
   HeatmapSystem as AgentHeatmapSystem,
 } from "@/features/retro-office/systems/visualSystems";
 import type { OfficeCleaningCue } from "@/lib/office/janitorReset";
+// v106 — ambient cues (lead scouts / mail runner / squad huddle).
+import type { OfficeAmbientCue } from "@/lib/office/ambientCues";
+import { buildAmbientActorsForCue } from "@/features/retro-office/core/ambientActors";
 import { useRebuiltAgentTick } from "@/features/retro-office/core/agentMotion";
 
 type OfficeDeskMonitorMap = Record<string, OfficeDeskMonitor>;
@@ -259,6 +262,7 @@ const EMPTY_BOOLEAN_RECORD: Record<string, boolean> = {};
 const EMPTY_NUMBER_RECORD: Record<string, number> = {};
 const EMPTY_MONITOR_MAP: OfficeDeskMonitorMap = {};
 const EMPTY_CLEANING_CUES: OfficeCleaningCue[] = [];
+const EMPTY_AMBIENT_CUES: OfficeAmbientCue[] = [];
 const EMPTY_FEED_EVENTS: FeedEvent[] = [];
 
 type DragState =
@@ -1602,6 +1606,7 @@ export function RetroOffice3D({
   storageNamespace = "default",
   deskAssignmentByDeskUid = EMPTY_STRING_RECORD,
   cleaningCues = EMPTY_CLEANING_CUES,
+  ambientCues = EMPTY_AMBIENT_CUES,
   deskHoldByAgentId = EMPTY_BOOLEAN_RECORD,
   gymHoldByAgentId = EMPTY_BOOLEAN_RECORD,
   githubReviewAgentId = null,
@@ -1694,6 +1699,10 @@ export function RetroOffice3D({
   storageNamespace?: string;
   deskAssignmentByDeskUid?: Record<string, string>;
   cleaningCues?: OfficeCleaningCue[];
+  /** v106 — short-lived ambient cues (lead scout, mail runner, squad
+   *  huddle). Each cue spawns a small set of janitor-style actors that
+   *  walk a route and despawn after their kind-specific duration. */
+  ambientCues?: OfficeAmbientCue[];
   deskHoldByAgentId?: Record<string, boolean>;
   gymHoldByAgentId?: Record<string, boolean>;
   githubReviewAgentId?: string | null;
@@ -1773,6 +1782,10 @@ export function RetroOffice3D({
   onJukeboxInteract?: () => void;
 }) {
   const resolvedCleaningCues = animationState?.cleaningCues ?? cleaningCues;
+  // v106 — ambient cues come straight from the prop (no animationState
+  // mirror yet — they're a render-time concern, not part of the
+  // long-lived office state).
+  const resolvedAmbientCues = ambientCues;
   const resolvedDanceUntilByAgentId =
     animationState?.danceUntilByAgentId ?? EMPTY_NUMBER_RECORD;
   const resolvedDeskHoldByAgentId =
@@ -1958,6 +1971,10 @@ export function RetroOffice3D({
   >({});
   const [janitorActors, setJanitorActors] = useState<JanitorActor[]>([]);
   const seenCleaningCueIdsRef = useRef<Set<string>>(new Set());
+  // v106 — separate de-dup set for ambient cues so a re-emission of
+  // the same cleaning cue id can't accidentally suppress a fresh
+  // ambient cue with the same id (different namespaces).
+  const seenAmbientCueIdsRef = useRef<Set<string>>(new Set());
   // E3 Idea 3: spotlight.
   const [spotlightAgentId, setSpotlightAgentId] = useState<string | null>(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -2169,6 +2186,34 @@ export function RetroOffice3D({
       return [...pruneExpiredJanitorActors(previous, now), ...spawnedActors];
     });
   }, [janitorCleaningStops, resolvedCleaningCues]);
+
+  // v106 — same spawn / dedup loop as the cleaning effect above, but
+  // for ambient cues. Reuses the janitor stops as the route source so
+  // the actors walk through the same parts of the office. The actor
+  // builders pick their own colour/tool/duration so the three kinds
+  // (lead-scout, mail-runner, squad-huddle) read distinctly on screen.
+  useEffect(() => {
+    if (resolvedAmbientCues.length === 0) return;
+    const unseen = resolvedAmbientCues.filter(
+      (cue) => !seenAmbientCueIdsRef.current.has(cue.id),
+    );
+    if (unseen.length === 0) return;
+    for (const cue of unseen) seenAmbientCueIdsRef.current.add(cue.id);
+    const cap = Math.max(resolvedAmbientCues.length * 4, 32);
+    while (seenAmbientCueIdsRef.current.size > cap) {
+      const oldest = seenAmbientCueIdsRef.current.values().next().value;
+      if (!oldest) break;
+      seenAmbientCueIdsRef.current.delete(oldest);
+    }
+    const spawned = unseen.flatMap((cue) =>
+      buildAmbientActorsForCue(cue, janitorCleaningStops),
+    );
+    if (spawned.length === 0) return;
+    setJanitorActors((previous) => {
+      const now = Date.now();
+      return [...pruneExpiredJanitorActors(previous, now), ...spawned];
+    });
+  }, [janitorCleaningStops, resolvedAmbientCues]);
 
   const sceneAgents = useMemo<SceneActor[]>(
     () => [...agents, ...janitorActors],

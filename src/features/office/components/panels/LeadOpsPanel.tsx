@@ -144,6 +144,8 @@ export function LeadOpsPanel({
   companyName,
   onSelectAgent,
   embedded = false,
+  onLeadGenerationStarted,
+  onEmailBatchStarted,
 }: {
   agents: AgentState[];
   companyName?: string | null;
@@ -156,6 +158,12 @@ export function LeadOpsPanel({
    * reachable while avoiding a double-header visual.
    */
   embedded?: boolean;
+  /** v106 — fires when a lead-generation mission is created so the
+   *  outer office can play the "scout" ambient script on the floor. */
+  onLeadGenerationStarted?: (info: { jobId: number | null; targetLeadCount: number | null; label: string }) => void;
+  /** v106 — fires when an email batch is dispatched so the office can
+   *  play the "mail runner" ambient script. */
+  onEmailBatchStarted?: (info: { batchId: number | null; emailsToSend: number | null; label: string }) => void;
 }) {
   const companyId = getBrowserCompanyId();
 
@@ -643,6 +651,13 @@ export function LeadOpsPanel({
         maxResults,
         mode: "background",
       });
+      // v106 — let the office floor know so the "lead scout" ambient
+      // script kicks off (two scouts walking the floor for ~45s).
+      onLeadGenerationStarted?.({
+        jobId: created?.id ?? null,
+        targetLeadCount: maxResults,
+        label: `Lead scout · ${query.trim()}`,
+      });
       setJobs((c) => [{ ...created, agentName: selectedLeadAgent?.name ?? created.agentName }, ...c.filter((j) => j.id !== created.id)]);
       setSelectedJobId(created.id);
       setModalView("none");
@@ -709,6 +724,12 @@ export function LeadOpsPanel({
         replyTo: emailReplyTo.trim() || effectiveCompanyEmail || undefined,
         subjectTemplate: emailSubjectTemplate.trim(),
         introText: emailIntroText.trim() || undefined,
+      });
+      // v106 — kick off the "mail runner" ambient script on the floor.
+      onEmailBatchStarted?.({
+        batchId: created?.id ?? null,
+        emailsToSend: created?.totalSelected ?? created?.totalEligible ?? null,
+        label: `Mail runner · ${selectedJob.title}`,
       });
       setEmailBatchJobs((c) => [created, ...c.filter((b) => b.id !== created.id)]);
       setModalView("none");
