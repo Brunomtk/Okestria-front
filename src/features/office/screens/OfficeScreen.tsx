@@ -2477,10 +2477,19 @@ export function OfficeScreen({
         setSquadOpsError(message);
         return;
       }
-      // Surface the gateway sweep result (only when something actually
-      // happened on the gateway side — older backs return zeros and the
-      // toast would just say "0 sessions cleaned" which is misleading).
-      if (result.sessionsCleaned > 0 || result.runsRemoved > 0) {
+      // v114 — three outcome buckets:
+      //   1) task was already gone on the server (taskExists:false) —
+      //      treat as silent success; just clear local state.
+      //   2) task existed and we got real sweep counts — show the
+      //      "N runs wiped / N sessions cleaned" toast for 6s.
+      //   3) task existed but the back returned zeros (older deploy or
+      //      ran without the bridge) — silent; no misleading
+      //      "0 sessions cleaned" toast.
+      if (!result.taskExists) {
+        // Already gone — silent. The local state cleanup below is
+        // still needed in case the operator's tab was stale.
+        setSquadOpsError(null);
+      } else if (result.sessionsCleaned > 0 || result.runsRemoved > 0) {
         const parts: string[] = ["Task deleted"];
         if (result.runsRemoved > 0) {
           parts.push(`${result.runsRemoved} run${result.runsRemoved === 1 ? "" : "s"} wiped`);

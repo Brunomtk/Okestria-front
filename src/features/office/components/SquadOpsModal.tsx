@@ -172,6 +172,33 @@ const relativeTime = (value: string | null | undefined): string => {
   return fmtDate(value);
 };
 
+/**
+ * v113 — task completion duration label.
+ *
+ * The bridge dispatch (back v64) returns the agent's reply synchronously,
+ * so completed tasks now have meaningful startedAt → finishedAt deltas
+ * (typically a few seconds for a single agent). We surface that on the
+ * task row as a small "8.5s" pill so the operator can read at a glance
+ * how snappy the dispatch is. Returns "" for tasks that never started
+ * or that haven't finished yet.
+ */
+const taskDurationLabel = (
+  startedAt: string | null | undefined,
+  finishedAt: string | null | undefined,
+): string => {
+  if (!startedAt || !finishedAt) return "";
+  const start = new Date(startedAt).getTime();
+  const end = new Date(finishedAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return "";
+  const ms = Math.max(0, end - start);
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const min = Math.floor(s / 60);
+  const restSec = Math.floor(s % 60);
+  return restSec > 0 ? `${min}m ${restSec}s` : `${min}m`;
+};
+
 // v97 — `initialsOf` was retired in favour of <AgentAvatar />, which
 // owns initials + multiavatar SVG fallback internally. Kept here only as
 // a comment pointer in case future code wants the original helper back.
@@ -351,22 +378,49 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   // Named `selectedTaskMode` to avoid colliding with the new-task form's
   // `taskExecutionMode` state declared above.
   const selectedTaskMode = normalize(selectedTask?.executionMode ?? activeMode);
-  const isLeaderSynthesisMode =
+  // v114 — three flavors of "this mode has a leader":
+  //
+  //   • isParallelSynthesisMode (leader / all): members run together,
+  //     leader synthesizes after. The steps strip lists MEMBERS only;
+  //     the leader's reply is the highlighted "Squad final answer"
+  //     section below.
+  //   • isWorkflowMode: sequential chain; leader is typically the last
+  //     step in the chain. The steps strip shows EVERY step in order
+  //     (so the operator sees the cascade), AND we also pin the
+  //     leader's reply at the bottom as the final answer (back v65
+  //     guarantees task.finalResponse = leader's text in this mode).
+  //   • manual: single run, no synthesis section.
+  //
+  // The two flags split the rendering responsibilities cleanly.
+  const isParallelSynthesisMode =
     selectedTaskMode === "leader" || selectedTaskMode === "all" || selectedTaskMode === "all_at_once";
+  const isWorkflowMode = selectedTaskMode === "workflow" || selectedTaskMode === "sequential";
+  const hasFinalAnswerHighlight = isParallelSynthesisMode || isWorkflowMode;
+  // Kept under the old name so existing render code below that filters
+  // the steps strip ("members only") doesn't change behavior.
+  const isLeaderSynthesisMode = isParallelSynthesisMode;
 
   // v45 — pull the leader run out of the roster so the modal can render its
-  // synthesis distinctly (members each give their bit, the leader does the
-  // final answer once everyone is done). For workflow / sequential modes
-  // there is no synthesis pass, so we don't pluck a leader.
+  // synthesis distinctly. v114 — extended to workflow mode too: in workflow
+  // the leader's reply is the final answer (back v65 enforces this).
   const leaderRun = useMemo(() => {
-    if (!isLeaderSynthesisMode) return null;
+    if (!hasFinalAnswerHighlight) return null;
     const explicit = runs.find((r) => normalize(r.role) === "leader");
     if (explicit) return explicit;
+    // For workflow mode, fall back to the last run in the chain — that's
+    // the synthesis step in the typical squad config.
+    if (isWorkflowMode && runs.length > 0) return runs[runs.length - 1];
     return runs[0] ?? null;
-  }, [runs, isLeaderSynthesisMode]);
+  }, [runs, hasFinalAnswerHighlight, isWorkflowMode]);
   const memberRuns = useMemo(
-    () => runs.filter((r) => !leaderRun || r.id !== leaderRun.id),
-    [runs, leaderRun],
+    // In workflow mode we DON'T filter the leader out of the steps strip —
+    // the operator wants to see "step 1 → step 2 → leader" in order. The
+    // strip still shows every run; the leader gets its second appearance
+    // in the "Squad final answer" section below.
+    () => isWorkflowMode
+      ? runs
+      : runs.filter((r) => !leaderRun || r.id !== leaderRun.id),
+    [runs, leaderRun, isWorkflowMode],
   );
   const memberRunsAllTerminal = useMemo(
     () =>
@@ -606,6 +660,19 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
               {memberCount} member{memberCount !== 1 ? "s" : ""} · {modeLabel}
             </p>
           </div>
+          {/* v113 — quietly confirms which dispatch path is wired so the
+              operator can tell from inside the modal that tasks land on
+              the agent (bridge) instead of main (legacy /hooks/agent).
+              Tooltip explains; no click target. */}
+          {hooksConfigured ? (
+            <span
+              title="Tasks dispatch through the OpenClaw agent bridge — they land on the agent's pane, not on main."
+              className="hidden items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/85 sm:inline-flex"
+            >
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              Bridge ready
+            </span>
+          ) : null}
           <button
             type="button"
             onClick={onRefresh}
@@ -706,12 +773,26 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                     <Plus className="h-4 w-4" />
                     New task
                   </button>
+                  {/* v113 — quietly tells the operator each task lands on
+                      its assigned agent through the bridge, not on main. */}
+                  <p className="mt-4 text-[10px] uppercase tracking-[0.18em] text-white/25">
+                    Each task runs on its assigned agent · OpenClaw bridge wired
+                  </p>
                 </div>
               ) : (
                 tasks.map((task) => {
                   const expanded = expandedId === task.id;
                   const isActive = selectedTask?.id === task.id;
                   const activity = task.updatedDate || task.createdDate;
+                  // v113 — task completion duration. Only computed when
+                  // the task actually finished (startedAt + finishedAt
+                  // both populated). Empty string elsewhere — no badge.
+                  const taskStatus = normalize(task.status);
+                  const taskIsDone =
+                    taskStatus === "completed" || taskStatus === "failed";
+                  const durationLabel = taskIsDone
+                    ? taskDurationLabel(task.startedAtUtc, task.finishedAtUtc)
+                    : "";
                   return (
                     <div
                       key={task.id}
@@ -748,6 +829,29 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                               <>
                                 <span className="text-white/20">·</span>
                                 <span>{relativeTime(activity)}</span>
+                              </>
+                            )}
+                            {/* v113 — completion duration pill. Only shows
+                                for done/failed tasks with both timestamps
+                                populated. Helps the operator see at a
+                                glance how snappy the bridge dispatch is. */}
+                            {durationLabel && (
+                              <>
+                                <span className="text-white/20">·</span>
+                                <span
+                                  className={
+                                    taskStatus === "failed"
+                                      ? "rounded-full bg-rose-500/10 px-1.5 py-px font-mono text-[10px] tracking-wider text-rose-200/80"
+                                      : "rounded-full bg-emerald-500/10 px-1.5 py-px font-mono text-[10px] tracking-wider text-emerald-200/80"
+                                  }
+                                  title={
+                                    taskStatus === "failed"
+                                      ? "Time spent before failing"
+                                      : "Total dispatch time (start → reply)"
+                                  }
+                                >
+                                  {durationLabel}
+                                </span>
                               </>
                             )}
                           </div>
@@ -961,8 +1065,12 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                           {/* v45 — Leader synthesis card. Once the leader has
                               produced its synthesis, surface it as the squad's
                               authoritative answer, separated from the
-                              chronological chat above. */}
-                          {leaderRun && leaderIsResponded && isLeaderSynthesisMode && (
+                              chronological chat above.
+                              v114 — also rendered in workflow mode (the
+                              leader's reply is the final answer of the chain;
+                              back v65 pins task.finalResponse to it). The
+                              caption changes depending on mode. */}
+                          {leaderRun && leaderIsResponded && hasFinalAnswerHighlight && (
                             <div
                               className="mt-4 overflow-hidden rounded-xl border"
                               style={{
@@ -979,8 +1087,9 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                                   Squad final answer · {leaderRun.agentName || "Lead"}
                                 </span>
                                 <span className="text-[10px] text-white/45">
-                                  {memberRuns.length} member
-                                  {memberRuns.length === 1 ? "" : "s"} synthesised
+                                  {isWorkflowMode
+                                    ? `Workflow · ${runs.length} step${runs.length === 1 ? "" : "s"}`
+                                    : `${memberRuns.length} member${memberRuns.length === 1 ? "" : "s"} synthesised`}
                                 </span>
                               </div>
                               <div className="agent-markdown break-words px-4 py-3 text-sm leading-6 text-white/90">

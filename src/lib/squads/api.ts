@@ -953,6 +953,46 @@ const normalizeDeleteTaskResult = (
   };
 };
 
+/**
+ * v114 — recognises the back's "already gone" envelope.
+ *
+ * Back v65+ returns 200 OK with `taskExists:false` for stale taskIds.
+ * Back v63/v64 returned 404 with the same body. Either way, the body
+ * shape is the same; the front detects the envelope via field presence
+ * and treats the response as a clean "task is gone" result instead of
+ * an error to surface.
+ */
+const looksLikeDeleteAlreadyGoneBody = (text: string): boolean => {
+  if (!text) return false;
+  try {
+    const parsed = JSON.parse(text);
+    return (
+      parsed &&
+      typeof parsed === "object" &&
+      "taskExists" in parsed &&
+      parsed.taskExists === false
+    );
+  } catch {
+    return false;
+  }
+};
+
+const buildAlreadyGoneResult = (
+  taskId: number,
+  text?: string,
+): SquadTaskDeleteResult => {
+  let parsed: unknown = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch { /* fall through to defaults */ }
+  }
+  return normalizeDeleteTaskResult(
+    parsed ?? { taskId, taskExists: false, deleted: false },
+    taskId,
+  );
+};
+
 export const deleteSquadTask = async (
   taskId: number,
   token?: string | null,
@@ -968,6 +1008,16 @@ export const deleteSquadTask = async (
   } catch (primaryError) {
     const primaryMessage =
       primaryError instanceof Error ? primaryError.message : String(primaryError);
+
+    // v114 — the back may have returned 404 with a JSON body that says
+    // taskExists:false (back v63/v64 behavior). The body itself doesn't
+    // contain the literal "404", so the regex below would fall through
+    // and the body would surface as a raw error to the operator. Detect
+    // the envelope here and treat it as a clean "already gone" result.
+    if (looksLikeDeleteAlreadyGoneBody(primaryMessage)) {
+      return buildAlreadyGoneResult(taskId, primaryMessage);
+    }
+
     // Anything other than "endpoint not found" → propagate so the UI
     // can surface the actual error (auth, 5xx, network).
     if (!/404|405|not\s*found|method\s*not/i.test(primaryMessage)) {
@@ -996,6 +1046,9 @@ export const deleteSquadTask = async (
       fallbackAError instanceof Error
         ? fallbackAError.message
         : String(fallbackAError);
+    if (looksLikeDeleteAlreadyGoneBody(fallbackAMessage)) {
+      return buildAlreadyGoneResult(taskId, fallbackAMessage);
+    }
     if (!/404|405|not\s*found|method\s*not/i.test(fallbackAMessage)) {
       throw fallbackAError;
     }
