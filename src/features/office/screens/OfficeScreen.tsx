@@ -2520,20 +2520,18 @@ export function OfficeScreen({
       setSquadOpsError(null);
       try {
         await dispatchSquadTask(taskId, buildSquadDispatchPayload(mode));
-        // v106 — squad just kicked off → ambient huddle on the floor.
+        // v109 — Real squad members head to the meeting room. The
+        // violet janitor-style ambient cue from v106 was removed per
+        // request — the actual agents walking to their own chairs
+        // (each one to a UNIQUE chair, fixed in v109) is the
+        // animation now.
         if (activeSquadOpsSquad) {
           const memberAgentSlugs = (activeSquadOpsSquad.members ?? [])
             .map((m) => m.gatewayAgentId)
             .filter((s): s is string => typeof s === "string" && s.length > 0);
-          ambientScript.pushSquadHuddle({
-            squadId: String(activeSquadOpsSquad.id),
-            squadName: activeSquadOpsSquad.name ?? "Squad",
-            agentSlugs: memberAgentSlugs,
-            label: `Dispatch · task #${taskId}`,
-          });
-          // v108 — force every member into the meeting room. They'll
-          // walk to a free chair and sit there until we clear the
-          // entry below.
+          // Force every member into the meeting room. Unified
+          // participant order in `resolveMeetingTarget` (v109) gives
+          // each one a different chair.
           setMeetingForcedAgentIds((prev) => {
             const next = { ...prev };
             for (const slug of memberAgentSlugs) next[slug] = true;
@@ -2561,7 +2559,6 @@ export function OfficeScreen({
     },
     [
       activeSquadOpsSquad,
-      ambientScript,
       buildSquadDispatchPayload,
       loadSquadOpsRuntimeStatus,
       loadSquadOpsTasks,

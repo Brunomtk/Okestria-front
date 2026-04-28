@@ -500,11 +500,20 @@ export function useRebuiltAgentTick(
     (agentId: string) => {
       const seats = [...meetingSeatLocations, ...MEETING_OVERFLOW_LOCATIONS];
       const fallback = seats[0] ?? { x: 145, y: 118, facing: Math.PI };
-      const participantOrder = standupMeeting?.participantOrder ?? [];
-      const index = participantOrder.indexOf(agentId);
+      // v109 — unified participant order. Standup participants keep
+      // their slots; squad-huddle members (`meetingForcedAgentIds`)
+      // append after them so every body in the room lands on a
+      // UNIQUE chair. Bug in v108: every squad member resolved to
+      // `index === -1` → fallback → all sitting on the same chair.
+      const standupOrder = standupMeeting?.participantOrder ?? [];
+      const huddleOrder = Object.keys(meetingForcedAgentIds)
+        .filter((id) => meetingForcedAgentIds[id] && !standupOrder.includes(id))
+        .sort(); // alphabetical so the seat assignment stays stable across renders
+      const combined = [...standupOrder, ...huddleOrder];
+      const index = combined.indexOf(agentId);
       return index >= 0 ? (seats[index] ?? fallback) : fallback;
     },
-    [meetingSeatLocations, standupMeeting?.participantOrder],
+    [meetingSeatLocations, meetingForcedAgentIds, standupMeeting?.participantOrder],
   );
 
   const buildPathToTarget = useCallback(
