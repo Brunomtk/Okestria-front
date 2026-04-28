@@ -60,7 +60,12 @@ export function AgentDeleteConfirmModal({
       summary.cronJobRunsAffected > 0 ||
       summary.squadMembershipsAffected > 0 ||
       summary.filesAffected > 0 ||
-      summary.hasProfile);
+      summary.hasProfile ||
+      // v110 — surface the cascade list even when the only thing
+      // happening is "N lead missions get detached." Otherwise the
+      // operator sees the bland "no cron jobs / squads / files"
+      // empty-state and never learns about the lead-side impact.
+      summary.leadJobsDetached > 0);
 
   return (
     <div
@@ -189,6 +194,28 @@ export function AgentDeleteConfirmModal({
                       <span>The agent profile (Soul / Vibe / Boundaries / etc.).</span>
                     </li>
                   ) : null}
+                  {/* v110 — lead missions are NOT deleted with the agent.
+                      The back (v61+) sets AgentId to NULL on the existing
+                      rows so the company keeps seeing every mission in
+                      its lead modals. We render this in amber, not red,
+                      to make the "kept" semantics visually obvious. */}
+                  {summary.leadJobsDetached > 0 ? (
+                    <li className="flex items-start gap-2">
+                      <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-amber-300/80" />
+                      <span>
+                        <strong className="text-white">{summary.leadJobsDetached}</strong>{" "}
+                        lead-generation mission
+                        {summary.leadJobsDetached === 1 ? "" : "s"}{" "}
+                        <span className="text-amber-200/80">
+                          will be detached, not deleted
+                        </span>
+                        <span className="text-white/55">
+                          {" "}— missions stay on the company; only the
+                          “launched by” attribution is lost.
+                        </span>
+                      </span>
+                    </li>
+                  ) : null}
                   <li className="flex items-start gap-2">
                     <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
                     <span>
@@ -204,8 +231,9 @@ export function AgentDeleteConfirmModal({
               </>
             ) : (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white/75">
-                No cron jobs, squads, or files are tied to this agent. The agent's
-                workspace and sessions on the gateway VPS will still be wiped.
+                No cron jobs, squads, files, or lead missions are tied to this
+                agent. The agent's workspace and sessions on the gateway VPS
+                will still be wiped.
               </div>
             )
           ) : null}

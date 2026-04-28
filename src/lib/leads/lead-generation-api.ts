@@ -13,7 +13,11 @@ export type LeadGenerationJob = {
   id: number;
   companyId: number;
   requestedByUserId: number | null;
-  agentId: number;
+  // v110 — agentId is nullable. The mission belongs to the company;
+  // the agent (if any) is metadata for "who launched it." Null means
+  // the mission was created company-scoped, OR the launching agent
+  // has since been deleted (back v61 sets the FK to NULL on delete).
+  agentId: number | null;
   agentName?: string | null;
   squadId?: number | null;
   title: string;
@@ -61,7 +65,10 @@ export type LeadGenerationJobSyncResult = {
 
 export type LeadGenerationJobPayload = {
   companyId: number;
-  agentId: number;
+  // v110 — optional. Pass `null`, `undefined` or `0` to launch a
+  // company-scoped mission with no agent attribution. Anything > 0
+  // is validated against the company on the server.
+  agentId?: number | null;
   title: string;
   query: string;
   region?: string;
@@ -351,7 +358,16 @@ const normalizeJob = (value: unknown): LeadGenerationJob | null => {
     id,
     companyId,
     requestedByUserId: parseNumber(pick(entry, "requestedByUserId", "RequestedByUserId"), NaN) || null,
-    agentId: parseNumber(pick(entry, "agentId", "AgentId"), 0),
+    // v110 — preserve null. The back returns `null` for company-scoped
+    // missions and for missions whose launching agent has been deleted
+    // (FK SET NULL). Coercing to 0 here would make the UI think every
+    // detached job belongs to "agent 0" and break the chip rendering.
+    agentId: (() => {
+      const raw = pick(entry, "agentId", "AgentId");
+      if (raw === null || raw === undefined) return null;
+      const num = parseNumber(raw, NaN);
+      return Number.isFinite(num) && num > 0 ? num : null;
+    })(),
     agentName: parseString(pick(entry, "agentName", "AgentName")),
     squadId: parseNumber(pick(entry, "squadId", "SquadId"), NaN) || null,
     title: parseString(pick(entry, "title", "Title")) ?? "Lead generation run",
@@ -514,7 +530,10 @@ const buildFallbackJob = (payload: LeadGenerationJobPayload): LeadGenerationJob 
     id: Date.now(),
     companyId: payload.companyId,
     requestedByUserId: null,
-    agentId: payload.agentId,
+    // v110 — keep agentId nullable in the local fallback row too so
+    // the "company-scoped" pill renders consistently between the
+    // optimistic insert and the eventual server-confirmed row.
+    agentId: payload.agentId && payload.agentId > 0 ? payload.agentId : null,
     title: payload.title,
     query: payload.query,
     region: payload.region ?? null,
@@ -575,7 +594,10 @@ export const createLeadGenerationJob = async (payload: LeadGenerationJobPayload)
     prompt: payload.prompt,
     mode: payload.mode ?? "agent-background",
     maxResults: payload.maxResults,
-    agentId: payload.agentId,
+    // v110 — server treats `> 0` as "bind to this agent." Pass `0` for
+    // company-scoped missions so we don't run the agent-existence
+    // validator on a phantom id.
+    agentId: payload.agentId && payload.agentId > 0 ? payload.agentId : 0,
   };
 
   try {

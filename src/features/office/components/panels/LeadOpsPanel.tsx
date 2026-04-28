@@ -635,15 +635,19 @@ export function LeadOpsPanel({
 
   // Handlers
   const handleCreateJob = useCallback(async () => {
-    if (!companyId || !selectedBackendAgentId || !query.trim()) {
-      setError("Please select an agent and enter a search niche.");
+    // v110 — agent is optional now. Only `companyId` and a non-empty
+    // query are mandatory. Missions launched without an agent run
+    // exactly the same Apify pipeline; the back just stores
+    // AgentId = NULL on the row.
+    if (!companyId || !query.trim()) {
+      setError("Please enter a search niche.");
       return;
     }
     setSubmitting(true);
     try {
       const created = await createLeadGenerationJob({
         companyId,
-        agentId: selectedBackendAgentId,
+        agentId: selectedBackendAgentId ?? null,
         title: `${query.trim()}${region.trim() ? ` · ${region.trim()}` : ""}`,
         query: query.trim(),
         region: region.trim() || undefined,
@@ -658,7 +662,16 @@ export function LeadOpsPanel({
         targetLeadCount: maxResults,
         label: `Lead scout · ${query.trim()}`,
       });
-      setJobs((c) => [{ ...created, agentName: selectedLeadAgent?.name ?? created.agentName }, ...c.filter((j) => j.id !== created.id)]);
+      // v110 — preserve null agent on the optimistic row too, so the
+      // "Company-scoped" pill renders consistently between the local
+      // insert and the eventual server-confirmed reload.
+      setJobs((c) => [
+        {
+          ...created,
+          agentName: selectedLeadAgent?.name ?? created.agentName ?? null,
+        },
+        ...c.filter((j) => j.id !== created.id),
+      ]);
       setSelectedJobId(created.id);
       setModalView("none");
       setQuery("");
@@ -1185,7 +1198,20 @@ export function LeadOpsPanel({
 
               {/* Meta */}
               <div className="mt-5 flex flex-wrap items-center gap-4 text-xs text-white/35">
-                <span>Agent: <span className="text-white/60">{selectedJob.agentName || selectedJob.agentId}</span></span>
+                {/* v110 — show "Company-scoped" when no agent is on the
+                    mission (created without one OR detached because the
+                    launching agent was deleted). Falling through to the
+                    raw id ("Agent: 0") was misleading and made every
+                    detached job look broken. */}
+                <span>
+                  Agent:{" "}
+                  <span className="text-white/60">
+                    {selectedJob.agentName
+                      || (selectedJob.agentId && selectedJob.agentId > 0
+                        ? `#${selectedJob.agentId}`
+                        : "Company-scoped")}
+                  </span>
+                </span>
                 <span>Started: <span className="text-white/60">{formatDateTime(selectedJob.startedAtUtc || selectedJob.createdDate)}</span></span>
                 {selectedJob.finishedAtUtc && (
                   <span>Finished: <span className="text-white/60">{formatDateTime(selectedJob.finishedAtUtc)}</span></span>
@@ -1270,6 +1296,15 @@ export function LeadOpsPanel({
                 {jobs.map((job) => {
                   const isSelected = selectedJobId === job.id;
                   const config = STATUS_CONFIG[job.status] || STATUS_CONFIG.queued;
+                  // v110 — every mission belongs to the company even when
+                  // its launching agent is gone. Pick the chip copy:
+                  //   • agent name → still bound, attribution visible
+                  //   • "Company-scoped" → never had an agent OR detached
+                  //     by an agent delete (back v61 sets the FK to NULL)
+                  const hasAgent =
+                    typeof job.agentId === "number" && job.agentId > 0;
+                  const agentChip = job.agentName
+                    || (hasAgent ? `Agent #${job.agentId}` : "Company-scoped");
                   return (
                     <div
                       key={job.id}
@@ -1290,6 +1325,23 @@ export function LeadOpsPanel({
                         </div>
                         <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium uppercase ${config.bg} ${config.text}`}>
                           {job.status}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                            hasAgent
+                              ? "bg-cyan-500/10 text-cyan-200/80 ring-1 ring-cyan-500/20"
+                              : "bg-white/[0.04] text-white/45 ring-1 ring-white/10"
+                          }`}
+                          title={
+                            hasAgent
+                              ? `Launched by ${agentChip}`
+                              : "No agent attribution — mission belongs to the company"
+                          }
+                        >
+                          {hasAgent ? <UserRound className="h-2.5 w-2.5" /> : <Target className="h-2.5 w-2.5" />}
+                          {agentChip}
                         </span>
                       </div>
                       <div className="mt-3 flex items-center justify-between text-xs text-white/30">
@@ -1473,18 +1525,23 @@ export function LeadOpsPanel({
           <div className="space-y-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-white/50">Agent</label>
+                {/* v110 — Agent picker is OPTIONAL. Lead missions belong
+                    to the company; the agent is just attribution for
+                    "who launched it." Default option is "No agent
+                    (company-scoped)" so a single click on Create still
+                    works on a fresh squad with no agents at all. */}
+                <label className="mb-1.5 block text-xs font-medium text-white/50">
+                  Agent <span className="text-white/30">· optional</span>
+                </label>
                 <div className="relative">
                   <select
                     value={selectedBackendAgentId || ""}
                     onChange={(e) => setSelectedBackendAgentId(Number(e.target.value) || 0)}
                     className="w-full appearance-none rounded-lg bg-white/5 px-3 py-2.5 pr-10 text-sm text-white outline-none ring-1 ring-white/10 focus:ring-cyan-500/50"
                   >
-                    {leadAgentOptions.length === 0 && (
-                      <option value="" style={{ color: "#0f172a", backgroundColor: "#f8fafc" }}>
-                        No agents
-                      </option>
-                    )}
+                    <option value="" style={{ color: "#0f172a", backgroundColor: "#f8fafc" }}>
+                      No agent (company-scoped)
+                    </option>
                     {leadAgentOptions.map((a) => (
                       <option
                         key={a.backendAgentId}
@@ -1497,6 +1554,11 @@ export function LeadOpsPanel({
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
                 </div>
+                <p className="mt-1 text-[11px] text-white/30">
+                  Pick an agent to stamp this mission with attribution. If left
+                  unset, the mission still runs and stays attached to the company
+                  even if every agent is later deleted.
+                </p>
               </div>
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-white/50">Region</label>

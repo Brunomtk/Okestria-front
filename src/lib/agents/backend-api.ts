@@ -587,6 +587,12 @@ export type DeleteAgentSummary = {
   squadMembershipsAffected: number;
   filesAffected: number;
   hasProfile: boolean;
+  // v110 — back v61 returns this so the delete prompt can tell the
+  // operator how many lead-generation missions will be DETACHED (not
+  // deleted): the row stays in the company's lead modal, only the
+  // "launched by" attribution is lost. Default to 0 on older servers
+  // that don't yet emit the field.
+  leadJobsDetached: number;
   cronJobNames: string[];
   squadNames: string[];
   warning: string | null;
@@ -607,6 +613,10 @@ const normalizeDeleteSummary = (raw: unknown): DeleteAgentSummary | null => {
       typeof r.squadMembershipsAffected === "number" ? r.squadMembershipsAffected : 0,
     filesAffected: typeof r.filesAffected === "number" ? r.filesAffected : 0,
     hasProfile: Boolean(r.hasProfile),
+    // v110 — pull the lead-jobs counter from back v61. Older servers
+    // that don't emit it default to 0 so the modal silently hides the
+    // line instead of misreporting.
+    leadJobsDetached: typeof r.leadJobsDetached === "number" ? r.leadJobsDetached : 0,
     cronJobNames: Array.isArray(r.cronJobNames)
       ? (r.cronJobNames.filter((n) => typeof n === "string") as string[])
       : [],
