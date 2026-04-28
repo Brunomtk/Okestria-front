@@ -5,7 +5,7 @@ import {
   restoreCronJobs,
   type CronJobRestoreInput,
 } from "@/lib/cron/types";
-import { deleteGatewayAgent } from "@/lib/gateway/agentConfig";
+import { clearAllAgentSessions, deleteGatewayAgent } from "@/lib/gateway/agentConfig";
 import { deletePersistedCompanyAgentByGatewayId } from "@/lib/agents/backend-api";
 
 type FetchJson = typeof defaultFetchJson;
@@ -144,6 +144,29 @@ export const deleteAgentRecordViaStudio = async (params: {
   let removedCronJobs: CronJobRestoreInput[] = [];
   try {
     removedCronJobs = await removeCronJobsForAgentWithBackup(params.client, trimmedAgentId);
+
+    // v105 — sweep every session attached to this agent on the gateway
+    // BEFORE deleting the agent record. Best-effort: log + continue if
+    // the gateway hiccups; the cascade-delete on the back will still
+    // wipe the persisted Okestria rows.
+    try {
+      const sweep = await clearAllAgentSessions({
+        client: params.client,
+        agentId: trimmedAgentId,
+      });
+      if (sweep.failed > 0) {
+        logError(
+          `Cleared ${sweep.deleted}/${sweep.inspected} gateway sessions for ${trimmedAgentId}; ${sweep.failed} failed.`,
+          new Error("partial-sessions-sweep"),
+        );
+      }
+    } catch (sweepErr) {
+      logError(
+        `Could not sweep gateway sessions for ${trimmedAgentId} — proceeding with delete anyway.`,
+        sweepErr,
+      );
+    }
+
     await deleteGatewayAgent({ client: params.client, agentId: trimmedAgentId });
     try {
       await deletePersistedCompanyAgentByGatewayId({ gatewayAgentId: trimmedAgentId });

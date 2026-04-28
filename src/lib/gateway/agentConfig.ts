@@ -438,6 +438,83 @@ export const deleteGatewayAgent = async (params: {
   }
 };
 
+/**
+ * v105 — Wipes every session attached to a gateway agent. We page
+ * through `sessions.list` and call `sessions.delete` on each key. Used
+ * by the agent delete cascade so the operator gets a clean wipe (back
+ * + persisted record + gateway agent + all sessions on the VPS).
+ *
+ * Best-effort: errors on individual session deletes are swallowed and
+ * counted but never abort the loop. Returns the totals so the caller
+ * can surface them in the UI / log.
+ */
+export const clearAllAgentSessions = async (params: {
+  client: GatewayClient;
+  agentId: string;
+  /** Soft cap so a runaway agent with thousands of sessions doesn't
+   *  block the UI for minutes. Default 500 — way more than any normal
+   *  agent will accumulate. */
+  maxToDelete?: number;
+}): Promise<{ inspected: number; deleted: number; failed: number }> => {
+  const agentId = params.agentId.trim();
+  if (!agentId) return { inspected: 0, deleted: 0, failed: 0 };
+
+  const cap = Math.max(1, params.maxToDelete ?? 500);
+  let deleted = 0;
+  let failed = 0;
+  const seen = new Set<string>();
+
+  // Pull a generous batch first; if there are still more after the
+  // first delete pass we'll loop until the gateway returns nothing.
+  let safetyHops = 0;
+  while (safetyHops < 10) {
+    safetyHops += 1;
+    let entries: Array<{ key?: string }> = [];
+    try {
+      const res = (await params.client.call("sessions.list", {
+        agentId,
+        includeGlobal: false,
+        includeUnknown: false,
+        limit: 100,
+      })) as { sessions?: Array<{ key?: string }> };
+      entries = Array.isArray(res?.sessions) ? res.sessions : [];
+    } catch (err) {
+      if (err instanceof GatewayResponseError && /not found/i.test(err.message)) break;
+      throw err;
+    }
+
+    const fresh = entries.filter((entry) => {
+      const key = (entry?.key ?? "").trim();
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (fresh.length === 0) break;
+
+    for (const entry of fresh) {
+      if (deleted + failed >= cap) break;
+      const key = (entry.key ?? "").trim();
+      try {
+        await params.client.call("sessions.delete", { key });
+        deleted += 1;
+      } catch (err) {
+        // Swallow "not found" because it just means the session was
+        // already wiped by a parallel actor — still count as success.
+        if (err instanceof GatewayResponseError && /not found/i.test(err.message)) {
+          deleted += 1;
+        } else {
+          failed += 1;
+        }
+      }
+    }
+
+    if (deleted + failed >= cap) break;
+  }
+
+  return { inspected: seen.size, deleted, failed };
+};
+
 export const removeGatewayAgentFromConfigOnly = async (params: {
   client: GatewayClient;
   agentId: string;

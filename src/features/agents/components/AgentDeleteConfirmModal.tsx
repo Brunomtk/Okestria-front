@@ -19,12 +19,17 @@ type AgentDeleteConfirmModalProps = {
 };
 
 /**
- * v104 — Polished confirmation modal for deleting an agent.
+ * v105 — Polished confirmation modal for deleting an agent.
  *
  * Replaces the old `window.confirm("Delete X?")` with a dialog that
  * lists exactly what the cascade-delete will wipe (cron jobs, runs,
- * squad memberships, files), pulled from the back's
+ * squad memberships, files, plus the agent's gateway workspace and
+ * sessions on the VPS), pulled from the back's
  * `GET /api/Agents/delete/{id}/preview` endpoint.
+ *
+ * z-index sits above every other agent surface (editor at 145,
+ * wizard at 140, settings panel at 100) so the modal never gets
+ * stacked behind them.
  */
 export function AgentDeleteConfirmModal({
   open,
@@ -59,7 +64,7 @@ export function AgentDeleteConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[170] flex items-center justify-center bg-black/75 px-4 py-6 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-agent-title"
@@ -73,7 +78,7 @@ export function AgentDeleteConfirmModal({
           if (!busy) onCancel();
         }}
       />
-      <section className="relative z-[121] flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-red-400/35 bg-[#13080a] shadow-[0_30px_90px_rgba(0,0,0,.7)]">
+      <section className="relative z-[171] flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-red-400/35 bg-[#13080a] shadow-[0_30px_90px_rgba(0,0,0,.7)]">
         <header className="flex items-start gap-3 border-b border-white/10 px-5 py-4">
           <span
             className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-red-500/15"
@@ -83,11 +88,11 @@ export function AgentDeleteConfirmModal({
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="delete-agent-title" className="text-base font-semibold text-white">
-              Apagar agente “{agentName}”?
+              Delete agent “{agentName}”?
             </h2>
             <p className="mt-0.5 text-[12px] text-white/55">
               {agentSlug ? <span className="font-mono">{agentSlug}</span> : null}
-              {agentSlug ? " · " : null}Ação irreversível.
+              {agentSlug ? " · " : null}This cannot be undone.
             </p>
           </div>
           <button
@@ -105,14 +110,14 @@ export function AgentDeleteConfirmModal({
           {loading ? (
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[12.5px] text-white/55">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Calculando o que será apagado…
+              Calculating what will be removed…
             </div>
           ) : null}
 
           {!loading && loadError ? (
             <div className="rounded-xl border border-red-400/25 bg-red-500/10 px-3 py-2 text-[12.5px] text-red-200/85">
-              Não consegui carregar a prévia ({loadError}). A exclusão ainda
-              segue, mas você não vai ver os contadores de antemão.
+              Could not load the preview ({loadError}). The deletion will still
+              proceed, but you won't see the impact counts up front.
             </div>
           ) : null}
 
@@ -126,22 +131,20 @@ export function AgentDeleteConfirmModal({
           {!loading && summary ? (
             hasCascade ? (
               <>
-                <p className="text-[13px] text-white/75">
-                  Isto também vai apagar:
-                </p>
+                <p className="text-[13px] text-white/75">This will also remove:</p>
                 <ul className="space-y-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-[13px] text-white/82">
                   {summary.cronJobsAffected > 0 ? (
                     <li className="flex items-start gap-2">
                       <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
                       <span>
                         <strong className="text-white">{summary.cronJobsAffected}</strong>{" "}
-                        cron{summary.cronJobsAffected === 1 ? "" : "s"}
+                        cron job{summary.cronJobsAffected === 1 ? "" : "s"}
                         {summary.cronJobRunsAffected > 0 ? (
                           <>
                             {" "}
                             <span className="text-white/55">
                               ({summary.cronJobRunsAffected} run
-                              {summary.cronJobRunsAffected === 1 ? "" : "s"} no histórico)
+                              {summary.cronJobRunsAffected === 1 ? "" : "s"} in history)
                             </span>
                           </>
                         ) : null}
@@ -158,7 +161,7 @@ export function AgentDeleteConfirmModal({
                     <li className="flex items-start gap-2">
                       <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
                       <span>
-                        Remove o agente de{" "}
+                        Removes the agent from{" "}
                         <strong className="text-white">{summary.squadMembershipsAffected}</strong>{" "}
                         squad{summary.squadMembershipsAffected === 1 ? "" : "s"}
                         {summary.squadNames.length > 0 ? (
@@ -174,27 +177,35 @@ export function AgentDeleteConfirmModal({
                     <li className="flex items-start gap-2">
                       <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
                       <span>
-                        <strong className="text-white">{summary.filesAffected}</strong> arquivo
-                        {summary.filesAffected === 1 ? "" : "s"} do agente (IDENTITY, SOUL,
-                        AGENTS, etc.)
+                        <strong className="text-white">{summary.filesAffected}</strong> agent file
+                        {summary.filesAffected === 1 ? "" : "s"} (IDENTITY, SOUL, AGENTS,
+                        etc.)
                       </span>
                     </li>
                   ) : null}
                   {summary.hasProfile ? (
                     <li className="flex items-start gap-2">
                       <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
-                      <span>O profile do agente (Soul / Vibe / Boundaries / etc.).</span>
+                      <span>The agent profile (Soul / Vibe / Boundaries / etc.).</span>
                     </li>
                   ) : null}
+                  <li className="flex items-start gap-2">
+                    <span className="mt-1 inline-block h-1.5 w-1.5 flex-none rounded-full bg-red-400/80" />
+                    <span>
+                      Every session attached to this agent on the gateway VPS, plus
+                      the agent's workspace itself.
+                    </span>
+                  </li>
                 </ul>
                 <p className="text-[12px] text-white/45">
-                  Os arquivos do workspace na VPS do gateway não são tocados.
+                  Nothing on the gateway VPS is preserved — workspace, sessions,
+                  and the agent record are all wiped.
                 </p>
               </>
             ) : (
               <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white/75">
-                Esse agente não tem cron jobs, squads, nem arquivos atrelados —
-                exclusão direta.
+                No cron jobs, squads, or files are tied to this agent. The agent's
+                workspace and sessions on the gateway VPS will still be wiped.
               </div>
             )
           ) : null}
@@ -207,7 +218,7 @@ export function AgentDeleteConfirmModal({
             disabled={busy}
             className="inline-flex h-9 items-center rounded-full border border-white/12 bg-white/[0.03] px-3.5 text-[12.5px] text-white/75 transition hover:bg-white/10 disabled:opacity-40"
           >
-            Cancelar
+            Cancel
           </button>
           <button
             type="button"
@@ -220,7 +231,7 @@ export function AgentDeleteConfirmModal({
             ) : (
               <Trash2 className="h-3.5 w-3.5" />
             )}
-            <span>{busy ? "Apagando…" : "Apagar agente"}</span>
+            <span>{busy ? "Deleting…" : "Delete agent"}</span>
           </button>
         </footer>
       </section>
@@ -229,15 +240,16 @@ export function AgentDeleteConfirmModal({
 }
 
 /**
- * v104 — Hook to manage modal state + preview fetch in OfficeScreen.
- * Exposes the open/close handlers and an `await openAndAwait()` flow
- * that resolves to the user's decision (true=confirm, false=cancel).
+ * Hook to manage modal state + preview fetch in OfficeScreen. Exposes
+ * the open/close handlers and an `await requestDelete()` flow that
+ * resolves to the user's decision (true=confirm, false=cancel).
  *
  * Use directly in the screen component:
- *   const { renderModal, requestDelete } = useAgentDeleteConfirmModal({ fetchPreview });
+ *   const { renderModal, requestDelete, close } = useAgentDeleteConfirmModal({ fetchPreview });
  *   const ok = await requestDelete({ agentName, agentSlug, gatewayAgentId });
  *   if (!ok) return;
  *   ... actually delete the agent ...
+ *   close();   // call this in finally to dismiss the modal
  *   {renderModal()}
  */
 type UseAgentDeleteConfirmModalParams = {
