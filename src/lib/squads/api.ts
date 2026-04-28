@@ -892,49 +892,134 @@ export const createSquadTask = async (params: {
 };
 
 /**
- * Delete a squad task end-to-end.
+ * v112 — Delete a squad task end-to-end and surface the gateway-sweep
+ * counts so the UI can render an honest success toast.
  *
- * Primary path: `DELETE /api/SquadExecutions/{id}` — hits the backend action
- * that (a) runs a best-effort `DELETE /sessions/{sessionKey}` on OpenClaw for
- * each step, and (b) cascade-removes the execution + steps + messages + events
- * from the database.
+ * Primary path: `DELETE /api/Squads/tasks/delete/{taskId}` (back v63).
+ *   The backend cascade-deletes local rows AND wipes every OpenClaw
+ *   session the task ever opened. The response body carries
+ *   `runsRemoved`, `sessionsAttempted`, `sessionsCleaned`.
  *
- * Safety net: if the backend is an older build that hasn't been upgraded yet
- * and responds 404/405 on DELETE, we fall back to the cancel endpoint so the
- * task at least transitions to "cancelled" instead of leaking forever. Any
- * other error (auth, 5xx, network) is propagated so the UI can show it.
+ * Fallback A: older backs (≤ v62) expose
+ *   `DELETE /api/SquadExecutions/{id}` which only handled execution
+ *   rows; we keep it as a fallback so the modal still works against
+ *   non-upgraded servers.
  *
- * Either way, the caller is expected to immediately clear the task's session
- * state from every associated agent on the frontend.
+ * Fallback B: oldest backs only have `POST /api/SquadExecutions/{id}/cancel`
+ *   — the task transitions to "cancelled" so it stops draining
+ *   hooks/tokens. No session sweep happens; the result reflects that.
+ *
+ * Either way, the caller is expected to immediately clear the task's
+ * session state from every associated agent on the frontend.
  */
+export type SquadTaskDeleteResult = {
+  taskId: number;
+  taskExists: boolean;
+  deleted: boolean;
+  runsRemoved: number;
+  sessionsAttempted: number;
+  sessionsCleaned: number;
+  sessionKeysSwept: string[];
+};
+
+const normalizeDeleteTaskResult = (
+  raw: unknown,
+  fallbackTaskId: number,
+): SquadTaskDeleteResult => {
+  if (!raw || typeof raw !== "object") {
+    return {
+      taskId: fallbackTaskId,
+      taskExists: true,
+      deleted: true,
+      runsRemoved: 0,
+      sessionsAttempted: 0,
+      sessionsCleaned: 0,
+      sessionKeysSwept: [],
+    };
+  }
+  const r = raw as Record<string, unknown>;
+  return {
+    taskId: typeof r.taskId === "number" ? r.taskId : fallbackTaskId,
+    taskExists: r.taskExists === undefined ? true : Boolean(r.taskExists),
+    deleted: r.deleted === undefined ? true : Boolean(r.deleted),
+    runsRemoved: typeof r.runsRemoved === "number" ? r.runsRemoved : 0,
+    sessionsAttempted:
+      typeof r.sessionsAttempted === "number" ? r.sessionsAttempted : 0,
+    sessionsCleaned:
+      typeof r.sessionsCleaned === "number" ? r.sessionsCleaned : 0,
+    sessionKeysSwept: Array.isArray(r.sessionKeysSwept)
+      ? (r.sessionKeysSwept.filter((k) => typeof k === "string") as string[])
+      : [],
+  };
+};
+
 export const deleteSquadTask = async (
   taskId: number,
   token?: string | null,
-): Promise<void> => {
+): Promise<SquadTaskDeleteResult> => {
+  // v63 path — preferred: cascade-deletes locally + sweeps OpenClaw.
+  try {
+    const raw = await requestBackendJson<unknown>(
+      `/api/Squads/tasks/delete/${taskId}`,
+      { method: "DELETE" },
+      token,
+    );
+    return normalizeDeleteTaskResult(raw, taskId);
+  } catch (primaryError) {
+    const primaryMessage =
+      primaryError instanceof Error ? primaryError.message : String(primaryError);
+    // Anything other than "endpoint not found" → propagate so the UI
+    // can surface the actual error (auth, 5xx, network).
+    if (!/404|405|not\s*found|method\s*not/i.test(primaryMessage)) {
+      throw primaryError;
+    }
+  }
+
+  // Fallback A — older back (≤ v62). Local rows only, no gateway sweep.
   try {
     await requestBackendJson<unknown>(
       `/api/SquadExecutions/${taskId}`,
       { method: "DELETE" },
       token,
     );
-    return;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    // If the delete endpoint isn't implemented, gracefully fall back to cancel
-    // so the task stops draining hooks/tokens and can be hidden from the UI.
-    if (!/404|405|not\s*found|method\s*not/i.test(message)) {
-      throw error;
-    }
-    try {
-      await requestBackendJson<unknown>(
-        `/api/SquadExecutions/${taskId}/cancel`,
-        { method: "POST" },
-        token,
-      );
-    } catch {
-      // Swallow — the caller will still drop it from local state.
+    return {
+      taskId,
+      taskExists: true,
+      deleted: true,
+      runsRemoved: 0,
+      sessionsAttempted: 0,
+      sessionsCleaned: 0,
+      sessionKeysSwept: [],
+    };
+  } catch (fallbackAError) {
+    const fallbackAMessage =
+      fallbackAError instanceof Error
+        ? fallbackAError.message
+        : String(fallbackAError);
+    if (!/404|405|not\s*found|method\s*not/i.test(fallbackAMessage)) {
+      throw fallbackAError;
     }
   }
+
+  // Fallback B — oldest back, just cancel.
+  try {
+    await requestBackendJson<unknown>(
+      `/api/SquadExecutions/${taskId}/cancel`,
+      { method: "POST" },
+      token,
+    );
+  } catch {
+    // Swallow — caller still drops it from local state.
+  }
+  return {
+    taskId,
+    taskExists: true,
+    deleted: false,
+    runsRemoved: 0,
+    sessionsAttempted: 0,
+    sessionsCleaned: 0,
+    sessionKeysSwept: [],
+  };
 };
 
 export const estimateSquadTaskDispatch = async (

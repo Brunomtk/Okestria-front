@@ -2458,10 +2458,17 @@ export function OfficeScreen({
   // Delete a squad task and cascade-clean every local slice that references it
   // so the conversation, per-agent sessions and lingering UI state disappear
   // from every agent associated with it — same UX as "delete chat".
+  //
+  // v112 — also surfaces the gateway sweep counts the back v63 endpoint
+  // returns (runsRemoved + sessionsCleaned). The result lands in
+  // `squadOpsError` as a transient success line ("Task deleted — N
+  // OpenClaw sessions cleaned") so the operator sees the cleanup
+  // happened on the gateway side too, not just locally.
   const handleDeleteSquadTask = useCallback(
     async (taskId: number) => {
+      let result;
       try {
-        await deleteSquadTask(taskId);
+        result = await deleteSquadTask(taskId);
       } catch (error) {
         const message =
           error instanceof Error
@@ -2469,6 +2476,28 @@ export function OfficeScreen({
             : "Unable to delete the squad task right now.";
         setSquadOpsError(message);
         return;
+      }
+      // Surface the gateway sweep result (only when something actually
+      // happened on the gateway side — older backs return zeros and the
+      // toast would just say "0 sessions cleaned" which is misleading).
+      if (result.sessionsCleaned > 0 || result.runsRemoved > 0) {
+        const parts: string[] = ["Task deleted"];
+        if (result.runsRemoved > 0) {
+          parts.push(`${result.runsRemoved} run${result.runsRemoved === 1 ? "" : "s"} wiped`);
+        }
+        if (result.sessionsCleaned > 0) {
+          parts.push(
+            `${result.sessionsCleaned} OpenClaw session${result.sessionsCleaned === 1 ? "" : "s"} cleaned`,
+          );
+        }
+        setSquadOpsError(parts.join(" · "));
+        // Clear the transient success line after 6s so it doesn't
+        // squat where actual error text usually lives.
+        window.setTimeout(() => {
+          setSquadOpsError((current) => (current === parts.join(" · ") ? null : current));
+        }, 6000);
+      } else {
+        setSquadOpsError(null);
       }
       setSquadOpsTasks((prev) => prev.filter((task) => task.id !== taskId));
       setSelectedSquadTasks((prev) => prev.filter((task) => task.id !== taskId));
