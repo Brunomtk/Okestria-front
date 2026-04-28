@@ -463,6 +463,14 @@ export function useRebuiltAgentTick(
   qaHoldByAgentId: Record<string, boolean> = {},
   githubReviewByAgentId: Record<string, boolean> = {},
   standupMeeting: StandupMeeting | null = null,
+  /**
+   * v108 — agent ids that should be forced into the meeting room
+   * (walk to a chair and sit). Used by the squad-huddle script: when
+   * a squad task is dispatched, every member's gateway agent id goes
+   * in here and they head to the meeting room. Clear the entry when
+   * the task finishes and the agents return to their normal routine.
+   */
+  meetingForcedAgentIds: Record<string, boolean> = {},
 ) {
   const renderAgentsRef = useRef<RenderAgent[]>([]);
   const renderAgentLookupRef = useRef<Map<string, RenderAgent>>(new Map());
@@ -1146,6 +1154,10 @@ export function useRebuiltAgentTick(
     (agent: RenderAgent): AgentIntent | null => {
       if (isRemoteOfficeAgentId(agent.id)) return null;
       if ((standupMeeting?.participantOrder ?? []).includes(agent.id)) return "meeting_room";
+      // v108 — squad huddle: same intent as standup meetings, so the
+      // agent walks to a free chair in the meeting room and sits. The
+      // chair-pick logic (resolveMeetingTarget) is already shared.
+      if (meetingForcedAgentIds[agent.id]) return "meeting_room";
       if (gymHoldByAgentId[agent.id]) return "gym";
       if (smsBoothHoldByAgentId[agent.id]) return "sms_booth";
       if (phoneBoothHoldByAgentId[agent.id]) return "phone_booth";
@@ -1159,6 +1171,7 @@ export function useRebuiltAgentTick(
       deskHoldByAgentId,
       githubReviewByAgentId,
       gymHoldByAgentId,
+      meetingForcedAgentIds,
       phoneBoothHoldByAgentId,
       qaHoldByAgentId,
       smsBoothHoldByAgentId,

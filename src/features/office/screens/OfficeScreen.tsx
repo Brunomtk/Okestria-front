@@ -2502,6 +2502,18 @@ export function OfficeScreen({
   // called from the existing long-running flows further down.
   const ambientScript = useAmbientCueQueue();
 
+  // v108 — agent ids the squad-huddle script wants in the meeting room.
+  // When a squad task is dispatched, every member's gateway agent id
+  // gets a `true` here. The agentMotion tick reads the map and forces
+  // those agents into the meeting room (walk to a chair, sit). Cleared
+  // automatically by the auto-release effect below once the dispatch
+  // window closes.
+  const [meetingForcedAgentIds, setMeetingForcedAgentIds] = useState<Record<string, boolean>>({});
+  // Keep them in the room for ~75 s — slightly longer than the
+  // squad-huddle ambient cue so the agents are still seated when the
+  // task's first replies start landing in chat.
+  const SQUAD_MEETING_HOLD_MS = 75_000;
+
   const handleConfirmDispatchSquadTask = useCallback(
     async (taskId: number, mode: "pending" | "retryFailed" | "redispatchAll") => {
       setSquadOpsDispatchBusy(true);
@@ -2510,14 +2522,31 @@ export function OfficeScreen({
         await dispatchSquadTask(taskId, buildSquadDispatchPayload(mode));
         // v106 — squad just kicked off → ambient huddle on the floor.
         if (activeSquadOpsSquad) {
+          const memberAgentSlugs = (activeSquadOpsSquad.members ?? [])
+            .map((m) => m.gatewayAgentId)
+            .filter((s): s is string => typeof s === "string" && s.length > 0);
           ambientScript.pushSquadHuddle({
             squadId: String(activeSquadOpsSquad.id),
             squadName: activeSquadOpsSquad.name ?? "Squad",
-            agentSlugs: (activeSquadOpsSquad.members ?? [])
-              .map((m) => m.gatewayAgentId)
-              .filter((s): s is string => typeof s === "string" && s.length > 0),
+            agentSlugs: memberAgentSlugs,
             label: `Dispatch · task #${taskId}`,
           });
+          // v108 — force every member into the meeting room. They'll
+          // walk to a free chair and sit there until we clear the
+          // entry below.
+          setMeetingForcedAgentIds((prev) => {
+            const next = { ...prev };
+            for (const slug of memberAgentSlugs) next[slug] = true;
+            return next;
+          });
+          window.setTimeout(() => {
+            setMeetingForcedAgentIds((prev) => {
+              if (memberAgentSlugs.every((slug) => !prev[slug])) return prev;
+              const next = { ...prev };
+              for (const slug of memberAgentSlugs) delete next[slug];
+              return next;
+            });
+          }, SQUAD_MEETING_HOLD_MS);
         }
         setSquadOpsDispatchEstimate(null);
         setSquadOpsDispatchApprovalMode(null);
@@ -6101,6 +6130,7 @@ export function OfficeScreen({
           animationState={officeAnimationState}
           deskAssignmentByDeskUid={deskAssignmentByDeskUid}
           ambientCues={ambientScript.cues}
+          meetingForcedAgentIds={meetingForcedAgentIds}
           githubReviewAgentId={githubReviewAgentId}
           qaTestingAgentId={qaTestingAgentId}
           phoneBoothAgentId={activePhoneBoothAgentId}

@@ -1479,6 +1479,8 @@ function useAgentTick(
   qaHoldByAgentId: Record<string, boolean> = {},
   githubReviewByAgentId: Record<string, boolean> = {},
   standupMeeting: StandupMeeting | null = null,
+  /** v108 — squad members forced into the meeting room. */
+  meetingForcedAgentIds: Record<string, boolean> = {},
 ) {
   return useRebuiltAgentTick(
     agents,
@@ -1497,6 +1499,7 @@ function useAgentTick(
     qaHoldByAgentId,
     githubReviewByAgentId,
     standupMeeting,
+    meetingForcedAgentIds,
   );
 }
 
@@ -1607,6 +1610,7 @@ export function RetroOffice3D({
   deskAssignmentByDeskUid = EMPTY_STRING_RECORD,
   cleaningCues = EMPTY_CLEANING_CUES,
   ambientCues = EMPTY_AMBIENT_CUES,
+  meetingForcedAgentIds = EMPTY_BOOLEAN_RECORD,
   deskHoldByAgentId = EMPTY_BOOLEAN_RECORD,
   gymHoldByAgentId = EMPTY_BOOLEAN_RECORD,
   githubReviewAgentId = null,
@@ -1703,6 +1707,11 @@ export function RetroOffice3D({
    *  huddle). Each cue spawns a small set of janitor-style actors that
    *  walk a route and despawn after their kind-specific duration. */
   ambientCues?: OfficeAmbientCue[];
+  /** v108 — agent ids that the squad-huddle script wants in the
+   *  meeting room. Same agentMotion path used by the standup meeting:
+   *  walk to a free meeting chair, sit, stay until the entry is
+   *  removed. Cleared by the caller when the squad task finishes. */
+  meetingForcedAgentIds?: Record<string, boolean>;
   deskHoldByAgentId?: Record<string, boolean>;
   gymHoldByAgentId?: Record<string, boolean>;
   githubReviewAgentId?: string | null;
@@ -2243,6 +2252,9 @@ export function RetroOffice3D({
     resolvedQaHoldByAgentId,
     resolvedGithubReviewByAgentId,
     standupMeeting,
+    // v108 — agent ids that the squad-huddle script wants in the
+    // meeting room. Falls back to the prop default when not supplied.
+    meetingForcedAgentIds,
   );
   useEffect(() => {
     const syncRenderAgentUi = () => {
