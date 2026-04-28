@@ -35,7 +35,6 @@ import remarkGfm from "remark-gfm";
 import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
 import {
-  applyCronRunMessage,
   applyCronRunMessageBySession,
   cancelCronJob,
   createCronJob,
@@ -264,49 +263,24 @@ function CronJobsModalInner({
   }, [open, loadJobs]);
 
   // ── Gateway WS bridge — forward chat events to apply-message ──────────
+  //
+  // v101 — back v57 keeps a single sessionKey per cron (all runs share
+  // it). The old runId fast path is wrong here: the runIndex would map
+  // many runs to one key and the "forwardedSessionKeys" cache would
+  // block every run after the first.
+  //
+  // New shape:
+  //   1. Filter incoming events to the cron prefix family
+  //      (`hook:cron-` / `hook:okestria-cron-`) so squad events
+  //      keep flowing through their own bridge.
+  //   2. Always POST by sessionKey via /by-session/apply-message.
+  //      The back resolves the most-recent NON-terminal run; if there
+  //      isn't one (replay of an old final), it bails idempotently.
+  //   3. Idempotency lives on a per-(sessionKey + state + text-hash)
+  //      key so the SAME final isn't re-delivered, but a new run on the
+  //      same session always goes through.
   useEffect(() => {
     if (!open || !gatewayClient || !gatewayConnected) return;
-    const runs = selectedJob?.runs ?? [];
-    // v96 — even if the local run cache is empty (e.g. modal just opened
-    // on a different cron), we keep the bridge running and fall through
-    // to the sessionKey-based apply-message route. That covers the case
-    // where the scheduler fires a run on a cron the operator isn't
-    // currently viewing.
-    const runIndex = new Map<string, { runId: number; jobId: number }>();
-    for (const r of runs) {
-      const k = (r.sessionKey ?? "").trim();
-      if (!k) continue;
-      runIndex.set(k, { runId: r.id, jobId: r.cronJobId });
-    }
-
-    const forwardedRunIds = new Set<number>();
-    const forwardedSessionKeys = new Set<string>();
-    for (const r of runs) {
-      if (
-        r.status === "succeeded" ||
-        r.status === "failed" ||
-        r.status === "cancelled"
-      ) {
-        forwardedRunIds.add(r.id);
-        if (r.sessionKey) forwardedSessionKeys.add(r.sessionKey);
-      }
-    }
-
-    const matchSession = (raw: string | null) => {
-      if (!raw) return null;
-      const direct = runIndex.get(raw);
-      if (direct) return direct;
-      const idx = raw.indexOf("hook:");
-      if (idx > 0) {
-        const suffix = raw.slice(idx);
-        const hit = runIndex.get(suffix);
-        if (hit) return hit;
-      }
-      for (const [k, v] of runIndex.entries()) {
-        if (raw.endsWith(k) || k.endsWith(raw)) return v;
-      }
-      return null;
-    };
 
     const extractText = (message: unknown): string | null => {
       if (!message) return null;
@@ -361,6 +335,21 @@ function CronJobsModalInner({
       return idx > 0 ? raw.slice(idx) : raw;
     };
 
+    // Cheap deterministic fingerprint so the same `final` event isn't
+    // posted twice if the gateway replays it. Different runs on the
+    // same session naturally produce different text, so they get
+    // different fingerprints and pass through.
+    const fingerprint = (sessionKey: string, state: string, text: string | null) => {
+      const body = `${sessionKey}|${state}|${text ?? ""}`;
+      let hash = 0;
+      for (let i = 0; i < body.length; i++) {
+        hash = (hash * 31 + body.charCodeAt(i)) | 0;
+      }
+      return `${sessionKey}::${state}::${hash}`;
+    };
+
+    const seenFingerprints = new Set<string>();
+
     const unsubscribe = gatewayClient.onEvent((event) => {
       try {
         if (event.event !== "chat") return;
@@ -378,8 +367,8 @@ function CronJobsModalInner({
         if (!sessionKey) return;
 
         // Only forward terminal-ish events. Running/delta/thinking are
-        // useful UI signals but the back's apply-message is happy to
-        // ignore them — we still skip them here to avoid spamming.
+        // UI signals — the back's apply-message would no-op anyway, so
+        // we just skip them to avoid network noise.
         const state = (payload.state ?? "").toLowerCase();
         if (state !== "final" && state !== "aborted" && state !== "error") return;
 
@@ -388,61 +377,39 @@ function CronJobsModalInner({
         if (state === "final" && (!text || text.length === 0)) return;
 
         const stripped = stripPrefix(sessionKey);
-        // Skip cron sessionKeys that don't follow our naming convention
-        // (e.g. squad sessions also flow through this WS).
-        if (!stripped.startsWith("hook:cron-") && !stripped.startsWith("hook:okestria-cron-")) {
-          // Still respect locally-known runs that happen to use a
-          // different prefix (legacy sessionMode = "main"/"named").
-          if (!matchSession(sessionKey)) return;
+        // Filter to cron-shaped sessionKeys. Squad events flow through
+        // the squad bridge separately.
+        if (
+          !stripped.startsWith("hook:cron-") &&
+          !stripped.startsWith("hook:okestria-cron-")
+        ) {
+          return;
         }
 
-        // Idempotency by sessionKey — covers both the runId match path
-        // and the by-session fallback.
-        if (forwardedSessionKeys.has(stripped)) return;
-        forwardedSessionKeys.add(stripped);
+        // Idempotency: same fingerprint = duplicate replay.
+        const fp = fingerprint(stripped, state, text);
+        if (seenFingerprints.has(fp)) return;
+        seenFingerprints.add(fp);
 
-        const target = matchSession(sessionKey);
-
-        if (target) {
-          // Fast path: local run row exists, post by runId.
-          if (forwardedRunIds.has(target.runId)) return;
-          forwardedRunIds.add(target.runId);
-          void applyCronRunMessage(target.runId, {
-            state: state as "final" | "aborted" | "error",
-            text: text ?? null,
-            error: errorMessage,
-            sessionKey: stripped,
+        // v101 — always go through /by-session. The back resolves the
+        // most-recent non-terminal run with this sessionKey; if there
+        // isn't one, the call returns null and we move on.
+        void applyCronRunMessageBySession({
+          state: state as "final" | "aborted" | "error",
+          text: text ?? null,
+          error: errorMessage,
+          sessionKey: stripped,
+        })
+          .then((updated) => {
+            void loadJobs();
+            if (updated && selectedJob && updated.cronJobId === selectedJob.id) {
+              void loadJobDetail(selectedJob.id);
+            }
           })
-            .then(() => {
-              void loadJobs();
-              void loadJobDetail(target.jobId);
-            })
-            .catch((err) => {
-              forwardedRunIds.delete(target.runId);
-              forwardedSessionKeys.delete(stripped);
-              console.error("CronBridge: apply-message failed", err);
-            });
-        } else {
-          // v96 fallback: no local run row (scheduler tick on a cron
-          // the operator isn't viewing). Resolve server-side by
-          // sessionKey instead.
-          void applyCronRunMessageBySession({
-            state: state as "final" | "aborted" | "error",
-            text: text ?? null,
-            error: errorMessage,
-            sessionKey: stripped,
-          })
-            .then((updated) => {
-              void loadJobs();
-              if (updated && selectedJob && updated.cronJobId === selectedJob.id) {
-                void loadJobDetail(selectedJob.id);
-              }
-            })
-            .catch((err) => {
-              forwardedSessionKeys.delete(stripped);
-              console.error("CronBridge: by-session apply-message failed", err);
-            });
-        }
+          .catch((err) => {
+            seenFingerprints.delete(fp);
+            console.error("CronBridge: by-session apply-message failed", err);
+          });
       } catch (err) {
         console.error("CronBridge: onEvent error", err);
       }
