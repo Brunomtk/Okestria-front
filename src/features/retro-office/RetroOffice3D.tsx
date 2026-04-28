@@ -2,6 +2,7 @@
 
 import {
   Pencil,
+  PencilLine,
   Check,
   Map as MapIcon,
   Monitor,
@@ -1664,6 +1665,7 @@ export function RetroOffice3D({
   onAgentChatSelect,
   squads = [],
   onSquadOps,
+  onSquadEditRequest,
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
@@ -1767,6 +1769,11 @@ export function RetroOffice3D({
   onAgentChatSelect?: (agentId: string) => void;
   squads?: SquadSummary[];
   onSquadOps?: (squadId: string) => void;
+  // v111 — opens the SquadEditDelete modal (rename / recolor / cascade
+  // delete with preview). Wired from the small pencil button on each
+  // squad card in the company-overview grid; left unset on screens
+  // that don't need the editor.
+  onSquadEditRequest?: (squadId: string) => void;
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
@@ -6104,19 +6111,53 @@ export function RetroOffice3D({
               </div>
             ) : (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                {/* v111 — squad card got a second action: a small "edit" pencil
+                    button on the top-right that opens the new SquadEditDelete
+                    modal (rename/recolor + cascade-delete with preview). The
+                    big card area still routes to Squad Ops so the operator's
+                    primary "open this squad" gesture is unchanged. */}
                 {squads.map((squad) => (
-                  <button
+                  <div
                     key={String(squad.id)}
-                    type="button"
-                    onClick={() => {
-                      onSquadOps?.(String(squad.id));
-                      setAgentRosterOpen(false);
-                    }}
-                    className="rounded-xl border border-amber-500/18 bg-[#17120a]/90 p-3 text-left transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
+                    className="group relative rounded-xl border border-amber-500/18 bg-[#17120a]/90 transition-all hover:border-amber-400/35 hover:bg-[#21190d]"
                   >
-                    <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{squad.members?.length ?? 0} members</div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSquadOps?.(String(squad.id));
+                        setAgentRosterOpen(false);
+                      }}
+                      className="block w-full rounded-xl p-3 pr-12 text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        {squad.iconEmoji ? (
+                          <span
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-[12px]"
+                            style={{ backgroundColor: `${squad.color || "#f59e0b"}20` }}
+                          >
+                            {squad.iconEmoji}
+                          </span>
+                        ) : null}
+                        <div className="truncate text-sm font-semibold text-amber-50">{squad.name}</div>
+                      </div>
+                      <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-amber-100/45">{squad.members?.length ?? 0} members</div>
+                    </button>
+                    {onSquadEditRequest ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSquadEditRequest(String(squad.id));
+                          setAgentRosterOpen(false);
+                        }}
+                        title="Edit or delete this squad"
+                        aria-label={`Edit or delete squad ${squad.name}`}
+                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md border border-amber-500/25 bg-[#0e141b]/80 text-amber-200/70 opacity-80 transition hover:border-amber-400/50 hover:bg-[#1a1408] hover:text-amber-100 group-hover:opacity-100"
+                      >
+                        <PencilLine size={12} />
+                      </button>
+                    ) : null}
+                  </div>
                 ))}
                 {squads.length === 0 ? <div className="rounded-xl border border-amber-500/18 bg-[#17120a]/70 p-3 text-sm text-amber-100/60">No squads created yet.</div> : null}
               </div>

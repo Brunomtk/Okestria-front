@@ -69,6 +69,7 @@ import { CreateTargetModal } from "@/features/office/components/CreateTargetModa
 import { SquadChatPanel } from "@/features/office/components/SquadChatPanel";
 import { SquadCreateModal } from "@/features/office/components/SquadCreateModal";
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
+import { SquadEditDeleteModal } from "@/features/office/components/SquadEditDeleteModal";
 import { CronJobsModal } from "@/features/office/components/CronJobsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
@@ -2275,6 +2276,59 @@ export function OfficeScreen({
     },
     [companyId, loadCompanySquads],
   );
+
+  // v111 — SquadEditDeleteModal wiring. We own the open/close state +
+  // the async handlers here so the cascade-delete (which clears the
+  // squad ops modal too if it was open on the same squad) can flush
+  // every related piece of state in one place. The modal itself is
+  // pure presentation and lives in components/SquadEditDeleteModal.
+  const [squadEditorSquadId, setSquadEditorSquadId] = useState<string | null>(null);
+  const handleOpenSquadEditor = useCallback((squadId: string) => {
+    setSquadEditorSquadId(squadId || null);
+  }, []);
+  const handleCloseSquadEditor = useCallback(() => {
+    setSquadEditorSquadId(null);
+  }, []);
+  const activeSquadEditorSquad = useMemo(
+    () => companySquads.find((entry) => entry.id === squadEditorSquadId) ?? null,
+    [companySquads, squadEditorSquadId],
+  );
+  const handleSaveSquadFromEditor = useCallback(
+    async (input: {
+      name: string;
+      description: string;
+      iconEmoji: string | null;
+      color: string | null;
+    }) => {
+      if (!squadEditorSquadId) return;
+      const numericId = Number(squadEditorSquadId);
+      if (!Number.isFinite(numericId)) return;
+      await updateCompanySquad({
+        squadId: numericId,
+        name: input.name,
+        description: input.description,
+        iconEmoji: input.iconEmoji,
+        color: input.color,
+        companyId: companyId ?? undefined,
+      });
+      await loadCompanySquads(true);
+    },
+    [squadEditorSquadId, companyId, loadCompanySquads],
+  );
+  const handleDeleteSquadFromEditor = useCallback(async () => {
+    if (!squadEditorSquadId) return;
+    const numericId = Number(squadEditorSquadId);
+    if (!Number.isFinite(numericId)) return;
+    await deleteCompanySquad({ squadId: numericId, companyId: companyId ?? undefined });
+    // If the operator happened to have Squad Ops open on the same squad,
+    // close it so it doesn't try to refetch a now-deleted row.
+    if (squadOpsSquadId === squadEditorSquadId) {
+      setSquadOpsModalOpen(false);
+      setSquadOpsSquadId(null);
+      setSquadOpsError(null);
+    }
+    await loadCompanySquads(true);
+  }, [squadEditorSquadId, squadOpsSquadId, companyId, loadCompanySquads]);
 
   const loadSquadOpsRuntimeStatus = useCallback(async () => {
     const token = getBrowserAccessToken();
@@ -6211,6 +6265,13 @@ export function OfficeScreen({
           onSquadOps={(squadId) => {
             handleOpenSquadOps(squadId);
           }}
+          // v111 — opens the rich edit/delete modal from the small
+          // pencil button on each squad card. The big card area still
+          // routes to Squad Ops above, so the existing primary gesture
+          // is preserved and the new editor lives one click away.
+          onSquadEditRequest={(squadId) => {
+            handleOpenSquadEditor(squadId);
+          }}
           onAddAgent={handleOpenCreateModal}
           onAgentEdit={(agentId) => {
             openAgentEditor(agentId, "avatar");
@@ -7183,6 +7244,16 @@ export function OfficeScreen({
         onSubmit={(payload) => {
           void handleCreateSquad(payload);
         }}
+      />
+      {/* v111 — Squad rename / cascade-delete modal. Floats above
+          SquadOps (z-170 vs z-160) so the operator can pop it up
+          even from the ops view if needed. */}
+      <SquadEditDeleteModal
+        open={squadEditorSquadId !== null}
+        squad={activeSquadEditorSquad}
+        onSave={handleSaveSquadFromEditor}
+        onConfirmDelete={handleDeleteSquadFromEditor}
+        onClose={handleCloseSquadEditor}
       />
       <SquadOpsModal
         open={squadOpsModalOpen}

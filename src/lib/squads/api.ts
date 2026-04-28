@@ -402,17 +402,125 @@ export const deleteCompanySquad = async (params: {
   squadId: number;
   companyId?: number | null;
   token?: string | null;
-}): Promise<void> => {
+}): Promise<DeleteSquadSummary | null> => {
   const query = new URLSearchParams();
   if (typeof params.companyId === "number" && Number.isFinite(params.companyId)) {
     query.set("companyId", String(params.companyId));
   }
 
-  await requestBackendJson<unknown>(
+  // v111 — back v62 returns a structured summary (not just `true`).
+  // Old back versions still answer with a boolean — keep the call
+  // tolerant of both shapes.
+  const raw = await requestBackendJson<unknown>(
     `/api/Squads/delete/${params.squadId}${query.size ? `?${query.toString()}` : ""}`,
     { method: "DELETE" },
     params.token ?? getBrowserAccessToken(),
   );
+  return normalizeDeleteSquadSummary(raw);
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// v111 — Squad delete preview (back v62).
+//
+// Calls `GET /api/Squads/delete/{id}/preview`. Returns a summary the
+// confirm modal renders so the operator sees exactly what the cascade
+// will wipe (cron jobs, runs, tasks, executions) and what's preserved
+// (the agents themselves; lead missions are detached, not deleted).
+// ─────────────────────────────────────────────────────────────────────────
+
+export type DeleteSquadSummary = {
+  squadId: number;
+  squadName: string | null;
+  squadSlug: string | null;
+  squadExists: boolean;
+  deleted: boolean;
+  tasksAffected: number;
+  taskRunsAffected: number;
+  executionsAffected: number;
+  executionStepsAffected: number;
+  cronJobsAffected: number;
+  cronJobRunsAffected: number;
+  membersRemoved: number;
+  leadJobsDetached: number;
+  cronJobNames: string[];
+  memberAgentNames: string[];
+};
+
+const normalizeDeleteSquadSummary = (raw: unknown): DeleteSquadSummary | null => {
+  if (raw === null || raw === undefined) return null;
+  // Back-compat — older deploys answered with a bare boolean.
+  if (typeof raw === "boolean") {
+    return {
+      squadId: 0,
+      squadName: null,
+      squadSlug: null,
+      squadExists: raw,
+      deleted: raw,
+      tasksAffected: 0,
+      taskRunsAffected: 0,
+      executionsAffected: 0,
+      executionStepsAffected: 0,
+      cronJobsAffected: 0,
+      cronJobRunsAffected: 0,
+      membersRemoved: 0,
+      leadJobsDetached: 0,
+      cronJobNames: [],
+      memberAgentNames: [],
+    };
+  }
+  if (typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    squadId: typeof r.squadId === "number" ? r.squadId : 0,
+    squadName: typeof r.squadName === "string" ? r.squadName : null,
+    squadSlug: typeof r.squadSlug === "string" ? r.squadSlug : null,
+    squadExists: Boolean(r.squadExists),
+    deleted: Boolean(r.deleted),
+    tasksAffected: typeof r.tasksAffected === "number" ? r.tasksAffected : 0,
+    taskRunsAffected: typeof r.taskRunsAffected === "number" ? r.taskRunsAffected : 0,
+    executionsAffected:
+      typeof r.executionsAffected === "number" ? r.executionsAffected : 0,
+    executionStepsAffected:
+      typeof r.executionStepsAffected === "number" ? r.executionStepsAffected : 0,
+    cronJobsAffected: typeof r.cronJobsAffected === "number" ? r.cronJobsAffected : 0,
+    cronJobRunsAffected:
+      typeof r.cronJobRunsAffected === "number" ? r.cronJobRunsAffected : 0,
+    membersRemoved: typeof r.membersRemoved === "number" ? r.membersRemoved : 0,
+    leadJobsDetached:
+      typeof r.leadJobsDetached === "number" ? r.leadJobsDetached : 0,
+    cronJobNames: Array.isArray(r.cronJobNames)
+      ? (r.cronJobNames.filter((n) => typeof n === "string") as string[])
+      : [],
+    memberAgentNames: Array.isArray(r.memberAgentNames)
+      ? (r.memberAgentNames.filter((n) => typeof n === "string") as string[])
+      : [],
+  };
+};
+
+/**
+ * v111. Looks up the cascade preview before opening the confirm modal.
+ * Returns null if the squad doesn't exist (e.g. another tab already
+ * deleted it). Throws on transport errors so the modal can surface
+ * "could not load preview" copy.
+ */
+export const previewCompanySquadDelete = async (params: {
+  squadId: number;
+  token?: string | null;
+}): Promise<DeleteSquadSummary | null> => {
+  try {
+    const raw = await requestBackendJson<unknown>(
+      `/api/Squads/delete/${params.squadId}/preview`,
+      { method: "GET" },
+      params.token ?? getBrowserAccessToken(),
+    );
+    return normalizeDeleteSquadSummary(raw);
+  } catch (err) {
+    // 404 here means the squad really is gone — surface that as a
+    // clean null so the caller can close the modal gracefully.
+    const message = err instanceof Error ? err.message : String(err);
+    if (/status\s*404/i.test(message)) return null;
+    throw err;
+  }
 };
 
 export type SquadTaskRun = {
