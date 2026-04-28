@@ -58,6 +58,13 @@ type CompanyProfileModalProps = {
    * in v21 so every teammate has their own.
    */
   userId?: number | null;
+  /**
+   * v115 — opens the himalaya per-user email config modal where the
+   * authenticated user wires their personal mailbox (IMAP/SMTP/password).
+   * Once configured, every agent in the user's company can read/send
+   * email through that mailbox during squad task dispatch.
+   */
+  onOpenEmailConfig?: () => void;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -86,6 +93,7 @@ export function CompanyProfileModal({
   workspaceName,
   companyId,
   userId,
+  onOpenEmailConfig,
 }: CompanyProfileModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -181,6 +189,7 @@ export function CompanyProfileModal({
               displayWorkspace={displayWorkspace}
               initials={initials}
               onLogout={onLogout}
+              onOpenEmailConfig={onOpenEmailConfig}
             />
           ) : (
             <EmailContextTabContent companyId={companyId} userId={userId} />
@@ -234,6 +243,7 @@ function ProfileTabContent({
   displayWorkspace,
   initials,
   onLogout,
+  onOpenEmailConfig,
 }: {
   displayName: string;
   displayEmail: string;
@@ -242,6 +252,7 @@ function ProfileTabContent({
   displayWorkspace: string;
   initials: string;
   onLogout: () => void;
+  onOpenEmailConfig?: () => void;
 }) {
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1.18fr_0.82fr] lg:gap-5">
@@ -325,6 +336,31 @@ function ProfileTabContent({
             { label: "Workspace", value: displayWorkspace, icon: <BriefcaseBusiness className="h-4 w-4" /> },
           ]}
         />
+
+        {/* v115 — per-user email account configuration. Once set,
+            every agent in this user's company can read/send email
+            through this mailbox during squad task dispatch. */}
+        {onOpenEmailConfig ? (
+          <div className="rounded-[24px] border border-cyan-300/22 bg-cyan-400/8 p-5">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-cyan-100/70">
+              Email account
+            </div>
+            <p className="mt-3 text-sm leading-6 text-cyan-50/85">
+              Wire your IMAP/SMTP mailbox so agents can read your inbox and
+              send replies on your behalf in <strong>squad tasks</strong>,{" "}
+              <strong>cron jobs</strong> and <strong>chat</strong>. Password
+              lives only on the gateway VPS — never in the database.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenEmailConfig}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/35 bg-cyan-500/15 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:border-cyan-300/55 hover:bg-cyan-500/25"
+            >
+              <Mail className="h-4 w-4" />
+              Configure email
+            </button>
+          </div>
+        ) : null}
 
         <div className="rounded-[24px] border border-amber-300/18 bg-amber-400/8 p-5">
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-amber-100/70">

@@ -72,6 +72,7 @@ import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { SquadEditDeleteModal } from "@/features/office/components/SquadEditDeleteModal";
 import { CronJobsModal } from "@/features/office/components/CronJobsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
+import { UserEmailConfigModal } from "@/features/office/components/UserEmailConfigModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
@@ -1091,6 +1092,9 @@ export function OfficeScreen({
   const [leadOpsModalOpen, setLeadOpsModalOpen] = useState(false);
   const [cronJobsModalOpen, setCronJobsModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  // v115 — controls the per-user email (himalaya) config modal. Opened
+  // from CompanyProfileModal's "Configure email" button.
+  const [userEmailConfigOpen, setUserEmailConfigOpen] = useState(false);
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
   const initJukeboxStore = useJukeboxStore((state) => state.init);
@@ -7163,6 +7167,18 @@ export function OfficeScreen({
         workspaceName={workspaceName}
         companyId={companyId}
         userId={userId}
+        onOpenEmailConfig={() => {
+          // v115 — pop the himalaya configuration modal so the user can
+          // wire their personal mailbox the agents will use.
+          setProfileModalOpen(false);
+          setUserEmailConfigOpen(true);
+        }}
+      />
+
+      {/* v115 — per-user email account config (himalaya wiring) */}
+      <UserEmailConfigModal
+        open={userEmailConfigOpen}
+        onClose={() => setUserEmailConfigOpen(false)}
       />
 
       {debugEnabled ? (
