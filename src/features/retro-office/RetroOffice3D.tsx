@@ -1954,6 +1954,29 @@ export function RetroOffice3D({
     () => feedEvents.filter((event) => event.kind !== "reply"),
     [feedEvents],
   );
+
+  // v129b — gateway-agentId → squad lookup. Used by the HQ Overview
+  // agent cards to render the SQUAD's color stripe + icon next to
+  // each agent (instead of the agent's own brand color). Agents not
+  // in any squad fall back to a neutral gray stripe + no icon.
+  // First squad wins if the agent is in multiple — with the v128
+  // SquadCreateModal filter that scenario shouldn't happen for new
+  // squads, but we tolerate it for legacy data.
+  const squadByAgentGatewayId = useMemo(() => {
+    const map = new Map<string, { color: string | null; iconEmoji: string | null; name: string }>();
+    for (const squad of squads) {
+      for (const member of squad.members) {
+        const slug = member.gatewayAgentId?.trim();
+        if (!slug || map.has(slug)) continue;
+        map.set(slug, {
+          color: squad.color?.trim() || null,
+          iconEmoji: squad.iconEmoji?.trim() || null,
+          name: squad.name,
+        });
+      }
+    }
+    return map;
+  }, [squads]);
   const { speechTextByAgentId, speechImageUrlByAgentId } = useMemo(() => {
     const texts: Record<string, string> = {};
     const images: Record<string, string> = {};
@@ -6132,18 +6155,15 @@ export function RetroOffice3D({
             {rosterTab === "agents" ? (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
                 {agents.map((agent) => {
-                  // v129 — agent card polished.
-                  // - Subtle accent stripe in the agent's color on the
-                  //   left edge (2 px). Brand-locked, never just cyan.
-                  // - Status mapped to a small dot + label pair:
-                  //     working → green pulse
-                  //     error   → red
-                  //     idle    → amber (default)
-                  //     other   → neutral
-                  // - Card hover lifts the border in the agent color
-                  //   so the operator immediately sees which agent
-                  //   they're hovering.
-                  const accent = agent.color?.trim() || "#22d3ee";
+                  // v129b — agent card stripe + icon now reflect the
+                  // SQUAD the agent belongs to (not the agent's own
+                  // brand color). Falls back to neutral gray when the
+                  // agent isn't in any squad. Squad icon (emoji) is
+                  // rendered as a small chip on the right of the card
+                  // so the operator sees the team affiliation at a
+                  // glance.
+                  const squadInfo = squadByAgentGatewayId.get(agent.id) ?? null;
+                  const stripeColor = squadInfo?.color || "#475569"; // neutral gray when no squad
                   const status = (agent.status ?? "idle").toLowerCase();
                   const statusColor =
                     status === "working" ? "#22c55e"
@@ -6160,29 +6180,56 @@ export function RetroOffice3D({
                         setAgentRosterOpen(false);
                       }}
                       className="group relative overflow-hidden rounded-xl border bg-[#0e141b]/90 p-3 pl-4 text-left transition-all hover:bg-[#111b24]"
-                      style={{ borderColor: `${accent}26` }}
+                      style={{ borderColor: `${stripeColor}26` }}
                       onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = `${accent}55`;
+                        e.currentTarget.style.borderColor = `${stripeColor}55`;
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = `${accent}26`;
+                        e.currentTarget.style.borderColor = `${stripeColor}26`;
                       }}
+                      title={
+                        squadInfo
+                          ? `${agent.name} — squad “${squadInfo.name}”`
+                          : `${agent.name} — no squad`
+                      }
                     >
-                      {/* Left-edge accent stripe in agent color. */}
+                      {/* Left-edge accent stripe in SQUAD color (or
+                          neutral gray when the agent isn't in any
+                          squad). */}
                       <span
                         aria-hidden
                         className="pointer-events-none absolute inset-y-0 left-0 w-[2px]"
-                        style={{ backgroundColor: `${accent}99` }}
+                        style={{ backgroundColor: `${stripeColor}99` }}
                       />
-                      <div className="truncate text-sm font-semibold text-white">
-                        {agent.name}
-                      </div>
-                      <div className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/55">
-                        <span
-                          className={`inline-block h-1.5 w-1.5 rounded-full ${statusPulse ? "animate-pulse" : ""}`}
-                          style={{ backgroundColor: statusColor }}
-                        />
-                        {status}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-white">
+                            {agent.name}
+                          </div>
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/55">
+                            <span
+                              className={`inline-block h-1.5 w-1.5 rounded-full ${statusPulse ? "animate-pulse" : ""}`}
+                              style={{ backgroundColor: statusColor }}
+                            />
+                            {status}
+                          </div>
+                        </div>
+                        {/* Squad icon chip on the right. Tinted in the
+                            squad's color, so even without reading the
+                            tooltip the operator can group cards by
+                            color visually. Hidden when no squad. */}
+                        {squadInfo?.iconEmoji ? (
+                          <span
+                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[12px]"
+                            style={{
+                              backgroundColor: `${stripeColor}20`,
+                              border: `1px solid ${stripeColor}55`,
+                            }}
+                            aria-label={`Squad: ${squadInfo.name}`}
+                          >
+                            {squadInfo.iconEmoji}
+                          </span>
+                        ) : null}
                       </div>
                     </button>
                   );
