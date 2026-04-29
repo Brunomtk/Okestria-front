@@ -42,7 +42,7 @@
  * perf concern.
  */
 
-import type { AgentState } from "@/lib/agent-state/local";
+import type { AgentState } from "@/features/agents/state/store";
 
 export type SquadRunningStep = {
   agentId: string | number;
