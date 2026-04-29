@@ -11,6 +11,13 @@ type SquadCreateModalProps = {
   agents: SquadCatalogAgent[];
   workspaces?: SquadCatalogWorkspace[];
   preferredAgentId?: string | null;
+  /**
+   * v128 — backend agent ids that are ALREADY assigned to some other
+   * squad. The picker hides these so the operator only sees agents
+   * available to be added to the new squad. If undefined / empty, no
+   * filtering is applied (back-compat).
+   */
+  excludedAgentIds?: ReadonlySet<number>;
   onClose: () => void;
   onSubmit: (payload: {
     name: string;
@@ -59,18 +66,30 @@ export function SquadCreateModal({
   agents,
   workspaces = [],
   preferredAgentId,
+  excludedAgentIds,
   onClose,
   onSubmit,
 }: SquadCreateModalProps) {
+  // v128 — only show agents that are NOT already assigned to another
+  // squad. The parent (OfficeScreen) computes the excluded set from
+  // companySquads.flatMap(s => s.members). Falsy / empty set = show
+  // every agent the catalog returned (back-compat).
+  const availableAgents = useMemo(
+    () =>
+      excludedAgentIds && excludedAgentIds.size > 0
+        ? agents.filter((a) => !excludedAgentIds.has(a.agentId))
+        : agents,
+    [agents, excludedAgentIds],
+  );
   const sortedAgents = useMemo(
     () =>
-      [...agents].sort(
+      [...availableAgents].sort(
         (a, b) =>
           Number(b.status) - Number(a.status) ||
           Number(b.isDefault) - Number(a.isDefault) ||
           a.agentName.localeCompare(b.agentName),
       ),
-    [agents],
+    [availableAgents],
   );
   const activeAgents = useMemo(() => sortedAgents.filter((a) => a.status), [sortedAgents]);
 
@@ -303,7 +322,14 @@ export function SquadCreateModal({
               <div className="space-y-1.5">
                 {filteredAgents.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/30">
-                    No agents found.
+                    {/* v128 — distinguish "filtered out by search" from
+                        "everyone is already in another squad". The
+                        availableAgents count tells the operator they
+                        need to free up an agent first (delete a squad
+                        or remove the agent from one). */}
+                    {availableAgents.length === 0
+                      ? "Every agent is already in another squad. Open Squad Ops on an existing squad to free one up, or delete a squad first."
+                      : "No agents match this search."}
                   </div>
                 ) : (
                   filteredAgents.map((agent) => {

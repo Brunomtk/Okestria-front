@@ -7020,52 +7020,96 @@ export function OfficeScreen({
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
-                  <div className="min-w-0 flex items-center gap-3">
-                    {focusedSquadChatTarget?.iconEmoji && (
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
-                        style={{
-                          backgroundColor: `${focusedSquadChatTarget.color || "#3b82f6"}15`,
-                          border: `1.5px solid ${focusedSquadChatTarget.color || "#3b82f6"}40`,
-                        }}
-                      >
-                        {focusedSquadChatTarget.iconEmoji}
+                {/* v128 — Chat bar gets a SUBTLE color accent + clearer
+                    icon when focused on a squad. The whole bar carries
+                    the squad's brand color: a 1px top border line, a
+                    very faint background tint, and the icon/name in the
+                    same hue. The operator can scan across multiple chat
+                    windows and immediately know which squad they're in
+                    without reading the name.
+                    For solo agent chat, no color tint — the bar stays
+                    neutral so the squad treatment really stands out. */}
+                {(() => {
+                  const squadAccent = focusedSquadChatTarget?.color?.trim() || null;
+                  return (
+                    <div
+                      className="relative flex items-center justify-between border-b border-white/10 px-5 py-3"
+                      style={
+                        squadAccent
+                          ? { backgroundColor: `${squadAccent}08` }
+                          : undefined
+                      }
+                    >
+                      {/* Top accent hairline in squad color (~1px). */}
+                      {squadAccent ? (
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute inset-x-0 top-0 h-px"
+                          style={{
+                            background: `linear-gradient(90deg, transparent, ${squadAccent}cc, transparent)`,
+                          }}
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex items-center gap-3">
+                        {focusedSquadChatTarget?.iconEmoji && (
+                          <div
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base"
+                            style={{
+                              backgroundColor: `${squadAccent ?? "#3b82f6"}1a`,
+                              border: `1.5px solid ${squadAccent ?? "#3b82f6"}55`,
+                              boxShadow: `0 0 0 1px ${squadAccent ?? "#3b82f6"}10 inset`,
+                            }}
+                          >
+                            {focusedSquadChatTarget.iconEmoji}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div
+                            className="truncate font-mono text-[12px] font-semibold uppercase tracking-[0.16em]"
+                            style={{
+                              color: squadAccent
+                                ? `${squadAccent}e6`
+                                : "rgba(255,255,255,0.55)",
+                            }}
+                          >
+                            {focusedSquadChatTarget ? "Squad" : "Conversation"}
+                          </div>
+                          <div className="mt-1 truncate font-mono text-[11px] text-white/55">
+                            {focusedSquadChatTarget
+                              ? focusedSquadChatTarget.name
+                              : (focusedChatAgent?.name ??
+                                focusedRemoteChatTarget?.name ??
+                                "Select an agent or squad to start chatting")}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <div className="truncate font-mono text-[12px] font-semibold uppercase tracking-[0.16em]" style={{ color: focusedSquadChatTarget ? (focusedSquadChatTarget.color || "#3b82f6") + "cc" : undefined }}>
-                        {focusedSquadChatTarget ? "Squad" : "Conversation"}
-                      </div>
-                      <div className="mt-1 truncate font-mono text-[11px] text-white/40">
-                        {focusedSquadChatTarget
-                          ? focusedSquadChatTarget.name
-                          : (focusedChatAgent?.name ??
-                            focusedRemoteChatTarget?.name ??
-                            "Select an agent or squad to start chatting")}
+
+                      <div className="flex items-center gap-2">
+                        {focusedSquadChatTarget ? (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSquadOps(focusedSquadChatTarget.id)}
+                            className="rounded-md border px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] transition"
+                            style={{
+                              borderColor: `${squadAccent ?? "#3b82f6"}55`,
+                              backgroundColor: `${squadAccent ?? "#3b82f6"}1a`,
+                              color: squadAccent ?? "#a5f3fc",
+                            }}
+                          >
+                            Squad ops
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setChatOpen(false)}
+                          className="rounded-md border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300 transition hover:bg-amber-500/15 hover:text-amber-200"
+                        >
+                          Hide chat
+                        </button>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {focusedSquadChatTarget ? (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSquadOps(focusedSquadChatTarget.id)}
-                        className="rounded-md border border-cyan-500/35 bg-cyan-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-cyan-100 transition hover:bg-cyan-500/15"
-                      >
-                        Squad ops
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => setChatOpen(false)}
-                      className="rounded-md border border-amber-700/40 bg-amber-500/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-amber-300 transition hover:bg-amber-500/15 hover:text-amber-200"
-                    >
-                      Hide chat
-                    </button>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 <div className="min-h-0 flex-1">
                   {focusedChatAgent ? (
@@ -7472,6 +7516,18 @@ export function OfficeScreen({
         agents={createSquadCatalog?.agents ?? []}
         workspaces={createSquadCatalog?.workspaces ?? []}
         preferredAgentId={state.selectedAgentId}
+        // v128 — only show agents NOT yet in any squad. Computed
+        // inline so it always reflects the latest companySquads
+        // snapshot when the modal opens.
+        excludedAgentIds={
+          new Set(
+            companySquads.flatMap((squad) =>
+              squad.members
+                .map((m) => m.backendAgentId)
+                .filter((id): id is number => typeof id === "number"),
+            ),
+          )
+        }
         onClose={() => {
           setCreateSquadModalOpen(false);
           setCreateSquadError(null);

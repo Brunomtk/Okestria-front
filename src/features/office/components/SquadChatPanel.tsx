@@ -436,11 +436,38 @@ function SquadChatPanelInner({ squad, activeTaskId, activeSessionKey, sessionMes
           sidebar inside the panel. The active task is picked from one
           dropdown in the header. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* v99 — slim header. The outer chat modal already carries the
-            squad emblem + name + member count, so we don't duplicate it.
-            What's left here is the task selector + status pill + action
-            buttons (Ops, Refresh) on a single compact row. */}
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 px-5 py-3">
+        {/* v99/v128 — slim header. The outer chat modal carries the
+            squad emblem + name; this inner row hosts the task selector
+            + status pill + action buttons. v128 adds a SUBTLE squad
+            color hairline at the top + faint background tint so the
+            operator sees the brand color in two places (outer bar AND
+            inner row), reinforcing which squad they're in.  The squad
+            icon is also rendered as a small affordance to the left of
+            the task selector — same icon as the outer bar, helps when
+            the chat scrolls and the outer bar is offscreen. */}
+        <div
+          className="relative flex flex-wrap items-center gap-2 border-b border-white/10 px-5 py-3"
+          style={{ backgroundColor: `${accent}06` }}
+        >
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
+            style={{
+              background: `linear-gradient(90deg, transparent, ${accent}66, transparent)`,
+            }}
+          />
+          {squad.iconEmoji ? (
+            <span
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sm"
+              style={{
+                backgroundColor: `${accent}1a`,
+                border: `1px solid ${accent}55`,
+              }}
+              title={squad.name}
+            >
+              {squad.iconEmoji}
+            </span>
+          ) : null}
           <div className="min-w-0 flex-1">
             {visibleTasks.length > 0 ? (
               <select
