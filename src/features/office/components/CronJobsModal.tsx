@@ -112,6 +112,82 @@ const PRESET_SCHEDULES: { label: string; expr: string; hint: string }[] = [
 const DEFAULT_TZ =
   (typeof Intl !== "undefined" && Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
 
+/**
+ * v133 — Timezone list shown in the cron form's dropdown.
+ *
+ * Strategy:
+ * 1. Try `Intl.supportedValuesOf("timeZone")` — modern browsers (Chrome
+ *    99+, Safari 15.4+, Firefox 93+) expose the full IANA TZDB so the
+ *    operator can pick literally any zone the platform knows.
+ * 2. Fall back to a curated list of common zones for older runtimes.
+ * 3. Always pin the operator's resolved local timezone + UTC at the top
+ *    so the two most-used picks are one click away even when the full
+ *    list is huge.
+ *
+ * Rendered as a native `<select>` so the OS gives us search-as-you-type
+ * for free — much faster than a custom combobox over a 400+ entry list.
+ */
+const FALLBACK_TIMEZONES = [
+  "UTC",
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+  "America/Sao_Paulo", "America/Mexico_City", "America/Argentina/Buenos_Aires", "America/Bogota",
+  "America/Toronto", "America/Vancouver", "America/Anchorage", "America/Honolulu",
+  "Europe/London", "Europe/Paris", "Europe/Berlin", "Europe/Madrid", "Europe/Rome",
+  "Europe/Amsterdam", "Europe/Lisbon", "Europe/Athens", "Europe/Istanbul", "Europe/Moscow",
+  "Africa/Cairo", "Africa/Johannesburg", "Africa/Lagos", "Africa/Nairobi",
+  "Asia/Dubai", "Asia/Karachi", "Asia/Kolkata", "Asia/Bangkok", "Asia/Singapore",
+  "Asia/Hong_Kong", "Asia/Shanghai", "Asia/Tokyo", "Asia/Seoul", "Asia/Jerusalem",
+  "Australia/Sydney", "Australia/Perth", "Pacific/Auckland", "Pacific/Honolulu",
+];
+
+const TIMEZONE_OPTIONS: ReadonlyArray<string> = (() => {
+  let pool: string[];
+  try {
+    const intlAny = Intl as unknown as {
+      supportedValuesOf?: (key: string) => string[];
+    };
+    const supported =
+      typeof Intl !== "undefined" && typeof intlAny.supportedValuesOf === "function"
+        ? intlAny.supportedValuesOf("timeZone")
+        : null;
+    pool = Array.isArray(supported) && supported.length > 0
+      ? [...supported]
+      : [...FALLBACK_TIMEZONES];
+  } catch {
+    pool = [...FALLBACK_TIMEZONES];
+  }
+  // Pin local + UTC at the top, dedupe via Set so they don't appear
+  // twice in the long list below.
+  const head = [DEFAULT_TZ, "UTC"];
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const tz of [...head, ...pool]) {
+    if (!tz || seen.has(tz)) continue;
+    seen.add(tz);
+    ordered.push(tz);
+  }
+  return ordered;
+})();
+
+/**
+ * v133 — UTC-offset label for any IANA timezone, e.g.
+ * "America/Sao_Paulo  (GMT-3)". Resolved per-render via Intl so DST
+ * is respected. Returns the bare tz id when Intl can't resolve.
+ */
+const formatTimezoneLabel = (tz: string): string => {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    });
+    const parts = formatter.formatToParts(new Date());
+    const offset = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+    return offset ? `${tz}  (${offset})` : tz;
+  } catch {
+    return tz;
+  }
+};
+
 const toLocalDateTimeInput = (offsetMinutes = 30): string => {
   const d = new Date(Date.now() + offsetMinutes * 60 * 1000);
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -1485,12 +1561,32 @@ function CronJobFormDialog({
             </select>
           </Field>
           <Field label="Timezone">
-            <input
+            {/* v133 — Native <select> with the operator's local zone +
+                UTC pinned at the top, then every IANA zone the runtime
+                exposes (Intl.supportedValuesOf when available, curated
+                fallback otherwise). Each option shows the IANA id +
+                its current UTC offset (DST-aware) so the operator can
+                pick at a glance. The OS gives us search-as-you-type
+                for free.
+                If the current value isn't in the standard list (e.g. an
+                older job persisted a free-form value), we surface it as
+                a one-off option at the top so the select still renders
+                consistently and the operator can switch away from it. */}
+            <select
               value={tz}
               onChange={(e) => setTz(e.target.value)}
-              placeholder="UTC"
               className="cron-input"
-            />
+              title="Timezone for the cron schedule"
+            >
+              {tz && !TIMEZONE_OPTIONS.includes(tz) ? (
+                <option value={tz}>{tz} (custom)</option>
+              ) : null}
+              {TIMEZONE_OPTIONS.map((zone) => (
+                <option key={zone} value={zone}>
+                  {formatTimezoneLabel(zone)}
+                </option>
+              ))}
+            </select>
           </Field>
 
           {kind === "one-shot" ? (
