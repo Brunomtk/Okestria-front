@@ -176,6 +176,7 @@ import {
   type SquadTaskSummary,
 } from "@/lib/squads/api";
 import { applyCronRunMessageBySession } from "@/lib/cron/api";
+import { computeWorkingAgentIds } from "@/lib/office/agentWorkingState";
 import { randomUUID } from "@/lib/uuid";
 import { HistoryPanel } from "@/features/office/components/panels/HistoryPanel";
 import { InboxPanel } from "@/features/office/components/panels/InboxPanel";
@@ -2774,84 +2775,32 @@ export function OfficeScreen({
       return null;
     };
 
-    // v89 — debug instrumentation. Mirrors every chat event into a global
-    // ring buffer so the operator can diff via dev tools:
-    //   window.__sqDbg.events.slice(-10)
-    type SqDbgEntry = {
-      ts: number;
-      eventName: string;
-      sessionKey: string | null;
-      state: string | null;
-      runId: string | null;
-      matched: boolean;
-      reason?: string;
+    // v126 — Modal-gated bridge keeps its job: while the SquadOps modal
+    // is open, observe chat events for the currently-selected task's
+    // step session keys and forward them to the back so the modal UI
+    // refreshes immediately. The v125 always-on background bridge
+    // (further down in this file) handles the modal-CLOSED case via
+    // the by-session endpoint, so we no longer need the verbose dbg
+    // ring buffer / per-event console.info spam that this block carried
+    // through v89-v124.
+    const matchSessionKeyToRun = (rawSessionKey: string | null) => {
+      if (!rawSessionKey) return null;
+      const direct = sessionKeyToRun.get(rawSessionKey);
+      if (direct) return direct;
+      const hookIdx = rawSessionKey.indexOf("hook:");
+      if (hookIdx > 0) {
+        const suffix = rawSessionKey.slice(hookIdx);
+        const suffixHit = sessionKeyToRun.get(suffix);
+        if (suffixHit) return suffixHit;
+      }
+      for (const [k, v] of sessionKeyToRun.entries()) {
+        if (rawSessionKey.endsWith(k) || k.endsWith(rawSessionKey)) return v;
+      }
+      return null;
     };
-    const w = window as unknown as {
-      __sqDbg?: { events: SqDbgEntry[]; knownSessionKeys: string[] };
-    };
-    if (!w.__sqDbg) {
-      w.__sqDbg = { events: [], knownSessionKeys: [] };
-    }
-    w.__sqDbg.knownSessionKeys = Array.from(sessionKeyToRun.keys());
-    console.info(
-      "[squad-bridge] watching",
-      w.__sqDbg.knownSessionKeys.length,
-      "session(s)",
-      w.__sqDbg.knownSessionKeys,
-    );
 
     const unsubscribe = client.onEvent((event) => {
       try {
-        // v90 — the gateway emits chat events with sessionKey prefixed by
-        // "agent:<slug>:" (e.g. "agent:sales-closer:hook:sqexec-...:agent:44:step:1")
-        // while the back persists ExternalSessionKey as the bare hook key
-        // ("hook:sqexec-...:agent:44:step:1"). This matcher tries exact
-        // match first, then strips any "agent:<slug>:" prefix and matches
-        // on the remaining "hook:..." suffix.
-        const matchSessionKeyToRun = (rawSessionKey: string | null) => {
-          if (!rawSessionKey) return null;
-          const direct = sessionKeyToRun.get(rawSessionKey);
-          if (direct) return direct;
-          const hookIdx = rawSessionKey.indexOf("hook:");
-          if (hookIdx > 0) {
-            const suffix = rawSessionKey.slice(hookIdx);
-            const suffixHit = sessionKeyToRun.get(suffix);
-            if (suffixHit) return suffixHit;
-          }
-          // Also handle any other prefix format the gateway might use:
-          // walk every entry and check if either side endsWith the other.
-          for (const [k, v] of sessionKeyToRun.entries()) {
-            if (rawSessionKey.endsWith(k) || k.endsWith(rawSessionKey)) return v;
-          }
-          return null;
-        };
-
-        // Mirror EVERY chat event to the dbg ring so we can see what the
-        // gateway is sending while the modal is open.
-        if (w.__sqDbg && event.event === "chat") {
-          const p = event.payload as
-            | { runId?: string; sessionKey?: string; state?: string }
-            | undefined;
-          const sk = p && typeof p.sessionKey === "string" ? p.sessionKey.trim() : null;
-          const matchTarget = matchSessionKeyToRun(sk);
-          const entry: SqDbgEntry = {
-            ts: Date.now(),
-            eventName: event.event,
-            sessionKey: sk,
-            state: p?.state ?? null,
-            runId: p?.runId ?? null,
-            matched: !!matchTarget,
-          };
-          if (!entry.matched) entry.reason = "session_not_in_modal_runs";
-          w.__sqDbg.events.push(entry);
-          if (w.__sqDbg.events.length > 80) w.__sqDbg.events.shift();
-          if (entry.matched) {
-            console.info("[squad-bridge] CHAT MATCHED", entry);
-          } else {
-            console.info("[squad-bridge] chat (no match)", entry);
-          }
-        }
-
         if (event.event !== "chat") return;
         const payload = event.payload as
           | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
@@ -2861,10 +2810,7 @@ export function OfficeScreen({
         if (!sessionKey) return;
         const target = matchSessionKeyToRun(sessionKey);
         if (!target) return;
-        if (forwardedRunIds.has(target.stepId)) {
-          console.info("[squad-bridge] already forwarded for step", target.stepId);
-          return;
-        }
+        if (forwardedRunIds.has(target.stepId)) return;
 
         // Only forward final / aborted / error states — deltas would
         // create noise. We send the running text snapshot at the final
@@ -5446,9 +5392,44 @@ export function OfficeScreen({
     };
   }, [clearMainVoiceError, mainVoiceError]);
 
+  // v126 — Build the squad-running-steps slice once per memo run.
+  // Pulls from the currently-cached squad execution detail
+  // (`squadOpsSelectedTask`) plus the squad ops list summaries; falls
+  // back to an empty array when no squad data is loaded. The unified
+  // working computer below uses this to keep an agent green even when
+  // the WS resolver couldn't bind the session key to a local agent.
+  const runningSquadSteps = useMemo(() => {
+    const out: Array<{ agentId: string | number; status: string }> = [];
+    const detail = squadOpsSelectedTask;
+    if (detail?.runs) {
+      for (const run of detail.runs) {
+        out.push({
+          agentId: run.gatewayAgentId ?? String(run.agentId ?? ""),
+          status: run.status ?? "",
+        });
+      }
+    }
+    return out;
+  }, [squadOpsSelectedTask]);
+
+  // v126 — Single source of truth for "is this agent working RIGHT NOW?".
+  // Folds chat-driven runIds, the WS workingUntilByAgentId latch, and
+  // the explicit squad-step cache into one Set<agentId>. The renderer
+  // (and every other "should I show green?" call site) reads from
+  // this set instead of its own ad-hoc rule.
+  const workingAgentIds = useMemo(() => {
+    return computeWorkingAgentIds(
+      {
+        chatAgents: state.agents,
+        workingLatchByAgentId: workingUntilByAgentId,
+        runningSquadSteps,
+      },
+      Date.now(),
+    );
+  }, [clockTick, state.agents, workingUntilByAgentId, runningSquadSteps]);
+
   const officeAgents = useMemo(() => {
     void clockTick;
-    const now = Date.now();
     const nextCache = new Map<
       string,
       {
@@ -5463,7 +5444,12 @@ export function OfficeScreen({
       }
     >();
     const nextOfficeAgents = state.agents.map((agent) => {
-      const latchedWorking = (workingUntilByAgentId[agent.agentId] ?? 0) > now;
+      // v126 — `latchedWorking` now comes from the unified Set instead
+      // of querying workingUntilByAgentId directly. Same end-result
+      // for chat-driven activity, but the Set ALSO includes squad/cron
+      // signals that the latch alone might miss when the gateway WS
+      // resolver couldn't bind the session key to a local agentId.
+      const latchedWorking = workingAgentIds.has(agent.agentId);
       const deskHeld = Boolean(deskHoldByAgentId[agent.agentId]);
       const gymHeld = Boolean(gymHoldByAgentId[agent.agentId]);
       const phoneBoothHeld = Boolean(phoneBoothHoldByAgentId[agent.agentId]);
@@ -5531,7 +5517,7 @@ export function OfficeScreen({
     qaHoldByAgentId,
     smsBoothHoldByAgentId,
     state.agents,
-    workingUntilByAgentId,
+    workingAgentIds,
   ]);
   const openClawLiveStateText = useMemo(() => {
     const lines = ["== LIVE OPENCLAW STATE =="];
