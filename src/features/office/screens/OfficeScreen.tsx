@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Timer, Users2 } from "lucide-react";
+import { BriefcaseBusiness, MessageSquare, ChevronDown, Loader2, Mic, Radar, PanelsTopLeft, Timer, Users2 } from "lucide-react";
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
@@ -7322,13 +7322,34 @@ export function OfficeScreen({
         </button>
         */}
 
+        {/* v134 — Vertical action stack polished:
+            • Every button shares the same height (h-9), padding,
+              radius (rounded-lg), font, and badge style. Layout is
+              identical row-to-row so the eye scans the column without
+              stutter.
+            • Each button keeps its brand colour family (cyan = leads,
+              violet = squads, amber = cron, gold = chat) so the
+              operator still identifies actions by colour.
+            • Active state: filled tint + bright text. Idle state:
+              translucent dark bg + soft border + readable text.
+            • LEADS renamed to "Commercial" per operator request. The
+              icon switches from radar to a briefcase to match the
+              commercial-pipeline framing.
+            • Count badges (squads N, chat-running N) share the exact
+              same pill style: pill rounded, faint bg in the button's
+              brand colour. */}
         <button
           type="button"
           onClick={() => setLeadOpsModalOpen((current) => !current)}
-          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider shadow-lg backdrop-blur transition-colors ${leadOpsModalOpen ? "border-cyan-300/55 bg-cyan-500/14 text-cyan-50" : "border-cyan-500/35 bg-[#041015]/92 text-cyan-200 hover:border-cyan-400/55 hover:text-cyan-50"}`}
+          className={`flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-all ${
+            leadOpsModalOpen
+              ? "border-cyan-300/60 bg-cyan-500/15 text-cyan-50"
+              : "border-cyan-500/30 bg-[#041015]/90 text-cyan-200 hover:border-cyan-400/55 hover:bg-cyan-500/10 hover:text-cyan-50"
+          }`}
+          title={leadOpsModalOpen ? "Close commercial pipeline" : "Open commercial pipeline"}
         >
-          {leadOpsModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Radar className="h-3.5 w-3.5" />}
-          <span>{leadOpsModalOpen ? "HIDE LEADS" : "LEADS"}</span>
+          {leadOpsModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <BriefcaseBusiness className="h-3.5 w-3.5" />}
+          <span>{leadOpsModalOpen ? "Hide" : "Commercial"}</span>
         </button>
 
         <button
@@ -7345,22 +7366,30 @@ export function OfficeScreen({
             }
             handleOpenSquadOps(preferredSquadId);
           }}
-          className="flex items-center gap-1.5 rounded border border-violet-500/35 bg-[#0a0715]/92 px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider text-violet-200 shadow-lg backdrop-blur transition-colors hover:border-violet-400/55 hover:text-violet-50 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-9 items-center gap-2 rounded-lg border border-violet-500/30 bg-[#0a0715]/90 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-violet-200 shadow-lg backdrop-blur transition-all hover:border-violet-400/55 hover:bg-violet-500/10 hover:text-violet-50 disabled:cursor-not-allowed disabled:opacity-40"
+          title={companySquads.length === 0 ? "Create a squad first" : "Open squad ops"}
         >
           <Users2 className="h-3.5 w-3.5" />
-          <span>SQUADS</span>
+          <span>Squads</span>
           {companySquads.length > 0 ? (
-            <span className="rounded bg-violet-500/20 px-1 text-[10px] text-violet-300">{companySquads.length}</span>
+            <span className="rounded-full bg-violet-500/25 px-1.5 py-px text-[10px] font-bold text-violet-100">
+              {companySquads.length}
+            </span>
           ) : null}
         </button>
 
         <button
           type="button"
           onClick={() => setCronJobsModalOpen((current) => !current)}
-          className={`flex items-center gap-1.5 rounded border px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider shadow-lg backdrop-blur transition-colors ${cronJobsModalOpen ? "border-amber-300/55 bg-amber-500/14 text-amber-50" : "border-amber-500/35 bg-[#120c04]/92 text-amber-200 hover:border-amber-400/55 hover:text-amber-50"}`}
+          className={`flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-all ${
+            cronJobsModalOpen
+              ? "border-amber-300/60 bg-amber-500/15 text-amber-50"
+              : "border-amber-500/30 bg-[#120c04]/90 text-amber-200 hover:border-amber-400/55 hover:bg-amber-500/10 hover:text-amber-50"
+          }`}
+          title={cronJobsModalOpen ? "Close cron jobs" : "Open cron jobs"}
         >
           {cronJobsModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Timer className="h-3.5 w-3.5" />}
-          <span>{cronJobsModalOpen ? "CLOSE CRON" : "CRON JOBS"}</span>
+          <span>{cronJobsModalOpen ? "Hide" : "Cron jobs"}</span>
         </button>
 
         <button
@@ -7374,24 +7403,29 @@ export function OfficeScreen({
             if (preferredTargetId && !selectedChatAgentId) {
               setSelectedChatAgentId(preferredTargetId);
             }
-  if (!selectedChatAgentId) {
-  setChatTargetView(isSquadChatTargetId(preferredTargetId) ? "squads" : "agents");
-  }
+            if (!selectedChatAgentId) {
+              setChatTargetView(isSquadChatTargetId(preferredTargetId) ? "squads" : "agents");
+            }
             setChatOpen(true);
           }}
-          className="flex items-center gap-1.5 rounded border border-amber-700/50 bg-[#0e0a04]/90 px-3 py-1.5 font-mono text-[11px] font-medium tracking-wider text-amber-500/80 shadow-lg backdrop-blur transition-colors hover:border-amber-600/70 hover:text-amber-400"
+          className={`flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-all ${
+            chatOpen
+              ? "border-amber-400/60 bg-amber-500/15 text-amber-50"
+              : "border-amber-700/45 bg-[#0e0a04]/90 text-amber-300/85 hover:border-amber-500/70 hover:bg-amber-500/10 hover:text-amber-100"
+          }`}
+          title={chatOpen ? "Hide chat" : "Open chat"}
         >
           {chatOpen ? (
             <>
               <ChevronDown className="h-3.5 w-3.5" />
-              <span>HIDE CHAT</span>
+              <span>Hide chat</span>
             </>
           ) : (
             <>
               <MessageSquare className="h-3.5 w-3.5" />
-              <span>OPEN CHAT</span>
+              <span>Open chat</span>
               {runningCount > 0 ? (
-                <span className="rounded bg-amber-500/20 px-1 text-[10px] text-amber-400">
+                <span className="rounded-full bg-amber-500/25 px-1.5 py-px text-[10px] font-bold text-amber-100">
                   {runningCount}
                 </span>
               ) : null}

@@ -5752,15 +5752,24 @@ export function RetroOffice3D({
           {/* Main HQ Panel - Redesigned */}
           <div className="flex items-stretch gap-0 rounded-xl border border-white/[0.08] bg-[#0a0a0a]/95 shadow-2xl backdrop-blur-xl">
             {/* Company Info Section */}
-            <div className="flex items-center gap-3 border-r border-white/[0.06] px-3 py-2">
+            {/* v134 — Title block: clearer hierarchy.
+                Eyebrow (Company overview) sits ABOVE the office name
+                like a section label. The office name uses a stronger
+                weight + color so it reads as the main identifier from
+                across the screen. The metadata line keeps its
+                muted treatment but the bullet separator was upgraded
+                from a wide unicode bullet (•) to a slim middot (·)
+                to match the typography of the rest of the app. */}
+            <div className="flex items-center gap-3 border-r border-white/[0.08] px-4 py-2.5">
               <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-[11px] font-medium text-white/90">
-                    {officeTitleLoaded ? officeTitle : "Office HQ"}
-                  </span>
+                <div className="font-mono text-[9px] font-semibold uppercase tracking-[0.18em] text-white/40">
+                  Company overview
                 </div>
-                <div className="mt-0.5 text-[10px] text-white/40">
-                  {agents.length} agents • {squads.length} squads
+                <div className="mt-0.5 truncate text-[12.5px] font-semibold text-white">
+                  {officeTitleLoaded ? officeTitle : "Office HQ"}
+                </div>
+                <div className="mt-0.5 text-[10px] text-white/45">
+                  {agents.length} agent{agents.length === 1 ? "" : "s"} · {squads.length} squad{squads.length === 1 ? "" : "s"}
                 </div>
               </div>
             </div>
@@ -5818,7 +5827,13 @@ export function RetroOffice3D({
               </button>
             </div>
 
-            {/* Agent Avatars */}
+            {/* Agent Avatars
+                v134 — Avatar bubble color now matches the agent's
+                SQUAD (same rule as the desk nameplates and the HQ
+                overview cards from v132). Agents not in any squad
+                get a neutral slate color. The hover ring also picks
+                up the squad color so the operator sees team
+                affiliation at a glance even in the compact pill. */}
             <div className="flex items-center gap-0.5 px-2">
               {compactRosterAgents.slice(0, 4).map((agent, index) => {
                 const initials = agent.name
@@ -5827,15 +5842,24 @@ export function RetroOffice3D({
                   .slice(0, 2)
                   .map((part) => part[0]?.toUpperCase() ?? "")
                   .join("") || "A";
-                const colors = ["bg-cyan-500/80", "bg-amber-500/80", "bg-emerald-500/80", "bg-violet-500/80"];
+                const squadInfo = squadByAgentGatewayId.get(agent.id) ?? null;
+                const bubbleColor = squadInfo?.color || "#475569"; // neutral slate when no squad
                 return (
                   <button
                     key={agent.id}
                     type="button"
                     onClick={() => onAgentChatSelect?.(agent.id)}
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-lg ring-2 ring-[#0a0a0a] transition-all hover:scale-110 hover:ring-cyan-500/50 ${colors[index % colors.length]}`}
-                    title={agent.name}
-                    style={{ marginLeft: index === 0 ? 0 : -8, zIndex: 10 - index }}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-bold text-white shadow-lg ring-2 ring-[#0a0a0a] transition-all hover:scale-110"
+                    style={{
+                      marginLeft: index === 0 ? 0 : -8,
+                      zIndex: 10 - index,
+                      backgroundColor: `${bubbleColor}cc`,
+                    }}
+                    title={
+                      squadInfo
+                        ? `${agent.name} — squad “${squadInfo.name}”`
+                        : `${agent.name} — no squad`
+                    }
                   >
                     {initials}
                   </button>
@@ -5848,7 +5872,8 @@ export function RetroOffice3D({
                     setAgentRosterOpen(true);
                     setRosterTab("agents");
                   }}
-                  className="ml-1 flex h-6 items-center justify-center rounded-full bg-white/[0.08] px-2 text-[10px] font-medium text-white/60 transition-all hover:bg-white/[0.12] hover:text-white/80"
+                  className="ml-1 flex h-6 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.06] px-2 text-[10px] font-semibold text-white/70 transition-all hover:border-white/25 hover:bg-white/[0.12] hover:text-white"
+                  title={`+${hiddenAgentCount} more agents`}
                 >
                   +{hiddenAgentCount}
                 </button>
@@ -5972,7 +5997,7 @@ export function RetroOffice3D({
                     />
                   </button>
                 )}
-                <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/[0.08]" />
+                <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/[0.14]" />
               </>
             )}
             <button
@@ -6029,7 +6054,7 @@ export function RetroOffice3D({
             </button>
             {onLogout && (
               <>
-                <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/[0.08]" />
+                <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/[0.14]" />
                 <button
                   onClick={onLogout}
                   title="Sign out of this workspace"
