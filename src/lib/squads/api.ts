@@ -1315,3 +1315,40 @@ export const applySquadSessionMessage = async (
     token ?? getBrowserAccessToken(),
   );
 };
+
+/**
+ * v125 — by-session variant of the squad apply-message bridge.
+ *
+ * Used by the always-on background bridge in OfficeScreen so squad
+ * executions still cascade to completion even when the SquadOps
+ * modal is closed (which used to unsubscribe the per-modal bridge
+ * and freeze in-flight steps in "running" forever).
+ *
+ * The back resolves the sessionKey to the matching SquadExecutionStep
+ * server-side via its existing tolerant matcher
+ * (`SquadExecutionService.ReceiveHookCallback`), so the front doesn't
+ * need a fresh stepId map handy.
+ *
+ * Shape mirrors `applySquadSessionMessage` but without the stepId in
+ * the URL — the sessionKey carries enough info for the back to find
+ * the right row.
+ */
+export const applySquadSessionMessageBySession = async (
+  payload: SquadSessionMessageBridgePayload & { sessionKey: string },
+  token?: string | null,
+): Promise<{ ok: boolean; executionId?: number; stepId?: number }> => {
+  return await requestBackendJson<{ ok: boolean; executionId?: number; stepId?: number }>(
+    `/api/SquadExecutions/hooks/by-session/apply-message`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        text: payload.text,
+        sessionKey: payload.sessionKey,
+        externalRunId: payload.externalRunId ?? null,
+        externalTaskId: payload.externalTaskId ?? null,
+        status: payload.status ?? "completed",
+      }),
+    },
+    token ?? getBrowserAccessToken(),
+  );
+};

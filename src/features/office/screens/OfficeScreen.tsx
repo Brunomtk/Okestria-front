@@ -160,6 +160,7 @@ import {
   dispatchSquadTask,
   estimateSquadTaskDispatch,
   applySquadSessionMessage,
+  applySquadSessionMessageBySession,
   fetchCompanySquads,
   fetchSquadCatalog,
   fetchSquadTask,
@@ -174,6 +175,7 @@ import {
   type SquadTaskDispatchEstimate,
   type SquadTaskSummary,
 } from "@/lib/squads/api";
+import { applyCronRunMessageBySession } from "@/lib/cron/api";
 import { randomUUID } from "@/lib/uuid";
 import { HistoryPanel } from "@/features/office/components/panels/HistoryPanel";
 import { InboxPanel } from "@/features/office/components/panels/InboxPanel";
@@ -2911,6 +2913,159 @@ export function OfficeScreen({
     squadOpsSquadId,
     loadSquadOpsTasks,
   ]);
+
+  // v125 — ALWAYS-ON background bridge for squad + cron replies.
+  //
+  // The squad bridge above (and its cousin inside CronJobsModal) only
+  // runs while the corresponding modal is open. That left a real bug:
+  // close the modal mid-run → the bridge unsubscribes → assistant
+  // replies still arrive on the gateway WS but there's no observer
+  // forwarding them to the back → steps stay stuck in "running"
+  // forever, the cascade halts, and reopening the modal shows the
+  // same frozen state.
+  //
+  // This always-on bridge runs while the gateway client is connected,
+  // independent of any modal state. It listens for chat events with
+  // session keys shaped like:
+  //   • `hook:sqexec-…:agent:N:step:M`        (squad execution step)
+  //   • `agent:<slug>:hook:sqexec-…:agent:N:step:M` (gateway-prefixed)
+  //   • `agent:<slug>:cron-N`                  (new cron shape)
+  //   • `hook:cron-N`, `hook:okestria-cron-N`  (legacy cron shapes)
+  // and forwards them to the back's by-session apply-message
+  // endpoints. The back's tolerant resolver figures out which row
+  // the session belongs to and applies the assistant text exactly
+  // as if the modal-bridge had received the event.
+  //
+  // Idempotency: a session-key + state + text-hash fingerprint cache
+  // (kept in a ref so it survives effect-restarts) makes sure we
+  // never double-POST when both bridges happen to be alive.
+  useEffect(() => {
+    if (!client || status !== "connected") return;
+
+    const forwardedFingerprints = new Set<string>();
+    const SQUAD_PREFIX = "hook:sqexec-";
+    const CRON_SEGMENT = ":cron-";
+    const CRON_LEGACY_PREFIX = "hook:cron-";
+    const CRON_LEGACY_OKESTRIA = "hook:okestria-cron-";
+
+    // Same extractor shape the modal bridges already use — keeps
+    // assistant-only messages and tolerates the various
+    // {role,content} payload shapes OpenClaw emits.
+    const extractAssistantText = (message: unknown): string | null => {
+      if (!message) return null;
+      if (typeof message === "string") return message.trim() || null;
+      if (typeof message !== "object") return null;
+      const m = message as Record<string, unknown>;
+      const role = typeof m.role === "string" ? m.role.toLowerCase() : null;
+      if (role && !role.includes("assistant") && !role.includes("agent") && !role.includes("model")) {
+        return null;
+      }
+      const content = m.content;
+      if (typeof content === "string" && content.trim().length > 0) return content.trim();
+      if (Array.isArray(content)) {
+        const parts: string[] = [];
+        for (const item of content) {
+          if (typeof item === "string") parts.push(item);
+          else if (item && typeof item === "object") {
+            const it = item as Record<string, unknown>;
+            const t = typeof it.text === "string"
+              ? it.text
+              : typeof it.content === "string"
+                ? it.content
+                : null;
+            if (t) parts.push(t);
+          }
+        }
+        const joined = parts.join("\n").trim();
+        if (joined.length > 0) return joined;
+      }
+      for (const k of ["text", "markdown", "outputText", "output_text", "message", "response"]) {
+        const v = m[k];
+        if (typeof v === "string" && v.trim().length > 0) return v.trim();
+      }
+      return null;
+    };
+
+    const unsubscribe = client.onEvent((event) => {
+      try {
+        if (event.event !== "chat") return;
+        const payload = event.payload as
+          | { runId?: string; sessionKey?: string; state?: string; message?: unknown; errorMessage?: string }
+          | undefined;
+        if (!payload) return;
+        const sessionKey = (payload.sessionKey ?? "").trim();
+        if (!sessionKey) return;
+
+        // Only act on terminal states — deltas would create noise.
+        const state = (payload.state ?? "").toLowerCase();
+        if (state !== "final" && state !== "aborted" && state !== "error") return;
+
+        let text = extractAssistantText(payload.message);
+        const status: "completed" | "failed" =
+          state === "error" || state === "aborted" ? "failed" : "completed";
+        if (!text || text.length === 0) {
+          if (status === "failed") text = payload.errorMessage ?? `Agent ${state}.`;
+          else return;
+        }
+
+        // Classify the session shape. The matchers tolerate the
+        // gateway prefix (`agent:<slug>:`) by checking suffix /
+        // contains rather than full equality.
+        const isSquadSession =
+          sessionKey.includes(SQUAD_PREFIX);
+        const isCronSession =
+          sessionKey.includes(CRON_SEGMENT) ||
+          sessionKey.startsWith(CRON_LEGACY_PREFIX) ||
+          sessionKey.startsWith(CRON_LEGACY_OKESTRIA);
+
+        if (!isSquadSession && !isCronSession) return;
+
+        // Fingerprint dedupe: same session + same final state + same
+        // text counts as one delivery. A subsequent run on the same
+        // session with new text gets a different hash and re-fires.
+        const textHash = String(text!.length) + ":" + text!.slice(0, 80);
+        const fingerprint = `${sessionKey}|${status}|${textHash}`;
+        if (forwardedFingerprints.has(fingerprint)) return;
+        forwardedFingerprints.add(fingerprint);
+        // Cap the dedupe set so it doesn't grow unbounded over a
+        // long-lived office tab.
+        if (forwardedFingerprints.size > 500) {
+          const first = forwardedFingerprints.values().next().value;
+          if (first) forwardedFingerprints.delete(first);
+        }
+
+        if (isSquadSession) {
+          void applySquadSessionMessageBySession({
+            text: text!,
+            sessionKey,
+            externalRunId: payload.runId ?? null,
+            status,
+          }).catch((err) => {
+            forwardedFingerprints.delete(fingerprint);
+            console.warn("[bg-bridge] squad apply-by-session failed", err);
+          });
+          return;
+        }
+
+        if (isCronSession) {
+          void applyCronRunMessageBySession({
+            sessionKey,
+            text: text!,
+            state: status === "failed" ? state : "final",
+            error: status === "failed" ? text! : null,
+          }).catch((err) => {
+            forwardedFingerprints.delete(fingerprint);
+            console.warn("[bg-bridge] cron apply-by-session failed", err);
+          });
+          return;
+        }
+      } catch (err) {
+        console.warn("[bg-bridge] handler crashed", err);
+      }
+    });
+
+    return unsubscribe;
+  }, [client, status]);
 
   // v104 — modal de confirmação de delete agent (vê AgentDeleteConfirmModal).
   const {
