@@ -683,8 +683,30 @@ export function useRebuiltAgentTick(
         const seatX = desk?.seatX ?? desk?.x;
         const seatY = desk?.seatY ?? desk?.y;
         const seatFacing = desk?.seatFacing ?? Math.PI / 2;
+        // v123 — pull the standing agent slightly toward the desk so
+        // they stand IN FRONT of the chair backrest instead of
+        // overlapping it. With the v56 "stand instead of sit" decision
+        // (the sit pose was rendering wrong), the agent's footprint
+        // landed on the chair seat center, which from the isometric
+        // angle made the body merge into the backrest. Pulling the
+        // footprint a few px toward the desk along the seat-to-desk
+        // vector puts the agent visually IN the chair: backrest
+        // behind them, desk in front. Same "seat pullback" trick the
+        // meeting chairs already use (see getMeetingSeatLocations).
+        const SEAT_DESK_PULLBACK = 6;
+        let standX = seatX ?? 0;
+        let standY = seatY ?? 0;
+        if (desk) {
+          const dxToDesk = desk.x - (seatX ?? desk.x);
+          const dyToDesk = desk.y - (seatY ?? desk.y);
+          const distToDesk = Math.hypot(dxToDesk, dyToDesk);
+          if (distToDesk > 0.001) {
+            standX = (seatX ?? desk.x) + (dxToDesk / distToDesk) * SEAT_DESK_PULLBACK;
+            standY = (seatY ?? desk.y) + (dyToDesk / distToDesk) * SEAT_DESK_PULLBACK;
+          }
+        }
         const targetPoint = desk
-          ? { x: seatX!, y: seatY!, facing: seatFacing }
+          ? { x: standX, y: standY, facing: seatFacing }
           : fallback;
         const target = buildPathToTarget(agent.id, agent.x, agent.y, targetPoint.x, targetPoint.y);
         return {

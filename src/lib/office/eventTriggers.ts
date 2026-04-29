@@ -47,7 +47,17 @@ import { randomUUID } from "@/lib/uuid";
 // 1. Event reduction records short-lived latches from fresh gateway traffic.
 // 2. Reconciliation rebuilds durable holds from current agent and transcript state.
 // The 3D scene only consumes the distilled result from `buildOfficeAnimationState()`.
-const WORKING_LATCH_MS = 5_000;
+// v123 — Working latch was 5s, way too short for actual chat runs
+// (a typical agent reply takes 5–60s). The renderer treats `working`
+// as "is this agent currently busy?": when the latch expires, the
+// agent flips back to amber even though the back is still thinking.
+// Bumped to 90s — the reconciliation pass refreshes the latch every
+// cycle while `agent.status === "running"`, so this 90s value is
+// really just a "fade-out grace period" for when the back stops
+// emitting events between thinking phases. 90s comfortably covers a
+// long reasoning gap without leaving the office looking permanently
+// busy after a finished run.
+const WORKING_LATCH_MS = 90_000;
 const GYM_WORKOUT_LATCH_MS = 60_000;
 const STREAM_ACTIVITY_LATCH_MS = 6_000;
 const THINKING_ACTIVITY_LATCH_MS = 6_000;
