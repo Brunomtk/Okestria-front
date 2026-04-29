@@ -997,35 +997,24 @@ export const deleteSquadTask = async (
   taskId: number,
   token?: string | null,
 ): Promise<SquadTaskDeleteResult> => {
-  // v63 path — preferred: cascade-deletes locally + sweeps OpenClaw.
-  try {
-    const raw = await requestBackendJson<unknown>(
-      `/api/Squads/tasks/delete/${taskId}`,
-      { method: "DELETE" },
-      token,
-    );
-    return normalizeDeleteTaskResult(raw, taskId);
-  } catch (primaryError) {
-    const primaryMessage =
-      primaryError instanceof Error ? primaryError.message : String(primaryError);
-
-    // v114 — the back may have returned 404 with a JSON body that says
-    // taskExists:false (back v63/v64 behavior). The body itself doesn't
-    // contain the literal "404", so the regex below would fall through
-    // and the body would surface as a raw error to the operator. Detect
-    // the envelope here and treat it as a clean "already gone" result.
-    if (looksLikeDeleteAlreadyGoneBody(primaryMessage)) {
-      return buildAlreadyGoneResult(taskId, primaryMessage);
-    }
-
-    // Anything other than "endpoint not found" → propagate so the UI
-    // can surface the actual error (auth, 5xx, network).
-    if (!/404|405|not\s*found|method\s*not/i.test(primaryMessage)) {
-      throw primaryError;
-    }
-  }
-
-  // Fallback A — older back (≤ v62). Local rows only, no gateway sweep.
+  // v119 — IMPORTANT ORDER FIX.
+  //
+  // The argument named `taskId` is, in practice, a **SquadExecution id**:
+  // SquadOpsModal renders SquadExecution rows (id 27, 28, …) and calls
+  // this function with `execution.id`. Those ids do NOT live in the
+  // SquadTasks table; they live in SquadExecutions. The legacy v63
+  // endpoint `/api/Squads/tasks/delete/{taskId}` responds 200 OK with
+  // an "already gone" envelope when the id isn't a real SquadTask
+  // (SquadsController.DeleteTask wraps the service in `Ok(result)`
+  // unconditionally) — so the front used to think the delete had
+  // succeeded while the real SquadExecution row was untouched in the
+  // database. Next refresh the task came back from the dead.
+  //
+  // Fix: try `/api/SquadExecutions/{id}` FIRST since that's what the
+  // modal is actually deleting. Only fall back to the SquadTask path
+  // when the executions endpoint returns 404 (i.e. the id IS a real
+  // SquadTask, not a SquadExecution — which happens for the legacy
+  // squad-task list view we still keep around).
   try {
     await requestBackendJson<unknown>(
       `/api/SquadExecutions/${taskId}`,
@@ -1041,20 +1030,46 @@ export const deleteSquadTask = async (
       sessionsCleaned: 0,
       sessionKeysSwept: [],
     };
-  } catch (fallbackAError) {
-    const fallbackAMessage =
-      fallbackAError instanceof Error
-        ? fallbackAError.message
-        : String(fallbackAError);
-    if (looksLikeDeleteAlreadyGoneBody(fallbackAMessage)) {
-      return buildAlreadyGoneResult(taskId, fallbackAMessage);
+  } catch (executionError) {
+    const executionMessage =
+      executionError instanceof Error ? executionError.message : String(executionError);
+
+    if (looksLikeDeleteAlreadyGoneBody(executionMessage)) {
+      return buildAlreadyGoneResult(taskId, executionMessage);
     }
-    if (!/404|405|not\s*found|method\s*not/i.test(fallbackAMessage)) {
-      throw fallbackAError;
+
+    // Only fall through on "endpoint missed" (404/405/not found); for
+    // anything else (auth, 5xx, network) propagate so the UI surfaces
+    // the real error.
+    if (!/404|405|not\s*found|method\s*not/i.test(executionMessage)) {
+      throw executionError;
     }
   }
 
-  // Fallback B — oldest back, just cancel.
+  // Fallback — the id IS actually a SquadTask (legacy squad-task list).
+  // v63 path: cascade-deletes locally + sweeps OpenClaw.
+  try {
+    const raw = await requestBackendJson<unknown>(
+      `/api/Squads/tasks/delete/${taskId}`,
+      { method: "DELETE" },
+      token,
+    );
+    return normalizeDeleteTaskResult(raw, taskId);
+  } catch (taskError) {
+    const taskMessage =
+      taskError instanceof Error ? taskError.message : String(taskError);
+
+    if (looksLikeDeleteAlreadyGoneBody(taskMessage)) {
+      return buildAlreadyGoneResult(taskId, taskMessage);
+    }
+    if (!/404|405|not\s*found|method\s*not/i.test(taskMessage)) {
+      throw taskError;
+    }
+  }
+
+  // Last-resort fallback — oldest back, just cancel the run so it stops
+  // burning gateway time. The local row stays but the modal will drop
+  // it from state on the optimistic update path.
   try {
     await requestBackendJson<unknown>(
       `/api/SquadExecutions/${taskId}/cancel`,
