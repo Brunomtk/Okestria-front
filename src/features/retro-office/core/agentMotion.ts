@@ -678,13 +678,32 @@ export function useRebuiltAgentTick(
         const desk = typeof deskIndex === "number" ? deskLocations[deskIndex] : null;
         const fallback = preferredPoint ?? { x: agent.x, y: agent.y, facing: agent.facing };
         // v48: aim for the chair seat tied to this desk (not the desk
-        // center itself), and face toward the desk so the agent sits
-        // on the chair with the keyboard in front of them.
+        // center itself), and face toward the desk so the agent stands
+        // by the chair with the keyboard in front of them.
         const seatX = desk?.seatX ?? desk?.x;
         const seatY = desk?.seatY ?? desk?.y;
         const seatFacing = desk?.seatFacing ?? Math.PI / 2;
+        // v131 — Restoring the v123 6-px pullback toward the desk.
+        // v124 tried to use `state: "sitting"` for a richer pose but
+        // the sit rendering kept bugging visually (body merging into
+        // backrest, leg twist on certain chair angles). Operator
+        // explicitly asked to disable the sit pose. We're back to
+        // standing at the chair with the small pullback so the body
+        // visually clears the backrest from the iso camera angle.
+        const SEAT_DESK_PULLBACK = 6;
+        let standX = seatX ?? 0;
+        let standY = seatY ?? 0;
+        if (desk) {
+          const dxToDesk = desk.x - (seatX ?? desk.x);
+          const dyToDesk = desk.y - (seatY ?? desk.y);
+          const distToDesk = Math.hypot(dxToDesk, dyToDesk);
+          if (distToDesk > 0.001) {
+            standX = (seatX ?? desk.x) + (dxToDesk / distToDesk) * SEAT_DESK_PULLBACK;
+            standY = (seatY ?? desk.y) + (dyToDesk / distToDesk) * SEAT_DESK_PULLBACK;
+          }
+        }
         const targetPoint = desk
-          ? { x: seatX!, y: seatY!, facing: seatFacing }
+          ? { x: standX, y: standY, facing: seatFacing }
           : fallback;
         const target = buildPathToTarget(agent.id, agent.x, agent.y, targetPoint.x, targetPoint.y);
         return {
@@ -695,25 +714,11 @@ export function useRebuiltAgentTick(
           targetY: target.targetY,
           facing: targetPoint.facing ?? seatFacing,
           path: target.path,
-          // v124 — REBUILT desk pose. State goes back to `sitting`.
-          //
-          // History: v56 forced `standing` because the sit pose was
-          // jittering and the legs were twisting around the chair.
-          // The renderer has since been polished:
-          //   • `isDeskChairSit` branch lifts the body 0.16 onto the
-          //     chair cushion via `sittingLift`.
-          //   • `legsHardStatic` flag freezes the leg rotations at
-          //     1.05 rad (knees bent forward) — no more twisting.
-          //   • Arms are frozen at -0.98 / +0.98 (hands resting on
-          //     the desk surface).
-          //   • Body rotation locked to 0 — no recline / sway.
-          // With those in place, switching back to `sitting` lands
-          // the agent properly ON the chair facing the monitor.
-          // v123's SEAT_DESK_PULLBACK workaround (offset 6 px toward
-          // the desk to clear the backrest from a standing pose) is
-          // also gone — the sit pose places the body correctly at
-          // the chair seat center without it.
-          state: "sitting",
+          // v131 — desk interaction = STANDING by the chair (not
+          // sitting). The sit pose was visually buggy on certain
+          // chair orientations. Standing avoids that whole class of
+          // bugs and reads cleanly from the iso camera angle.
+          state: "standing",
           interactionTarget: "desk",
         };
       }

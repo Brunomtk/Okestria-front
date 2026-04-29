@@ -5410,6 +5410,25 @@ export function OfficeScreen({
     };
   }, [clearMainVoiceError, mainVoiceError]);
 
+  // v131 — Map gateway-agentId → squad color so the 3D nameplate
+  // (and any other surface that reads OfficeAgent.color) reflects the
+  // SQUAD the agent belongs to instead of the agent's own brand color.
+  // Falls back to the agent's deterministic stringToColor when not
+  // in any squad. First squad wins on multi-squad legacy data.
+  const squadColorByAgentGatewayId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const squad of companySquads) {
+      const color = squad.color?.trim();
+      if (!color) continue;
+      for (const member of squad.members) {
+        const slug = member.gatewayAgentId?.trim();
+        if (!slug || map.has(slug)) continue;
+        map.set(slug, color);
+      }
+    }
+    return map;
+  }, [companySquads]);
+
   // v126 — Build the squad-running-steps slice once per memo run.
   // Pulls from the currently-cached squad execution detail
   // (`squadOpsSelectedTask`) plus the squad ops list summaries; falls
@@ -5464,6 +5483,7 @@ export function OfficeScreen({
         phoneBoothHeld: boolean;
         qaHeld: boolean;
         smsBoothHeld: boolean;
+        squadColor: string | undefined; // v131 — invalidate cache when squad color changes
       }
     >();
     const nextOfficeAgents = state.agents.map((agent) => {
@@ -5478,11 +5498,13 @@ export function OfficeScreen({
       const phoneBoothHeld = Boolean(phoneBoothHoldByAgentId[agent.agentId]);
       const qaHeld = Boolean(qaHoldByAgentId[agent.agentId]);
       const smsBoothHeld = Boolean(smsBoothHoldByAgentId[agent.agentId]);
+      const squadColorForAgent = squadColorByAgentGatewayId.get(agent.agentId);
       const cached = officeAgentCacheRef.current.get(agent.agentId);
       if (
         cached &&
         cached.agent === agent &&
         cached.latchedWorking === latchedWorking &&
+        cached.squadColor === squadColorForAgent &&
         cached.deskHeld === deskHeld &&
         cached.gymHeld === gymHeld &&
         cached.phoneBoothHeld === phoneBoothHeld &&
@@ -5517,7 +5539,16 @@ export function OfficeScreen({
                       : `desk-hold-${agent.agentId}`),
               }
             : agent;
-      const officeAgent = mapAgentToOffice(effectiveAgent);
+      const baseOfficeAgent = mapAgentToOffice(effectiveAgent);
+      // v131 — Override OfficeAgent.color with the SQUAD color when
+      // the agent belongs to one. Falls through to the agent's own
+      // deterministic stringToColor when the agent isn't in any
+      // squad (preserves identity for solo agents). The 3D nameplate
+      // accent stripe + every other surface that reads
+      // OfficeAgent.color picks this up automatically.
+      const officeAgent: OfficeAgent = squadColorForAgent
+        ? { ...baseOfficeAgent, color: squadColorForAgent }
+        : baseOfficeAgent;
       nextCache.set(agent.agentId, {
         agent,
         deskHeld,
@@ -5527,6 +5558,7 @@ export function OfficeScreen({
         phoneBoothHeld,
         qaHeld,
         smsBoothHeld,
+        squadColor: squadColorForAgent,
       });
       return officeAgent;
     });
@@ -5539,6 +5571,7 @@ export function OfficeScreen({
     phoneBoothHoldByAgentId,
     qaHoldByAgentId,
     smsBoothHoldByAgentId,
+    squadColorByAgentGatewayId,
     state.agents,
     workingAgentIds,
   ]);
