@@ -2468,30 +2468,45 @@ export const AgentModel = memo(function AgentModel({
       {!activeSpeechBubble && name ? (
         <Billboard position={[0, 1.08, 0]}>
           <group ref={nameplateRef}>
+            {/* v129 — Polished nameplate.
+                - Background plane slightly darker + slightly more
+                  transparent so it reads as a clean card against the
+                  office floor.
+                - Left accent stripe thickened (0.04 → 0.06) — same
+                  agent brand color.
+                - Status dot moved to TOP-RIGHT CORNER (was middle-right
+                  inline with the text), and shrunk (0.06 → 0.045) so
+                  it reads as a tag indicator instead of a giant blob
+                  competing with the agent name. The dot now also sits
+                  slightly proud of the plane (z+0.002) so it always
+                  draws above the background even at grazing angles.
+                - Default dot color is amber (idle) — the per-frame
+                  loop in the working/error logic still mutates the
+                  material color to green / red as needed. */}
             <mesh position={[0, 0, -0.001]}>
-              <planeGeometry args={[1.22, 0.4]} />
+              <planeGeometry args={[1.24, 0.4]} />
               <meshBasicMaterial
                 ref={nameplateMatRef}
-                color="#080c14"
+                color="#0a0e16"
                 transparent
-                opacity={0.92}
+                opacity={0.88}
               />
             </mesh>
-            <mesh position={[-0.584, 0, 0]}>
-              <planeGeometry args={[0.04, 0.4]} />
+            <mesh position={[-0.59, 0, 0]}>
+              <planeGeometry args={[0.06, 0.4]} />
               <meshBasicMaterial ref={nameplateAccentMatRef} color={color} />
             </mesh>
-            <mesh position={[0.52, 0, 0]}>
-              <circleGeometry args={[0.06, 16]} />
-              <meshBasicMaterial ref={statusDotMatRef} color="#ef4444" />
+            <mesh position={[0.555, 0.15, 0.002]}>
+              <circleGeometry args={[0.045, 18]} />
+              <meshBasicMaterial ref={statusDotMatRef} color="#f59e0b" />
             </mesh>
             <Text
-              position={[-0.02, 0, 0.001]}
+              position={[-0.01, 0, 0.001]}
               fontSize={0.125}
               color="#f5ead0"
               anchorX="center"
               anchorY="middle"
-              maxWidth={0.92}
+              maxWidth={0.94}
               textAlign="center"
               lineHeight={1.05}
               overflowWrap="break-word"

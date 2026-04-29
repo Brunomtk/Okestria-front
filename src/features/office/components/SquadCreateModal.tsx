@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Crown, Search, Shuffle, Users2, X, Zap } from "lucide-react";
 import type { SquadCatalogAgent, SquadCatalogWorkspace, SquadExecutionMode } from "@/lib/squads/api";
 
@@ -105,13 +105,29 @@ export function SquadCreateModal({
   const [leaderId, setLeaderId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
 
+  // v129 — Latest agent lists held in refs so the reset effect can read
+  // them without DEPENDING on them. Without this guard the effect was
+  // re-firing on every parent render (because excludedAgentIds was a
+  // fresh Set per render → availableAgents new ref → sortedAgents new
+  // ref), which reshuffled the random color/icon and reset the Squad
+  // name to whatever the first agent happened to be at that moment.
+  // Now the reset only runs when the modal actually opens.
+  const sortedAgentsRef = useRef(sortedAgents);
+  const activeAgentsRef = useRef(activeAgents);
+  useEffect(() => {
+    sortedAgentsRef.current = sortedAgents;
+    activeAgentsRef.current = activeAgents;
+  }, [sortedAgents, activeAgents]);
+
   /* Reset on open */
   useEffect(() => {
     if (!open) return;
+    const sortedNow = sortedAgentsRef.current;
+    const activeNow = activeAgentsRef.current;
     const fallback =
-      (preferredAgentId ? sortedAgents.find((a) => a.gatewayAgentId === preferredAgentId) : null) ??
-      activeAgents[0] ??
-      sortedAgents[0] ??
+      (preferredAgentId ? sortedNow.find((a) => a.gatewayAgentId === preferredAgentId) : null) ??
+      activeNow[0] ??
+      sortedNow[0] ??
       null;
     setStep(0);
     setName(fallback ? `${fallback.agentName} Squad` : "New Squad");
@@ -123,7 +139,7 @@ export function SquadCreateModal({
     setMemberIds(fallback ? [fallback.agentId] : []);
     setLeaderId(fallback?.agentId ?? null);
     setSearch("");
-  }, [open, preferredAgentId, sortedAgents, activeAgents]);
+  }, [open, preferredAgentId]);
 
   /* ── Filtered agents ── */
   const filteredAgents = useMemo(() => {

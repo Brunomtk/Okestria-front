@@ -1481,6 +1481,24 @@ export function OfficeScreen({
     [companySquads],
   );
 
+  // v129 — Set of backend agent ids already assigned to some squad.
+  // Used by the SquadCreateModal picker to hide already-taken agents.
+  // MUST be memoised so its identity is stable across renders — passing
+  // a fresh Set per render would re-trigger the modal's reset useEffect
+  // on every parent tick (v128 bug: color/icon kept reshuffling and the
+  // Squad name auto-overrode the operator's edits).
+  const excludedAgentIdsForCreate = useMemo<ReadonlySet<number>>(() => {
+    const ids = new Set<number>();
+    for (const squad of companySquads) {
+      for (const member of squad.members) {
+        if (typeof member.backendAgentId === "number") {
+          ids.add(member.backendAgentId);
+        }
+      }
+    }
+    return ids;
+  }, [companySquads]);
+
   // v93 — avatar lookup keyed by gatewayAgentId so SquadChatPanel can
   // render each member's real photo (falls back to the multiavatar SVG
   // inside <AgentAvatar /> when the agent has no upload).
@@ -7516,18 +7534,12 @@ export function OfficeScreen({
         agents={createSquadCatalog?.agents ?? []}
         workspaces={createSquadCatalog?.workspaces ?? []}
         preferredAgentId={state.selectedAgentId}
-        // v128 — only show agents NOT yet in any squad. Computed
-        // inline so it always reflects the latest companySquads
-        // snapshot when the modal opens.
-        excludedAgentIds={
-          new Set(
-            companySquads.flatMap((squad) =>
-              squad.members
-                .map((m) => m.backendAgentId)
-                .filter((id): id is number => typeof id === "number"),
-            ),
-          )
-        }
+        // v128/v129 — only show agents NOT yet in any squad. Set is
+        // memoised below so its identity is stable across parent
+        // re-renders; passing a fresh Set per render in v128 was
+        // re-triggering the modal's reset useEffect on every parent
+        // tick (which reshuffled color/icon and reset the squad name).
+        excludedAgentIds={excludedAgentIdsForCreate}
         onClose={() => {
           setCreateSquadModalOpen(false);
           setCreateSquadError(null);

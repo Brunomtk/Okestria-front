@@ -6131,20 +6131,62 @@ export function RetroOffice3D({
             </div>
             {rosterTab === "agents" ? (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-                {agents.map((agent) => (
-                  <button
-                    key={agent.id}
-                    type="button"
-                    onClick={() => {
-                      onAgentChatSelect?.(agent.id);
-                      setAgentRosterOpen(false);
-                    }}
-                    className="rounded-xl border border-cyan-500/18 bg-[#0e141b]/90 p-3 text-left transition-all hover:border-cyan-400/35 hover:bg-[#111b24]"
-                  >
-                    <div className="truncate text-sm font-semibold text-cyan-50">{agent.name}</div>
-                    <div className="mt-1 text-[10px] uppercase tracking-[0.12em] text-cyan-100/45">{agent.status ?? "online"}</div>
-                  </button>
-                ))}
+                {agents.map((agent) => {
+                  // v129 — agent card polished.
+                  // - Subtle accent stripe in the agent's color on the
+                  //   left edge (2 px). Brand-locked, never just cyan.
+                  // - Status mapped to a small dot + label pair:
+                  //     working → green pulse
+                  //     error   → red
+                  //     idle    → amber (default)
+                  //     other   → neutral
+                  // - Card hover lifts the border in the agent color
+                  //   so the operator immediately sees which agent
+                  //   they're hovering.
+                  const accent = agent.color?.trim() || "#22d3ee";
+                  const status = (agent.status ?? "idle").toLowerCase();
+                  const statusColor =
+                    status === "working" ? "#22c55e"
+                    : status === "error" ? "#ef4444"
+                    : status === "idle" ? "#f59e0b"
+                    : "#94a3b8";
+                  const statusPulse = status === "working";
+                  return (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => {
+                        onAgentChatSelect?.(agent.id);
+                        setAgentRosterOpen(false);
+                      }}
+                      className="group relative overflow-hidden rounded-xl border bg-[#0e141b]/90 p-3 pl-4 text-left transition-all hover:bg-[#111b24]"
+                      style={{ borderColor: `${accent}26` }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = `${accent}55`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = `${accent}26`;
+                      }}
+                    >
+                      {/* Left-edge accent stripe in agent color. */}
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 left-0 w-[2px]"
+                        style={{ backgroundColor: `${accent}99` }}
+                      />
+                      <div className="truncate text-sm font-semibold text-white">
+                        {agent.name}
+                      </div>
+                      <div className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/55">
+                        <span
+                          className={`inline-block h-1.5 w-1.5 rounded-full ${statusPulse ? "animate-pulse" : ""}`}
+                          style={{ backgroundColor: statusColor }}
+                        />
+                        {status}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="mt-3 grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
