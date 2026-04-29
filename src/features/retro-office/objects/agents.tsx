@@ -715,10 +715,16 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.y = -0.12;
         }
       } else if (agent.state === "sitting") {
-        // Sitting pose is 100% static — no typing bob, no breathing, no
-        // sway. Both the couch/beanbag and the desk/meeting chair poses
-        // are fixed frames. User explicitly asked to remove all sitting
-        // animation (both on chair and sofa).
+        // v124 — Sitting pose pivots on whether the agent is actually
+        // running a session right now:
+        //   • Lounge sit: always frozen (sleeping/dozing pose).
+        //   • Desk sit, NOT working: hands resting on the desk surface,
+        //     frozen — no breathing, no sway (operator asked for static).
+        //   • Desk sit, WORKING: keep the same desk-rest base pose but
+        //     overlay a tiny per-frame oscillation so the operator can
+        //     see "this agent is actively typing right now" from across
+        //     the room. Amplitude is intentionally small (~0.04 rad)
+        //     so it reads as keyboard fingers, not a body twist.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
           // Arm resting on lap — sleeping/dozing pose, frozen.
@@ -726,8 +732,14 @@ export const AgentModel = memo(function AgentModel({
           leftArmRef.current.rotation.z = -0.14;
           leftArmRef.current.rotation.y = 0.04;
         } else {
-          // Desk/meeting chair — hands resting on the desk, frozen pose.
-          leftArmRef.current.rotation.x = -0.98;
+          // Desk/meeting chair — hands resting on the desk.
+          const typingActive = agent.status === "working";
+          // Each agent gets a stable phase offset so two adjacent
+          // agents typing simultaneously don't move in lock-step.
+          const typeBob = typingActive
+            ? Math.sin(agent.frame * 0.32 + (agent.phaseOffset ?? 0)) * 0.04
+            : 0;
+          leftArmRef.current.rotation.x = -0.98 + typeBob;
           leftArmRef.current.rotation.z = -0.16;
           leftArmRef.current.rotation.y = -0.02;
         }
@@ -896,6 +908,9 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.y = 0.08;
         }
       } else if (agent.state === "sitting") {
+        // v124 — Right arm mirrors the left's typing logic:
+        // counter-phase oscillation when working (so the two hands
+        // alternate like real keyboard fingers), frozen otherwise.
         const isLoungeSitLocal = agent.interactionTarget === "lounge";
         if (isLoungeSitLocal) {
           // Mirror of left arm — still, resting on lap (sleeping).
@@ -903,10 +918,14 @@ export const AgentModel = memo(function AgentModel({
           rightArmRef.current.rotation.z = 0.14;
           rightArmRef.current.rotation.y = -0.04;
         } else {
-          // Desk/meeting chair — right hand resting on desk, frozen pose.
-          // No typing bob, no breathing — user explicitly asked to remove
-          // all sitting animation (both on chair and sofa).
-          rightArmRef.current.rotation.x = -0.98;
+          // Desk/meeting chair — right hand resting on desk.
+          const typingActive = agent.status === "working";
+          // Counter-phase to the left arm (offset by π) so the hands
+          // alternate while typing; same gentle 0.04 amplitude.
+          const typeBob = typingActive
+            ? Math.sin(agent.frame * 0.32 + (agent.phaseOffset ?? 0) + Math.PI) * 0.04
+            : 0;
+          rightArmRef.current.rotation.x = -0.98 + typeBob;
           rightArmRef.current.rotation.z = 0.16;
           rightArmRef.current.rotation.y = 0.02;
         }
