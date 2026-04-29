@@ -974,6 +974,11 @@ export function OfficeScreen({
         phoneBoothHeld: boolean;
         qaHeld: boolean;
         smsBoothHeld: boolean;
+        // v131 — squad color the cached entry was built with. Cache
+        // hits when this matches the current value; otherwise the
+        // memo recomputes the entry so the override picks up squad
+        // edits immediately.
+        squadColor: string | undefined;
       }
     >
   >(new Map());
