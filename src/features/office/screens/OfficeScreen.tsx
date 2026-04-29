@@ -5403,8 +5403,13 @@ export function OfficeScreen({
     const detail = squadOpsSelectedTask;
     if (detail?.runs) {
       for (const run of detail.runs) {
+        // v126 fix — `SquadTaskRun.agentSlug` is the gateway slug
+        // (matches the local agent registry's `agent.agentId` shape).
+        // The numeric `run.agentId` is the back DB id and won't match.
+        const slug = (run.agentSlug ?? "").trim();
+        if (!slug) continue;
         out.push({
-          agentId: run.gatewayAgentId ?? String(run.agentId ?? ""),
+          agentId: slug,
           status: run.status ?? "",
         });
       }
