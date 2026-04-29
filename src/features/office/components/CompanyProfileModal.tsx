@@ -65,6 +65,11 @@ type CompanyProfileModalProps = {
    * email through that mailbox during squad task dispatch.
    */
   onOpenEmailConfig?: () => void;
+  /**
+   * v117 — opens the per-user Meta credentials modal (Instagram +
+   * Facebook + WhatsApp Business). One access token unlocks all three.
+   */
+  onOpenMetaConfig?: () => void;
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -94,6 +99,7 @@ export function CompanyProfileModal({
   companyId,
   userId,
   onOpenEmailConfig,
+  onOpenMetaConfig,
 }: CompanyProfileModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -190,6 +196,7 @@ export function CompanyProfileModal({
               initials={initials}
               onLogout={onLogout}
               onOpenEmailConfig={onOpenEmailConfig}
+              onOpenMetaConfig={onOpenMetaConfig}
             />
           ) : (
             <EmailContextTabContent companyId={companyId} userId={userId} />
@@ -244,6 +251,7 @@ function ProfileTabContent({
   initials,
   onLogout,
   onOpenEmailConfig,
+  onOpenMetaConfig,
 }: {
   displayName: string;
   displayEmail: string;
@@ -253,6 +261,7 @@ function ProfileTabContent({
   initials: string;
   onLogout: () => void;
   onOpenEmailConfig?: () => void;
+  onOpenMetaConfig?: () => void;
 }) {
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1.18fr_0.82fr] lg:gap-5">
@@ -358,6 +367,30 @@ function ProfileTabContent({
             >
               <Mail className="h-4 w-4" />
               Configure email
+            </button>
+          </div>
+        ) : null}
+
+        {/* v117 — Meta integration card. One access token, three platforms. */}
+        {onOpenMetaConfig ? (
+          <div className="rounded-[24px] border border-fuchsia-300/22 bg-fuchsia-400/8 p-5">
+            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-fuchsia-100/70">
+              Social media (Meta)
+            </div>
+            <p className="mt-3 text-sm leading-6 text-fuchsia-50/85">
+              Wire your Meta access token so agents can use{" "}
+              <strong>Instagram</strong>, <strong>Facebook Pages</strong> and{" "}
+              <strong>WhatsApp Business</strong> on your behalf — read posts,
+              reply to comments, send messages, post content. Token lives only
+              on the gateway VPS.
+            </p>
+            <button
+              type="button"
+              onClick={onOpenMetaConfig}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-400/35 bg-fuchsia-500/15 px-4 py-3 text-sm font-semibold text-fuchsia-50 transition hover:border-fuchsia-300/55 hover:bg-fuchsia-500/25"
+            >
+              <Sparkles className="h-4 w-4" />
+              Configure Instagram, Facebook & WhatsApp
             </button>
           </div>
         ) : null}

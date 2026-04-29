@@ -73,6 +73,7 @@ import { SquadEditDeleteModal } from "@/features/office/components/SquadEditDele
 import { CronJobsModal } from "@/features/office/components/CronJobsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 import { UserEmailConfigModal } from "@/features/office/components/UserEmailConfigModal";
+import { UserMetaAccountModal } from "@/features/office/components/UserMetaAccountModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
@@ -1095,6 +1096,9 @@ export function OfficeScreen({
   // v115 — controls the per-user email (himalaya) config modal. Opened
   // from CompanyProfileModal's "Configure email" button.
   const [userEmailConfigOpen, setUserEmailConfigOpen] = useState(false);
+  // v117 — controls the per-user Meta credentials modal (Instagram +
+  // Facebook + WhatsApp). Opened from CompanyProfileModal.
+  const [userMetaConfigOpen, setUserMetaConfigOpen] = useState(false);
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
   const initJukeboxStore = useJukeboxStore((state) => state.init);
@@ -7173,12 +7177,23 @@ export function OfficeScreen({
           setProfileModalOpen(false);
           setUserEmailConfigOpen(true);
         }}
+        onOpenMetaConfig={() => {
+          // v117 — pop the Meta credentials modal (IG + FB + WhatsApp).
+          setProfileModalOpen(false);
+          setUserMetaConfigOpen(true);
+        }}
       />
 
       {/* v115 — per-user email account config (himalaya wiring) */}
       <UserEmailConfigModal
         open={userEmailConfigOpen}
         onClose={() => setUserEmailConfigOpen(false)}
+      />
+
+      {/* v117 — per-user Meta credentials (Instagram + Facebook + WhatsApp) */}
+      <UserMetaAccountModal
+        open={userMetaConfigOpen}
+        onClose={() => setUserMetaConfigOpen(false)}
       />
 
       {debugEnabled ? (
