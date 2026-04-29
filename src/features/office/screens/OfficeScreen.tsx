@@ -5540,15 +5540,21 @@ export function OfficeScreen({
               }
             : agent;
       const baseOfficeAgent = mapAgentToOffice(effectiveAgent);
-      // v131 — Override OfficeAgent.color with the SQUAD color when
-      // the agent belongs to one. Falls through to the agent's own
-      // deterministic stringToColor when the agent isn't in any
-      // squad (preserves identity for solo agents). The 3D nameplate
-      // accent stripe + every other surface that reads
-      // OfficeAgent.color picks this up automatically.
-      const officeAgent: OfficeAgent = squadColorForAgent
-        ? { ...baseOfficeAgent, color: squadColorForAgent }
-        : baseOfficeAgent;
+      // v132 — STRICT rule for OfficeAgent.color across every surface
+      // that reads it (3D nameplate stripe, HQ Overview cards, etc.):
+      //   • Agent IS in a squad  → use the squad's color.
+      //   • Agent is NOT in any squad → fixed neutral gray (#475569).
+      //
+      // v131 fell back to the agent's own deterministic stringToColor,
+      // which gave each agent a different random-looking shade — the
+      // operator read this as "the stripe colors are random". Strict
+      // gray fallback removes any ambiguity: gray = no team, anything
+      // else = the team color.
+      const STRIPE_GRAY = "#475569";
+      const officeAgent: OfficeAgent = {
+        ...baseOfficeAgent,
+        color: squadColorForAgent ?? STRIPE_GRAY,
+      };
       nextCache.set(agent.agentId, {
         agent,
         deskHeld,
