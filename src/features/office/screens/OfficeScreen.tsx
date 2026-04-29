@@ -72,8 +72,11 @@ import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { SquadEditDeleteModal } from "@/features/office/components/SquadEditDeleteModal";
 import { CronJobsModal } from "@/features/office/components/CronJobsModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
-import { UserEmailConfigModal } from "@/features/office/components/UserEmailConfigModal";
-import { UserMetaAccountModal } from "@/features/office/components/UserMetaAccountModal";
+// v118 — Email + Meta config consolidated into a single Tools modal with
+// horizontal tabs. The standalone v115 (UserEmailConfigModal) and v117
+// (UserMetaAccountModal) are no longer wired here; they remain in the
+// codebase for now but can be deleted once nothing imports them.
+import { UserToolsModal } from "@/features/office/components/UserToolsModal";
 import { LeadChatContextModal } from "@/features/office/components/LeadChatContextModal";
 import type { AgentIdentityValues } from "@/features/agents/components/AgentIdentityFields";
 import { useChatInteractionController } from "@/features/agents/operations/useChatInteractionController";
@@ -1093,12 +1096,13 @@ export function OfficeScreen({
   const [leadOpsModalOpen, setLeadOpsModalOpen] = useState(false);
   const [cronJobsModalOpen, setCronJobsModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
-  // v115 — controls the per-user email (himalaya) config modal. Opened
-  // from CompanyProfileModal's "Configure email" button.
-  const [userEmailConfigOpen, setUserEmailConfigOpen] = useState(false);
-  // v117 — controls the per-user Meta credentials modal (Instagram +
-  // Facebook + WhatsApp). Opened from CompanyProfileModal.
-  const [userMetaConfigOpen, setUserMetaConfigOpen] = useState(false);
+  // v118 — single modal for all per-user external tool wiring (email +
+  // Meta IG/FB/WhatsApp). Opened from the Tools button in the toolbar
+  // group next to the avatar profile button. `userToolsInitialTab` lets
+  // a future caller (e.g. an empty-state nudge) jump straight to a
+  // specific tab; defaults to "email".
+  const [userToolsModalOpen, setUserToolsModalOpen] = useState(false);
+  const [userToolsInitialTab, setUserToolsInitialTab] = useState<"email" | "meta">("email");
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
   const initJukeboxStore = useJukeboxStore((state) => state.init);
@@ -6355,6 +6359,14 @@ export function OfficeScreen({
           onOpenProfile={() => {
             setProfileModalOpen(true);
           }}
+          // v118 — Tools button lives right next to the avatar profile
+          // button in the same view-controls toolbar group. Single click
+          // opens the unified Email + Meta config modal.
+          toolsButtonActive={userToolsModalOpen}
+          onOpenTools={() => {
+            setUserToolsInitialTab("email");
+            setUserToolsModalOpen(true);
+          }}
           onLogout={() => {
             router.push("/logout");
           }}
@@ -7171,29 +7183,16 @@ export function OfficeScreen({
         workspaceName={workspaceName}
         companyId={companyId}
         userId={userId}
-        onOpenEmailConfig={() => {
-          // v115 — pop the himalaya configuration modal so the user can
-          // wire their personal mailbox the agents will use.
-          setProfileModalOpen(false);
-          setUserEmailConfigOpen(true);
-        }}
-        onOpenMetaConfig={() => {
-          // v117 — pop the Meta credentials modal (IG + FB + WhatsApp).
-          setProfileModalOpen(false);
-          setUserMetaConfigOpen(true);
-        }}
       />
 
-      {/* v115 — per-user email account config (himalaya wiring) */}
-      <UserEmailConfigModal
-        open={userEmailConfigOpen}
-        onClose={() => setUserEmailConfigOpen(false)}
-      />
-
-      {/* v117 — per-user Meta credentials (Instagram + Facebook + WhatsApp) */}
-      <UserMetaAccountModal
-        open={userMetaConfigOpen}
-        onClose={() => setUserMetaConfigOpen(false)}
+      {/* v118 — unified Tools modal (Email + Meta IG/FB/WhatsApp) with
+          horizontal tabs. Replaces UserEmailConfigModal (v115) and
+          UserMetaAccountModal (v117). Triggered from the Tools button in
+          the toolbar slot next to the avatar profile button. */}
+      <UserToolsModal
+        open={userToolsModalOpen}
+        onClose={() => setUserToolsModalOpen(false)}
+        initialTab={userToolsInitialTab}
       />
 
       {debugEnabled ? (

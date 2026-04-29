@@ -11,6 +11,7 @@ import {
   Camera,
   UserPlus,
   UserRound,
+  Wrench,
   LogOut,
   Trash2,
   Users,
@@ -1669,6 +1670,11 @@ export function RetroOffice3D({
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
+  // v118 — Tools button lives in the same toolbar group as the avatar
+  // profile button. Single click opens the unified UserToolsModal where
+  // operators wire email + Meta (IG/FB/WhatsApp) credentials.
+  toolsButtonActive = false,
+  onOpenTools,
   onLogout,
   onAgentEdit,
   onAgentDelete,
@@ -1777,6 +1783,9 @@ export function RetroOffice3D({
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
+  // v118 — Tools button & active flag.
+  toolsButtonActive?: boolean;
+  onOpenTools?: () => void;
   onLogout?: () => void;
   onAgentEdit?: (agentId: string) => void;
   onAgentDelete?: (agentId: string) => void;
@@ -5912,6 +5921,30 @@ export function RetroOffice3D({
                 >
                   <UserRound size={14} strokeWidth={profileButtonActive ? 2.4 : 2} />
                 </button>
+                {/* v118 — Tools button (email + Meta IG/FB/WhatsApp).
+                    Sits right next to the avatar profile button so the
+                    operator perceives both as part of the same "my
+                    account" cluster. Active state mirrors the profile
+                    button's visual treatment (tinted bg + ring), but
+                    in violet to set Tools apart from Profile. */}
+                {onOpenTools && (
+                  <button
+                    onClick={onOpenTools}
+                    title="Tools · email + Instagram/Facebook/WhatsApp"
+                    aria-label="Open tools"
+                    className={`group flex h-8 w-8 items-center justify-center rounded-lg transition-all ${
+                      toolsButtonActive
+                        ? "bg-violet-500/20 text-violet-200 ring-1 ring-violet-500/30"
+                        : "text-white/45 hover:bg-white/[0.06] hover:text-white"
+                    }`}
+                  >
+                    <Wrench
+                      size={14}
+                      strokeWidth={toolsButtonActive ? 2.4 : 2}
+                      className="transition-transform group-hover:rotate-12"
+                    />
+                  </button>
+                )}
                 <span aria-hidden="true" className="mx-0.5 h-5 w-px bg-white/[0.08]" />
               </>
             )}

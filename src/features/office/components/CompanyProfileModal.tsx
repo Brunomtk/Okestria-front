@@ -58,18 +58,11 @@ type CompanyProfileModalProps = {
    * in v21 so every teammate has their own.
    */
   userId?: number | null;
-  /**
-   * v115 — opens the himalaya per-user email config modal where the
-   * authenticated user wires their personal mailbox (IMAP/SMTP/password).
-   * Once configured, every agent in the user's company can read/send
-   * email through that mailbox during squad task dispatch.
-   */
-  onOpenEmailConfig?: () => void;
-  /**
-   * v117 — opens the per-user Meta credentials modal (Instagram +
-   * Facebook + WhatsApp Business). One access token unlocks all three.
-   */
-  onOpenMetaConfig?: () => void;
+  // v118 — Email + Meta wiring moved out of the Profile modal entirely.
+  // Both now live in the dedicated Tools modal (UserToolsModal), which is
+  // opened from the toolbar slot next to the avatar profile button. Keeping
+  // Profile pure-identity makes the modal load faster and avoids confusing
+  // operators who think "Profile" should only edit who they are.
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -98,8 +91,6 @@ export function CompanyProfileModal({
   workspaceName,
   companyId,
   userId,
-  onOpenEmailConfig,
-  onOpenMetaConfig,
 }: CompanyProfileModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("profile");
 
@@ -195,8 +186,6 @@ export function CompanyProfileModal({
               displayWorkspace={displayWorkspace}
               initials={initials}
               onLogout={onLogout}
-              onOpenEmailConfig={onOpenEmailConfig}
-              onOpenMetaConfig={onOpenMetaConfig}
             />
           ) : (
             <EmailContextTabContent companyId={companyId} userId={userId} />
@@ -250,8 +239,6 @@ function ProfileTabContent({
   displayWorkspace,
   initials,
   onLogout,
-  onOpenEmailConfig,
-  onOpenMetaConfig,
 }: {
   displayName: string;
   displayEmail: string;
@@ -260,8 +247,6 @@ function ProfileTabContent({
   displayWorkspace: string;
   initials: string;
   onLogout: () => void;
-  onOpenEmailConfig?: () => void;
-  onOpenMetaConfig?: () => void;
 }) {
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[1.18fr_0.82fr] lg:gap-5">
@@ -346,54 +331,10 @@ function ProfileTabContent({
           ]}
         />
 
-        {/* v115 — per-user email account configuration. Once set,
-            every agent in this user's company can read/send email
-            through this mailbox during squad task dispatch. */}
-        {onOpenEmailConfig ? (
-          <div className="rounded-[24px] border border-cyan-300/22 bg-cyan-400/8 p-5">
-            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-cyan-100/70">
-              Email account
-            </div>
-            <p className="mt-3 text-sm leading-6 text-cyan-50/85">
-              Wire your IMAP/SMTP mailbox so agents can read your inbox and
-              send replies on your behalf in <strong>squad tasks</strong>,{" "}
-              <strong>cron jobs</strong> and <strong>chat</strong>. Password
-              lives only on the gateway VPS — never in the database.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenEmailConfig}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/35 bg-cyan-500/15 px-4 py-3 text-sm font-semibold text-cyan-50 transition hover:border-cyan-300/55 hover:bg-cyan-500/25"
-            >
-              <Mail className="h-4 w-4" />
-              Configure email
-            </button>
-          </div>
-        ) : null}
-
-        {/* v117 — Meta integration card. One access token, three platforms. */}
-        {onOpenMetaConfig ? (
-          <div className="rounded-[24px] border border-fuchsia-300/22 bg-fuchsia-400/8 p-5">
-            <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-fuchsia-100/70">
-              Social media (Meta)
-            </div>
-            <p className="mt-3 text-sm leading-6 text-fuchsia-50/85">
-              Wire your Meta access token so agents can use{" "}
-              <strong>Instagram</strong>, <strong>Facebook Pages</strong> and{" "}
-              <strong>WhatsApp Business</strong> on your behalf — read posts,
-              reply to comments, send messages, post content. Token lives only
-              on the gateway VPS.
-            </p>
-            <button
-              type="button"
-              onClick={onOpenMetaConfig}
-              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-400/35 bg-fuchsia-500/15 px-4 py-3 text-sm font-semibold text-fuchsia-50 transition hover:border-fuchsia-300/55 hover:bg-fuchsia-500/25"
-            >
-              <Sparkles className="h-4 w-4" />
-              Configure Instagram, Facebook & WhatsApp
-            </button>
-          </div>
-        ) : null}
+        {/* v118 — Email + Meta cards moved out of Profile.
+            They now live in the dedicated Tools modal (UserToolsModal),
+            opened from the Tools button in the toolbar slot next to the
+            avatar. Profile stays focused on identity. */}
 
         <div className="rounded-[24px] border border-amber-300/18 bg-amber-400/8 p-5">
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-amber-100/70">
