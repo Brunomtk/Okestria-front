@@ -4523,14 +4523,18 @@ export function RetroOffice3D({
   }, [contextMenu]);
 
   // New Idea 3: show speech bubble based on reply length.
+  // v122 — duration bumped from 5.5–12s to 8–22s so the operator has
+  // time to actually read longer replies before the bubble vanishes.
+  // Lower bound also lifted (8s) so even a one-line "ok!" stays visible
+  // long enough to register from across the room.
   useEffect(() => {
     if (feedEvents.length === 0) return;
     const latest = feedEvents[0];
     if (!latest) return;
     if (latest.kind !== "reply") return;
     const speechBubbleDurationMs = Math.min(
-      12_000,
-      Math.max(5_500, 2_500 + latest.text.trim().length * 42),
+      22_000,
+      Math.max(8_000, 3_500 + latest.text.trim().length * 55),
     );
     const addTimer = window.setTimeout(() => {
       setSpeechAgentIds((prev) => new Set([...prev, latest.id]));

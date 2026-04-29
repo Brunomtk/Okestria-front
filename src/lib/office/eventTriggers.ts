@@ -1120,6 +1120,19 @@ export const reconcileOfficeAnimationTriggerState = (params: {
       );
     }
 
+    // v122 — AUTO DESK HOLD WHILE RUNNING.
+    //
+    // The operator's mental model: "I send a chat message → the agent
+    // walks to its desk → stays there working (green) until the reply
+    // comes back → then it's free to wander again." Previously the
+    // desk hold required the chat to contain an explicit `desk`
+    // directive (resolveOfficeDeskDirective), so an ordinary "ping
+    // please?" message left the agent wandering the room while the
+    // back was already running its session. v122 makes the hold
+    // implicit: any time the agent has a live session (status =
+    // "running" OR runId set), we pin them to their assigned desk.
+    // The hold releases naturally on the next reconciliation tick
+    // after the runId clears.
     const deskDirective = resolveLatestDirective({
       lastUserMessage: agent.lastUserMessage,
       transcriptEntries: agent.transcriptEntries,
@@ -1136,6 +1149,10 @@ export const reconcileOfficeAnimationTriggerState = (params: {
         deskHoldByAgentId[agentId] = true;
       }
     } else if (next.deskHoldByAgentId[agentId]) {
+      deskHoldByAgentId[agentId] = true;
+    } else if (isAgentRunning) {
+      // No explicit directive, but the agent has an in-flight session
+      // — pin them to the desk for the duration of the run.
       deskHoldByAgentId[agentId] = true;
     }
 

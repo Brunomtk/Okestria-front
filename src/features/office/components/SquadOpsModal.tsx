@@ -634,66 +634,65 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
   /* ── Render ── */
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm">
+    // v121 — outer overlay: smaller padding on mobile (12px) so the modal
+    // gets the full viewport width on phones; touch-pan disabled on the
+    // backdrop so swiping the task list inside doesn't dismiss the modal.
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-6">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
-      {/* v100 — Squad Ops modal aligned to the squad chat width
-          (1480 px max, 92vw on smaller screens). Same generous space
-          the chat surface uses, so the timeline of a long task no
-          longer wraps every other line. */}
+      {/* v121 — responsive sizing.
+          - <sm: 100vw × 100vh (modal fills the screen on phones).
+          - sm:  92vw, capped at 1480 px for the desktop chat surface.
+          Border colour stays tied to the squad colour so the operator
+          always sees the brand framing. */}
       <section
-        className="relative z-10 flex max-h-[92vh] w-full max-w-[1480px] flex-col overflow-hidden rounded-2xl border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)]"
-        style={{ borderColor: `${color}30`, width: "min(1480px, 92vw)" }}
+        className="relative z-10 flex max-h-[100vh] w-full max-w-[1480px] flex-col overflow-hidden rounded-none border bg-[#0b0e14] shadow-[0_32px_120px_rgba(0,0,0,.72)] sm:max-h-[92vh] sm:rounded-2xl"
+        style={{ borderColor: `${color}30`, width: "min(1480px, 100vw)" }}
       >
-        {/* ── Header ── */}
-        <div className="flex items-center gap-4 border-b border-white/10 px-6 py-4">
+        {/* ── Header ──
+            v121 — paddings collapse on mobile (px-4 py-3) and grow on
+            sm+ (px-6 py-4). Title and subtitle truncate; refresh + close
+            buttons never wrap. The "Bridge ready" badge from v113 was
+            removed — operators don't need to see internal plumbing
+            status in the title bar. */}
+        <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
           <div
-            className="flex h-12 w-12 items-center justify-center rounded-xl text-xl"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg sm:h-12 sm:w-12 sm:text-xl"
             style={{ backgroundColor: `${color}20`, border: `1.5px solid ${color}50` }}
           >
             {iconEmoji}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-lg font-semibold text-white">
+            <h2 className="truncate text-[15px] font-semibold text-white sm:text-lg">
               {squad?.name ?? "Squad"}
             </h2>
-            <p className="text-xs text-white/40">
+            <p className="truncate text-[11px] text-white/45 sm:text-xs">
               {memberCount} member{memberCount !== 1 ? "s" : ""} · {modeLabel}
             </p>
           </div>
-          {/* v113 — quietly confirms which dispatch path is wired so the
-              operator can tell from inside the modal that tasks land on
-              the agent (bridge) instead of main (legacy /hooks/agent).
-              Tooltip explains; no click target. */}
-          {hooksConfigured ? (
-            <span
-              title="Tasks dispatch through the OpenClaw agent bridge — they land on the agent's pane, not on main."
-              className="hidden items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200/85 sm:inline-flex"
-            >
-              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-              Bridge ready
-            </span>
-          ) : null}
           <button
             type="button"
             onClick={onRefresh}
             disabled={loading}
             title="Refresh"
-            className="rounded-lg p-2 text-white/40 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Refresh"
+            className="shrink-0 rounded-lg p-1.5 text-white/45 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 sm:p-2"
           >
             <RefreshCcw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+            aria-label="Close"
+            className="shrink-0 rounded-lg p-1.5 text-white/45 transition hover:bg-white/10 hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        {/* ── Squad switcher (only when >1) ── */}
+        {/* ── Squad switcher (only when >1) ──
+            v121 — same horizontal padding rhythm as the header. */}
         {squads.length > 1 && (
-          <div className="border-b border-white/10 px-6 py-3">
+          <div className="border-b border-white/10 px-4 py-3 sm:px-6">
             <select
               value={selectedSquadId ?? ""}
               onChange={(event) => onSelectSquad(event.target.value)}
@@ -708,13 +707,20 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           </div>
         )}
 
-        {/* ── Tabs ── */}
-        <div className="flex border-b border-white/10">
+        {/* ── Tabs ──
+            v121 — slightly tighter (py-2.5) so the header + tabs combo
+            doesn't eat 96px on mobile screens. Equal-weight columns,
+            colored bottom-border on the active tab, count pill on
+            "Sessions". The "New task" tab gets its own subtle accent
+            when active too. */}
+        <nav className="flex border-b border-white/10" role="tablist" aria-label="Squad ops tabs">
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "tasks"}
             onClick={() => setTab("tasks")}
-            className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
-              tab === "tasks" ? "border-b-2 text-white" : "text-white/40 hover:text-white/60"
+            className={`flex-1 border-b-2 py-2.5 text-center text-xs font-medium tracking-wide transition sm:py-3 ${
+              tab === "tasks" ? "text-white" : "border-transparent text-white/40 hover:text-white/60"
             }`}
             style={tab === "tasks" ? { borderColor: color } : undefined}
           >
@@ -730,18 +736,24 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "new"}
             onClick={() => setTab("new")}
-            className={`flex-1 py-3 text-center text-xs font-medium tracking-wide transition ${
-              tab === "new" ? "border-b-2 text-white" : "text-white/40 hover:text-white/60"
+            className={`flex-1 border-b-2 py-2.5 text-center text-xs font-medium tracking-wide transition sm:py-3 ${
+              tab === "new" ? "text-white" : "border-transparent text-white/40 hover:text-white/60"
             }`}
             style={tab === "new" ? { borderColor: color } : undefined}
           >
             New task
           </button>
-        </div>
+        </nav>
 
-        {/* ── Content ── */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        {/* ── Content ──
+            v121 — paddings shrink on mobile (p-4) and grow on sm+ (p-6).
+            Vertical scroll is the only one allowed; horizontal overflow
+            wraps inside child cards instead of forcing the whole modal
+            to scroll sideways. */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6">
           {!hooksConfigured && hooksMessage && (
             <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -773,11 +785,9 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
                     <Plus className="h-4 w-4" />
                     New task
                   </button>
-                  {/* v113 — quietly tells the operator each task lands on
-                      its assigned agent through the bridge, not on main. */}
-                  <p className="mt-4 text-[10px] uppercase tracking-[0.18em] text-white/25">
-                    Each task runs on its assigned agent · OpenClaw bridge wired
-                  </p>
+                  {/* v121 — internal "bridge wired" note removed.
+                      The operator just needs to know they can dispatch
+                      a new task; the wiring detail is plumbing. */}
                 </div>
               ) : (
                 tasks.map((task) => {
@@ -1338,12 +1348,15 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
           )}
         </div>
 
-        {/* ── Footer ── */}
-        <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
+        {/* ── Footer ──
+            v121 — same px/py rhythm as the header. Buttons keep their
+            full text on sm+ but truncate to icons-only on very narrow
+            phones via responsive utility classes. */}
+        <footer className="flex items-center justify-between gap-2 border-t border-white/10 px-4 py-3 sm:px-6 sm:py-4">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60 transition hover:bg-white/10 hover:text-white"
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/65 transition hover:bg-white/10 hover:text-white sm:px-4"
           >
             Close
           </button>
@@ -1353,24 +1366,24 @@ export function SquadOpsModal(props: SquadOpsModalProps) {
               type="button"
               disabled={!canCreate}
               onClick={handleCreate}
-              className="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40 sm:px-5"
               style={{ backgroundColor: `${color}30`, border: `1px solid ${color}50` }}
             >
               <Zap className="h-4 w-4" />
-              {createBusy ? "Creating…" : "Create task"}
+              <span className="whitespace-nowrap">{createBusy ? "Creating…" : "Create task"}</span>
             </button>
           ) : (
             <button
               type="button"
               onClick={() => setTab("new")}
-              className="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-white transition"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-white transition sm:px-4"
               style={{ backgroundColor: `${color}20`, border: `1px solid ${color}40` }}
             >
               <Plus className="h-4 w-4" />
-              New task
+              <span className="whitespace-nowrap">New task</span>
             </button>
           )}
-        </div>
+        </footer>
       </section>
     </div>
   );

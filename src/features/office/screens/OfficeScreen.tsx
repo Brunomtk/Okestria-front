@@ -3985,8 +3985,14 @@ export function OfficeScreen({
             promptedPhoneCallKeysRef.current.delete(request.key);
             return;
           }
+          // v121 — do NOT force-open the chat panel here. The phone-call
+          // scenario was popping chat over whatever the operator was
+          // doing (Squad Ops modal, Profile modal, …) every time an
+          // ambient phone cue fired during a long-running squad task.
+          // Just record the output line + remember the agent; the
+          // operator will see the line the next time they open chat
+          // for this agent on their own.
           setSelectedChatAgentId(agentId);
-          setChatOpen(true);
           dispatch({ type: "selectAgent", agentId });
           dispatch({
             type: "appendOutput",
@@ -4149,8 +4155,10 @@ export function OfficeScreen({
             promptedTextMessageKeysRef.current.delete(request.key);
             return;
           }
+          // v121 — same fix as the phone-call path: don't force-open
+          // chat. Ambient SMS scenarios that fire mid-Squad-Ops were
+          // popping the chat panel over the modal repeatedly.
           setSelectedChatAgentId(agentId);
-          setChatOpen(true);
           dispatch({ type: "selectAgent", agentId });
           dispatch({
             type: "appendOutput",
@@ -4757,8 +4765,22 @@ export function OfficeScreen({
         !intentSnapshot.qa &&
         !intentSnapshot.standup;
 
+      // v122 — IMMEDIATE WORKING LATCH on every chat send.
+      //
+      // Without this branch the agent only flipped to "working" (green
+      // dot + green ring + walk-to-desk) AFTER the gateway emitted its
+      // first runtime-chat event, which can take a couple of seconds.
+      // The operator's mental model: "I clicked send, the agent should
+      // be working RIGHT NOW." We fire a synthetic chat event with our
+      // local runId so the office animation reducer records working
+      // activity + (via the reconciliation pass added in v122) auto-pins
+      // the agent to its assigned desk for the duration of the run.
+      //
+      // Excluded paths: remote-office agents (handled by their own
+      // remote chat send branch above), explicit `call` intents
+      // (the phone-booth path below has its own animation cue),
+      // and phone/SMS follow-ups (their booths drive the animation).
       if (
-        hasImmediateOfficeTrigger &&
         !intentSnapshot.call &&
         !isPhoneCallFollowUp &&
         !isTextMessageFollowUp

@@ -1166,8 +1166,16 @@ export const AgentModel = memo(function AgentModel({
     }
 
     const isSitting = agent.state === "sitting";
+    // v122 — `working` (green status dot + green pulse ring) now reflects
+    // ONLY actual session activity. The previous formula treated any
+    // seated agent as "working", which made every desk light up green
+    // by default and rendered the status indicator useless. The
+    // operator's mental model: "green means this agent is actively
+    // running a task RIGHT NOW." Sitting at a desk by itself is just
+    // sitting — amber. Workout / dance still count as activity (the
+    // agent is doing something visible), so they keep the green badge.
     const working =
-      isSitting || isWorkout || isDancing || agent.status === "working";
+      isWorkout || isDancing || agent.status === "working";
     const isError = agent.status === "error";
     const isAway = agent.state === "away";
     // Seated agents must look completely still — no pulsing ring, no nameplate
@@ -1202,12 +1210,16 @@ export const AgentModel = memo(function AgentModel({
 
     if (pulseRingRef.current && pulseRingMatRef.current) {
       if (isSitting) {
-        // Freeze the ring completely while seated — no sin() drive at all.
+        // v122 — Static ring while seated. Color now follows the
+        // `working` flag too: green when this seated agent is actually
+        // running a session, sky-blue otherwise. Operator can scan the
+        // office and immediately tell who is actively executing vs. who
+        // is just at their desk waiting.
         pulseRingRef.current.scale.setScalar(1.16);
         pulseRingMatRef.current.color.set(
-          isError ? "#ef4444" : "#22c55e",
+          isError ? "#ef4444" : working ? "#22c55e" : "#38bdf8",
         );
-        pulseRingMatRef.current.opacity = 0.22;
+        pulseRingMatRef.current.opacity = isError ? 0.42 : working ? 0.42 : 0.18;
         pulseRingRef.current.visible = true;
       } else {
         const pulse =
