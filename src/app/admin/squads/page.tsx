@@ -65,8 +65,8 @@ export default async function AdminSquadsPage({ searchParams }: PageProps) {
 
   const filtered = filterSquads(all, query);
   const pagination = paginate(filtered, page, 12);
-  const totalLeader = filtered.filter((s) => (s.mode ?? "").toLowerCase() === "leader").length;
-  const totalWorkflow = filtered.filter((s) => (s.mode ?? "").toLowerCase() === "workflow").length;
+  const totalLeader = filtered.filter((s) => (s.defaultExecutionMode ?? "").toLowerCase() === "leader").length;
+  const totalWorkflow = filtered.filter((s) => (s.defaultExecutionMode ?? "").toLowerCase() === "workflow").length;
 
   return (
     <div className="space-y-8">
@@ -105,7 +105,7 @@ export default async function AdminSquadsPage({ searchParams }: PageProps) {
             { key: "actions", header: "", className: "w-24 text-right" },
           ]}
           rows={pagination.items.map((squad) => {
-            const m = modeLabel(squad.mode);
+            const m = modeLabel(squad.defaultExecutionMode);
             return {
               id: squad.id,
               cells: {
