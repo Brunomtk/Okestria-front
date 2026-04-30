@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getBackendSession } from '@/lib/auth/session';
 import {
+  cancelCronJob,
   createAgent,
   createCompany,
   createLead,
@@ -12,12 +13,17 @@ import {
   createWorkspace,
   deleteAgent,
   deleteCompany,
+  deleteCronJob,
   deleteSquad,
   deleteUser,
   generateLeadInsights,
+  pauseCronJob,
+  resumeCronJob,
+  runCronJob,
   toggleCompanyStatus,
   updateAgent,
   updateCompany,
+  updateCronJob,
   updateLead,
   updateSquad,
   updateUser,
@@ -218,4 +224,89 @@ export async function generateLeadInsightsAction(formData: FormData) {
   const path = getPath(formData, '/admin/leads');
   if (Number.isFinite(leadId) && leadId > 0) await generateLeadInsights(leadId, token).catch(() => null);
   revalidatePath('/admin'); revalidatePath('/admin/leads'); redirect(path);
+}
+
+// ── v149 — Cron job actions (admin) ─────────────────────────────────
+
+function cronPaths(jobId: number) {
+  revalidatePath('/admin');
+  revalidatePath('/admin/cron');
+  revalidatePath(`/admin/cron/${jobId}`);
+}
+
+export async function runCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const onlyIfDue = String(formData.get('onlyIfDue') ?? '').trim() === 'true';
+  const override = asNullableString(formData, 'systemEventOverride');
+  const path = getPath(formData, `/admin/cron/${jobId}`);
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await runCronJob(jobId, { onlyIfDue, systemEventOverride: override }, token).catch(() => null);
+    cronPaths(jobId);
+  }
+  redirect(path);
+}
+
+export async function pauseCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const path = getPath(formData, `/admin/cron/${jobId}`);
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await pauseCronJob(jobId, token).catch(() => null);
+    cronPaths(jobId);
+  }
+  redirect(path);
+}
+
+export async function resumeCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const path = getPath(formData, `/admin/cron/${jobId}`);
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await resumeCronJob(jobId, token).catch(() => null);
+    cronPaths(jobId);
+  }
+  redirect(path);
+}
+
+export async function cancelCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const path = getPath(formData, `/admin/cron/${jobId}`);
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await cancelCronJob(jobId, token).catch(() => null);
+    cronPaths(jobId);
+  }
+  redirect(path);
+}
+
+export async function deleteCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const path = getPath(formData, '/admin/cron');
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await deleteCronJob(jobId, token).catch(() => null);
+    revalidatePath('/admin');
+    revalidatePath('/admin/cron');
+  }
+  redirect(path);
+}
+
+export async function saveCronJobAction(formData: FormData) {
+  const token = await requireToken();
+  const jobId = Number(formData.get('jobId'));
+  const payload = {
+    name: asString(formData, 'name'),
+    description: asNullableString(formData, 'description'),
+    cronExpression: asNullableString(formData, 'cronExpression'),
+    systemEvent: asString(formData, 'systemEvent'),
+    timezone: asString(formData, 'timezone') || 'UTC',
+    status: asString(formData, 'status') || 'active',
+  };
+  if (Number.isFinite(jobId) && jobId > 0) {
+    await updateCronJob(jobId, payload, token).catch(() => null);
+    cronPaths(jobId);
+    redirect(`/admin/cron/${jobId}`);
+  }
+  redirect('/admin/cron');
 }

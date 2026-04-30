@@ -688,6 +688,138 @@ export async function fetchSquadById(squadId: number, token: string) {
   return requestJson<OkestriaSquadDetails>(`/api/Squads/${squadId}`, undefined, token);
 }
 
+// ── v149 — Cron jobs (admin detail + run controls) ──────────────────
+
+export type OkestriaCronJobRun = {
+  id: number;
+  cronJobId: number;
+  runNumber: number;
+  status: string;
+  triggerSource: string;
+  scheduledAtUtc: string;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+  openClawTaskId?: string | null;
+  openClawRunId?: string | null;
+  sessionKey?: string | null;
+  deliveryMode: string;
+  httpStatus?: number | null;
+  resultText?: string | null;
+  resultPayloadJson?: string | null;
+  errorMessage?: string | null;
+  createdDate: string;
+  attemptNumber: number;
+  errorCategory?: string | null;
+  nextAttemptAtUtc?: string | null;
+};
+
+export type OkestriaCronJob = {
+  id: number;
+  companyId: number;
+  createdByUserId?: number | null;
+  createdByUserName?: string | null;
+  agentId?: number | null;
+  agentName?: string | null;
+  agentSlug?: string | null;
+  agentAvatarUrl?: string | null;
+  squadId?: number | null;
+  squadName?: string | null;
+  name: string;
+  description?: string | null;
+  kind: string;
+  cronExpression?: string | null;
+  timezone: string;
+  runAtUtc?: string | null;
+  sessionMode: string;
+  sessionKey?: string | null;
+  systemEvent: string;
+  wakeMode: string;
+  deliveryMode: string;
+  webhookUrl?: string | null;
+  hasWebhookToken: boolean;
+  deleteAfterRun: boolean;
+  status: string;
+  openClawJobId?: string | null;
+  nextRunAtUtc?: string | null;
+  lastRunAtUtc?: string | null;
+  lastRunStatus?: string | null;
+  runCount: number;
+  failureCount: number;
+  lastErrorMessage?: string | null;
+  metadataJson?: string | null;
+  attachmentCount: number;
+  runs: OkestriaCronJobRun[];
+  createdDate: string;
+  updatedDate: string;
+};
+
+export async function fetchCronJobById(jobId: number, token: string) {
+  return requestJson<OkestriaCronJob>(`/api/CronJobs/${jobId}`, undefined, token);
+}
+
+export async function runCronJob(
+  jobId: number,
+  payload: { onlyIfDue?: boolean; systemEventOverride?: string | null },
+  token: string,
+) {
+  return requestJson<OkestriaCronJobRun>(
+    `/api/CronJobs/${jobId}/run`,
+    { method: 'POST', body: JSON.stringify(payload ?? {}) },
+    token,
+  );
+}
+
+export async function pauseCronJob(jobId: number, token: string) {
+  return requestJson<OkestriaCronJob>(
+    `/api/CronJobs/${jobId}/pause`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function resumeCronJob(jobId: number, token: string) {
+  return requestJson<OkestriaCronJob>(
+    `/api/CronJobs/${jobId}/resume`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function cancelCronJob(jobId: number, token: string) {
+  return requestJson<OkestriaCronJob>(
+    `/api/CronJobs/${jobId}/cancel`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function deleteCronJob(jobId: number, token: string) {
+  return requestJson<unknown>(
+    `/api/CronJobs/${jobId}`,
+    { method: 'DELETE' },
+    token,
+  );
+}
+
+export async function updateCronJob(
+  jobId: number,
+  payload: {
+    name?: string;
+    description?: string | null;
+    cronExpression?: string | null;
+    systemEvent?: string;
+    timezone?: string;
+    status?: string;
+  },
+  token: string,
+) {
+  return requestJson<OkestriaCronJob>(
+    `/api/CronJobs/${jobId}`,
+    { method: 'PUT', body: JSON.stringify(payload) },
+    token,
+  );
+}
+
 export async function toggleCompanyStatus(companyId: number, token: string) {
   return requestJson<unknown>(`/api/Companies/toggle-status/${companyId}`, {
     method: 'POST',

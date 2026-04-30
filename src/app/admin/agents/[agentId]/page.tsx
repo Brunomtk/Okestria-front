@@ -145,7 +145,7 @@ async function render(params: Promise<{ agentId: string }>) {
           accent="violet"
         >
           <div className="space-y-4 p-5">
-            <div className="relative h-[420px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(ellipse_at_top,_rgba(167,139,250,0.18)_0%,_rgba(8,11,20,0.85)_55%,_#04060d_100%)]">
+            <div className="relative mx-auto aspect-[4/5] w-full max-w-[360px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(ellipse_at_top,_rgba(167,139,250,0.18)_0%,_rgba(8,11,20,0.85)_55%,_#04060d_100%)]">
               <AdminAgentAvatar
                 avatarProfileJson={agent.avatarProfileJson ?? null}
                 fallbackSeed={agent.slug ?? `agent-${agent.id}`}

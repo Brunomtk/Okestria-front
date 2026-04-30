@@ -97,6 +97,7 @@ async function renderCronPage() {
                     <AdminCellTitle
                       primary={j.name}
                       secondary={j.agentName ?? `${j.kind} · ${j.timezone}`}
+                      href={`/admin/cron/${j.id}`}
                     />
                   </div>
                 ),
