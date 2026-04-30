@@ -804,25 +804,35 @@ function GraphView({
     };
   }, [repelForce, linkDistance, linkStrength, centerForce, nodes.length, links.length]);
 
-  // ── Auto-rotate the camera around origin (only when nothing is
-  //     pinned and the toggle is on). Cheap rAF loop, NO impact on
-  //     the simulation cost.
+  // ── Smooth movement via Three.js OrbitControls ────────────────
+  // Originally we drove auto-rotate via a manual rAF loop calling
+  // `cameraPosition()` every frame. That forced a render every 16ms
+  // AND fought against user scroll/drag (each user input was undone
+  // on the next manual frame). Switching to OrbitControls.autoRotate
+  // hands the rotation to Three.js, which:
+  //   • Updates the camera with `controls.update()` per frame —
+  //     handled by the lib's render loop, not our React tree.
+  //   • Stops auto-rotating the moment the user drags or scrolls
+  //     (no fight, no jitter).
+  //   • With `enableDamping` on, all movement (drag, pan, scroll
+  //     zoom) carries a tiny bit of inertia for that "polished" feel.
+  // We also keep `resumeAnimation()` poked so the lib's loop keeps
+  // ticking when nothing else would (cooldown done + no interaction).
   useEffect(() => {
-    if (!autoRotate || pinnedNodeId) return;
     const fg = fgRef.current;
-    if (!fg?.cameraPosition) return;
-    let raf = 0;
-    let t = 0;
-    const distance = 380;
-    const step = () => {
-      t += 0.0008;
-      const x = distance * Math.sin(t);
-      const z = distance * Math.cos(t);
-      fgRef.current?.cameraPosition?.({ x, y: 60, z });
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    if (!fg?.controls) return;
+    const ctrl = fg.controls();
+    if (!ctrl) return;
+    ctrl.enableDamping = true;
+    ctrl.dampingFactor = 0.08;
+    ctrl.zoomSpeed = 0.9; // a touch slower than default — feels nicer
+    ctrl.rotateSpeed = 0.7;
+    ctrl.panSpeed = 0.7;
+    ctrl.autoRotate = autoRotate && !pinnedNodeId;
+    ctrl.autoRotateSpeed = 0.6; // slow + meditative (default is 2)
+    if (autoRotate && !pinnedNodeId) {
+      fg.resumeAnimation?.();
+    }
   }, [autoRotate, pinnedNodeId, nodes.length]);
 
   // ── Active node = pinned > hovered ─────────────────────────────
@@ -903,23 +913,28 @@ function GraphView({
     [activeId, linkThicknessMul],
   );
 
-  // Particles only on the active node's edges. Same logic as 2D —
-  // zero particles by default keeps the GPU mostly idle.
+  // Particles ONLY on the pinned node's edges (not hovered). When
+  // particles were keyed off `activeId` (= pinned ?? hovered), every
+  // single mouse-move spawned/destroyed sprite meshes in the scene
+  // — incredibly wasteful and the cause of stutters during quick
+  // mouse movement. With `pinnedNodeId` only, particles are a
+  // one-time setup on click and stay stable. Hover is reserved for
+  // the cheap dim/highlight effect.
   const linkDirectionalParticles = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (link: any) => {
-      if (!animateEdges || !activeId) return 0;
+      if (!animateEdges || !pinnedNodeId) return 0;
       const sId =
         typeof link.source === "string" ? link.source : (link.source?.id ?? "");
       const tId =
         typeof link.target === "string" ? link.target : (link.target?.id ?? "");
-      return sId === activeId || tId === activeId
+      return sId === pinnedNodeId || tId === pinnedNodeId
         ? link.kind === "tag"
           ? 3
           : 2
         : 0;
     },
-    [animateEdges, activeId],
+    [animateEdges, pinnedNodeId],
   );
   const linkDirectionalParticleColor = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -929,10 +944,31 @@ function GraphView({
   );
 
   // ── Pointer handlers ──────────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleNodeHover = useCallback((node: any | null) => {
-    setHoverNodeId(node ? String(node.id) : null);
-  }, []);
+  // Hover is throttled with rAF: rapid mouse-move events still
+  // ultimately resolve to one state update per animation frame.
+  // Without this, dragging across a dense node cluster fired ~30
+  // setState calls per second, each one cascading through React +
+  // forcing a graph redraw.
+  const hoverRafRef = useRef<number | null>(null);
+  const pendingHoverRef = useRef<string | null>(null);
+  const handleNodeHover = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any | null) => {
+      pendingHoverRef.current = node ? String(node.id) : null;
+      if (hoverRafRef.current != null) return;
+      hoverRafRef.current = requestAnimationFrame(() => {
+        hoverRafRef.current = null;
+        setHoverNodeId(pendingHoverRef.current);
+      });
+    },
+    [],
+  );
+  useEffect(
+    () => () => {
+      if (hoverRafRef.current != null) cancelAnimationFrame(hoverRafRef.current);
+    },
+    [],
+  );
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeClick = useCallback((node: any) => {
     setPinnedNodeId(String(node.id));
@@ -955,6 +991,45 @@ function GraphView({
   );
 
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
+
+  // ── Halo sprite for the pinned node ───────────────────────────
+  // Dynamic-import the helper so THREE stays in the same lazy chunk
+  // as the force-graph lib (no impact on the main bundle). Once the
+  // helper is loaded, return a sprite ONLY for the pinned node so
+  // there's never more than one extra Three.js object in the scene
+  // at any moment. With `nodeThreeObjectExtend=true`, the lib still
+  // draws the default sphere underneath — our sprite layers on top.
+  const [createHalo, setCreateHalo] = useState<
+    | ((colorHex: string, radius: number) => unknown)
+    | null
+  >(null);
+  useEffect(() => {
+    let cancelled = false;
+    void import("./CortexForceGraph").then((m) => {
+      if (cancelled) return;
+      setCreateHalo(() => m.createHaloSprite);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const nodeThreeObject = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any) => {
+      if (!createHalo) return null;
+      if (String(node.id) !== pinnedNodeId) return null;
+      const isTag = node.kind === "tag";
+      const baseColor =
+        (isTag ? TAG_COLOR : folderColor(node.folder ?? null)) || ROOT_COLOR;
+      // nodeVal returns volume-ish — Three's sphere radius is roughly
+      // ∛nodeVal × nodeRelSize, so we approximate the visual radius.
+      const v = nodeVal(node);
+      const visualRadius = Math.max(4, Math.cbrt(Math.max(1, v)) * 4.5);
+      return createHalo(baseColor, visualRadius);
+    },
+    [createHalo, pinnedNodeId, folderColor, nodeVal],
+  );
+  const nodeThreeObjectExtend = useCallback(() => true, []);
 
   // ── Zoom controls (3D camera dolly along its current axis) ────
   const handleZoomIn = useCallback(() => {
@@ -1014,14 +1089,17 @@ function GraphView({
           showNavInfo={false}
           graphData={graphData}
           nodeId="id"
-          nodeRelSize={4}
-          // Sphere segments — defaults to 16 (×16 = 256 verts/sphere).
-          // Halving to 8 cuts vertex load 4x with imperceptible visual
-          // difference at the sizes we render.
-          nodeResolution={8}
-          nodeOpacity={0.95}
+          nodeRelSize={4.5}
+          // Sphere segments — default is 16 (256 verts/sphere). At 12
+          // we keep ~half the vertex load with visibly smoother
+          // silhouettes when the camera is close. 8 was fast but the
+          // facets were noticeable on the active (zoomed) node.
+          nodeResolution={12}
+          nodeOpacity={0.92}
           nodeVal={nodeVal}
           nodeColor={nodeColor}
+          nodeThreeObject={nodeThreeObject}
+          nodeThreeObjectExtend={nodeThreeObjectExtend}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           nodeLabel={(n: any) =>
             `<div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(2,6,23,0.94);border:1px solid rgba(167,139,250,0.4);border-radius:8px;padding:6px 8px;color:white;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px"><div style="font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${n.kind === "tag" ? TAG_COLOR : "#a78bfa"}">${n.kind}</div><div style="font-weight:500;margin-top:2px">${escapeHtml(truncateLabel(n.label, 40))}</div>${n.folder ? `<div style="opacity:0.5;font-size:10px;margin-top:2px">${escapeHtml(n.folder)}</div>` : ""}<div style="opacity:0.45;font-size:10px;margin-top:2px">degree ${n.degree}</div></div>`
