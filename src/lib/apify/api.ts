@@ -155,10 +155,25 @@ const requestBackend = async <T>(path: string, init?: RequestInit): Promise<T> =
   return (await readJsonOrText(response)) as T;
 };
 
-/** GET /api/CompanyApifyConfigs/me — null when the company has no token. */
+/**
+ * GET /api/CompanyApifyConfigs/me — null when the company has no token.
+ *
+ * v137 (hotfix): swallows 404s so the form renders cleanly during the
+ * window where the back v79 endpoints aren't deployed yet (operators
+ * tend to deploy front first then back). Mirrors the resilient behavior
+ * of `fetchNote` in lib/notes/api.ts. The PUT/DELETE/test endpoints
+ * still surface 404s — those are real misconfigurations the operator
+ * needs to know about.
+ */
 export const getMyApifyConfig = async (): Promise<CompanyApifyConfig | null> => {
-  const raw = await requestBackend<CompanyApifyConfig | null>(`/api/CompanyApifyConfigs/me`);
-  return raw ?? null;
+  try {
+    const raw = await requestBackend<CompanyApifyConfig | null>(`/api/CompanyApifyConfigs/me`);
+    return raw ?? null;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/\b404\b|not\s*found/i.test(msg)) return null;
+    throw err;
+  }
 };
 
 /** PUT /api/CompanyApifyConfigs/me — upsert. */

@@ -1259,6 +1259,26 @@ function MetaTab({ onClose }: { onClose: () => void }) {
 // APIFY TAB (v137)
 // ─────────────────────────────────────────────────────────────────────
 
+/**
+ * v137 (hotfix) — Decorate raw error messages so a 404 is recognised
+ * as "the back endpoint is missing — deploy v79". Without this the
+ * operator sees a bare "Request failed with status 404" and has no
+ * way to act on it.
+ */
+function explainApifyError(raw: unknown): string {
+  const msg = raw instanceof Error ? raw.message : String(raw);
+  if (/\b404\b|not\s*found/i.test(msg)) {
+    return "Back doesn't expose the Apify endpoints yet (404). Deploy back v79 to the VPS, restart `pepe`, then refresh this page.";
+  }
+  if (/\b401\b|unauthor/i.test(msg)) {
+    return "Authentication failed (401). Sign out and sign back in, then retry.";
+  }
+  if (/\b502\b|bad\s*gateway/i.test(msg)) {
+    return `Back returned 502 (bridge unreachable). Original message: ${msg}`;
+  }
+  return msg;
+}
+
 function ApifyTab({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1303,7 +1323,7 @@ function ApifyTab({ onClose }: { onClose: () => void }) {
         }
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(explainApifyError(err));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1342,7 +1362,7 @@ function ApifyTab({ onClose }: { onClose: () => void }) {
       setToken("");
       setSuccess("Saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(explainApifyError(err));
     } finally {
       setSaving(false);
     }
@@ -1358,7 +1378,7 @@ function ApifyTab({ onClose }: { onClose: () => void }) {
       if (result.ok) setSuccess(`Apify reachable — ${result.username ?? "ok"} (${result.plan ?? "?"}).`);
       else setError(result.error ?? "Test failed.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(explainApifyError(err));
     } finally {
       setTesting(false);
     }
@@ -1381,7 +1401,7 @@ function ApifyTab({ onClose }: { onClose: () => void }) {
       setTryResult(null);
       setSuccess("Deleted.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(explainApifyError(err));
     } finally {
       setDeleting(false);
     }
@@ -1413,7 +1433,7 @@ function ApifyTab({ onClose }: { onClose: () => void }) {
       const refreshed = await getMyApifyConfig();
       setExisting(refreshed);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(explainApifyError(err));
     } finally {
       setScraping(false);
     }
