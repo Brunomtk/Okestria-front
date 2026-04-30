@@ -31,10 +31,15 @@ import {
   AdminTable,
 } from "../_components/AdminTable";
 import { Pagination, SearchBar } from "../_components/AdminListChrome";
+import { safeAdminPage } from "../_lib/safe-page";
 
 type PageProps = { searchParams?: Promise<AdminSearchParams> };
 
 export default async function AdminCompaniesPage({ searchParams }: PageProps) {
+  return safeAdminPage("admin/companies", async () => renderCompaniesPage(searchParams));
+}
+
+async function renderCompaniesPage(searchParams: PageProps["searchParams"]) {
   const params = (await searchParams) ?? {};
   const session = await requireAdminSession();
   const page = getPageNumber(params);

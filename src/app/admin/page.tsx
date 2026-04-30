@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { requireAdminSession, getAdminDashboardData } from "./_lib/admin";
+import { safeAdminPage } from "./_lib/safe-page";
 import {
   PageHeader,
   Section,
@@ -32,6 +33,10 @@ function formatRuntimeLabel(baseUrl: string | null) {
 }
 
 export default async function AdminDashboardPage() {
+  return safeAdminPage("admin", renderDashboard);
+}
+
+async function renderDashboard() {
   const session = await requireAdminSession();
   const data = await getAdminDashboardData(session.token!);
 

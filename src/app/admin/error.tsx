@@ -1,17 +1,19 @@
 "use client";
 
 /**
- * v145 — Admin error boundary.
+ * v145.1 — Admin error boundary.
  *
  * Catches any uncaught exception from a server component below
  * /admin and shows a calm, on-brand fallback instead of React's
- * generic "An error occurred in the Server Components render"
- * crash. Surfaces the production digest so we can correlate with
- * server logs without leaking the underlying error message.
+ * generic crash. Surfaces the production digest so we can
+ * correlate with server logs without leaking the underlying error
+ * message — and POSTs the digest + current path to a debug probe
+ * so the host log shows a single correlated line per crash.
  */
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 
 export default function AdminErrorBoundary({
@@ -21,10 +23,34 @@ export default function AdminErrorBoundary({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
+
   useEffect(() => {
-    // Best-effort breadcrumb in the browser console for ourselves.
-    console.error("[admin]", error.digest ?? error.message ?? error);
-  }, [error]);
+    console.error(
+      "[admin]",
+      "digest=" + (error.digest ?? "(none)"),
+      "path=" + (pathname ?? "(unknown)"),
+      "message=" + (error.message ?? "(empty)"),
+      error,
+    );
+
+    // Best-effort fire-and-forget probe so the host log carries a
+    // single correlated line per error event.
+    try {
+      void fetch("/api/admin-error-probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          digest: error.digest ?? null,
+          route: pathname ?? null,
+          message: error.message ?? null,
+        }),
+      });
+    } catch {
+      /* swallow — probe is just a best-effort breadcrumb */
+    }
+  }, [error, pathname]);
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-6 py-10">
@@ -66,6 +92,11 @@ export default function AdminErrorBoundary({
               <p className="mt-3 break-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-[11px] text-white/55">
                 digest:{" "}
                 <span className="text-cyan-200/85">{error.digest}</span>
+              </p>
+            ) : null}
+            {pathname ? (
+              <p className="mt-2 break-all font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/40">
+                route · {pathname}
               </p>
             ) : null}
           </div>
