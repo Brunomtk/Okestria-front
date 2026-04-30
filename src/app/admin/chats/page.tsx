@@ -1,5 +1,5 @@
-import { Building2, MessageSquare, User, Bot } from "lucide-react";
-import { fetchAgentsByCompany, fetchCompaniesPaged } from "@/lib/auth/api";
+import { Bot, Building2, MessageSquare, ShieldCheck, User, Wrench } from "lucide-react";
+import { fetchAdminChats, type AdminChatRow } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
 import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
 import {
@@ -8,157 +8,132 @@ import {
   AdminMonoText,
   AdminTable,
 } from "../_components/AdminTable";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v144 — Admin · Chats.
+ * v147 — Admin · Chats.
  *
- * Aggregates active agent chats per company. The back doesn't have a
- * cross-tenant chat-history endpoint yet, so we render counts of
- * configured agents per company (proxy for "chats available") and a
- * curated set of representative recent chat sessions.
+ * One row per agent message across all tenants. Wired to
+ * /api/AdminOverview/chats/recent — pivots off
+ * SquadExecutionMessage which is where actual agent conversation
+ * persists in v80+.
  */
 
-type ChatMock = {
-  id: string;
-  agent: string;
-  agentEmoji: string;
-  agentColor: string;
-  company: string;
-  operator: string;
-  lastMessage: string;
-  agoMinutes: number;
-  status: "live" | "idle" | "queued";
-};
+function fmtAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `${Math.round(diff / 3600_000)}h ago`;
+  return `${Math.round(diff / 86400_000)}d ago`;
+}
 
-const RECENT_CHATS: ChatMock[] = [
-  { id: "c-001", agent: "Lúcio · Sales rep", agentEmoji: "💼", agentColor: "#a78bfa", company: "PTX Growth",        operator: "lucas@ptx",          lastMessage: "Drafted 2nd touch · awaiting approval",   agoMinutes: 1,    status: "live" },
-  { id: "c-002", agent: "Lúcia · Lead scout",agentEmoji: "🎯", agentColor: "#22d3ee", company: "Aurora Spa",        operator: "marcus@aurora",      lastMessage: "Queue cleared · 8 leads enriched",         agoMinutes: 6,    status: "idle" },
-  { id: "c-003", agent: "Olga · Closer",     agentEmoji: "🤝", agentColor: "#f59e0b", company: "Pinheiro Cleaning", operator: "darley@pinheiro",    lastMessage: "Booked Friday call with João",            agoMinutes: 12,   status: "idle" },
-  { id: "c-004", agent: "Mira · Scribe",     agentEmoji: "📝", agentColor: "#fb7185", company: "PTX Growth",        operator: "lucas@ptx",          lastMessage: "Saved daily news brief to Cortex",         agoMinutes: 24,   status: "idle" },
-  { id: "c-005", agent: "Yann · Analyst",    agentEmoji: "📊", agentColor: "#34d399", company: "Casa Verde",        operator: "rafael@casaverde",   lastMessage: "Compiled weekly competitor digest",        agoMinutes: 38,   status: "idle" },
-  { id: "c-006", agent: "Lúcio · Sales rep", agentEmoji: "💼", agentColor: "#a78bfa", company: "Jet Auto",          operator: "fernanda@jet",       lastMessage: "Sent follow-up to 4 prospects",            agoMinutes: 65,   status: "queued" },
-];
-
-function fmtAgo(min: number): string {
-  if (min < 1) return "now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+type Pill = "ok" | "warn" | "info" | "error" | "idle";
+function rolePresentation(role: string, authorType: string): {
+  emoji: string;
+  accent: string;
+  pill: Pill;
+  label: string;
+} {
+  const r = role.toLowerCase();
+  const a = authorType.toLowerCase();
+  if (r === "user" || a === "user")
+    return { emoji: "👤", accent: "#22d3ee", pill: "info", label: "user" };
+  if (r === "assistant" || a === "agent")
+    return { emoji: "🤖", accent: "#a78bfa", pill: "ok", label: "agent" };
+  if (a === "tool")
+    return { emoji: "🔧", accent: "#f59e0b", pill: "warn", label: "tool" };
+  return { emoji: "·", accent: "#94a3b8", pill: "idle", label: r || "system" };
 }
 
 export default async function AdminChatsPage() {
-  const session = await requireAdminSession();
-  const companiesResp = await fetchCompaniesPaged(session.token!, {
-    pageNumber: 1,
-    pageSize: 50,
-  }).catch(() => null);
-  const companies = companiesResp?.result ?? [];
+  return safeAdminPage("admin/chats", renderChatsPage);
+}
 
-  const agentByCompany = await Promise.all(
-    companies.map((c) =>
-      fetchAgentsByCompany(c.id, session.token!).catch(() => []).then((agents) => ({
-        company: c.name ?? `Company #${c.id}`,
-        agents: agents.length,
-      })),
-    ),
+async function renderChatsPage() {
+  const session = await requireAdminSession();
+  const messages: AdminChatRow[] = await fetchAdminChats(session.token!, 80).catch(
+    () => [],
   );
-  const totalAgents = agentByCompany.reduce((s, x) => s + x.agents, 0);
-  const liveCount = RECENT_CHATS.filter((c) => c.status === "live").length;
+
+  const userMsgs = messages.filter(
+    (m) => m.role.toLowerCase() === "user" || m.authorType.toLowerCase() === "user",
+  ).length;
+  const agentMsgs = messages.filter(
+    (m) => m.role.toLowerCase() === "assistant" || m.authorType.toLowerCase() === "agent",
+  ).length;
+  const toolMsgs = messages.filter((m) => m.authorType.toLowerCase() === "tool").length;
+
+  // Distinct conversation count = distinct execution ids in the window.
+  const conversations = new Set(messages.map((m) => m.executionId)).size;
 
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Operations · Chats"
-        title="Agent chats"
-        subtitle="A live pulse of what every operator is talking to their agents about, across every tenant."
-        right={
-          <div className="flex items-center gap-2">
-            <StatusPill status="info" label={`${liveCount} live`} />
-            <StatusPill status="ok" label={`${totalAgents} agents available`} />
-          </div>
-        }
+        title="Chats"
+        subtitle="Latest agent conversations across the platform — every squad-execution message tail. Live data."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Companies" value={companies.length} icon={Building2} accent="violet" />
-        <StatCard label="Agents reachable" value={totalAgents} icon={Bot} accent="cyan" />
-        <StatCard label="Sessions live" value={liveCount} icon={MessageSquare} accent="emerald" />
-        <StatCard label="Operators on" value={new Set(RECENT_CHATS.map((c) => c.operator)).size} icon={User} accent="amber" />
+        <StatCard label="Conversations" value={conversations} icon={MessageSquare} accent="violet" hint="distinct executions" />
+        <StatCard label="User messages" value={userMsgs} icon={User} accent="cyan" />
+        <StatCard label="Agent replies" value={agentMsgs} icon={Bot} accent="emerald" />
+        <StatCard label="Tool calls" value={toolMsgs} icon={Wrench} accent="amber" />
       </div>
 
-      <Section title="Recent chats" subtitle="across tenants" accent="violet">
+      <Section title={`Recent messages · ${messages.length}`} subtitle="newest first" accent="violet">
         <AdminTable
           columns={[
-            { key: "id", header: "#", className: "w-20" },
-            { key: "session", header: "Session" },
+            { key: "kind", header: "Role", className: "w-32" },
+            { key: "preview", header: "Message" },
+            { key: "execution", header: "Execution" },
             { key: "company", header: "Tenant" },
-            { key: "operator", header: "Operator" },
-            { key: "ago", header: "When", className: "w-24" },
-            { key: "status", header: "Status", className: "w-28" },
+            { key: "ago", header: "When", className: "w-28" },
           ]}
-          rows={RECENT_CHATS.map((c) => ({
-            id: c.id,
-            cells: {
-              id: <AdminMonoText>{c.id}</AdminMonoText>,
-              session: (
-                <div className="flex items-center gap-3">
-                  <AdminCellAvatar emoji={c.agentEmoji} accent={c.agentColor} />
-                  <AdminCellTitle primary={c.agent} secondary={c.lastMessage} />
-                </div>
-              ),
-              company: (
-                <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
-                  <Building2 className="h-3.5 w-3.5 text-white/40" />
-                  {c.company}
-                </div>
-              ),
-              operator: (
-                <span className="font-mono text-[11.5px] text-white/55">{c.operator}</span>
-              ),
-              ago: (
-                <span className="font-mono text-[11px] text-white/45">{fmtAgo(c.agoMinutes)}</span>
-              ),
-              status: (
-                <StatusPill
-                  status={c.status === "live" ? "info" : c.status === "idle" ? "ok" : "warn"}
-                  label={c.status}
-                />
-              ),
-            },
-          }))}
-          emptyHint="No chats running right now."
+          rows={messages.map((m) => {
+            const p = rolePresentation(m.role, m.authorType);
+            return {
+              id: `${m.executionId}-${m.id}`,
+              cells: {
+                kind: (
+                  <div className="flex items-center gap-2.5">
+                    <AdminCellAvatar emoji={p.emoji} accent={p.accent} />
+                    <StatusPill status={p.pill} label={p.label} />
+                  </div>
+                ),
+                preview: (
+                  <AdminCellTitle
+                    primary={m.preview || "(empty)"}
+                    secondary={m.authorName ?? p.label}
+                  />
+                ),
+                execution: (
+                  <AdminCellTitle
+                    primary={m.executionTitle}
+                    secondary={m.squadName ?? `Squad #${m.squadId ?? "—"}`}
+                  />
+                ),
+                company: (
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
+                    <Building2 className="h-3.5 w-3.5 text-white/40" />
+                    {m.companyName}
+                  </div>
+                ),
+                ago: <AdminMonoText>{fmtAgo(m.createdDate)}</AdminMonoText>,
+              },
+            };
+          })}
+          emptyHint="No agent conversations yet. Once a squad starts running, messages flow in here."
         />
       </Section>
 
-      <Section title="Agents available per tenant" subtitle="ready-to-chat" accent="cyan">
-        <AdminTable
-          columns={[
-            { key: "company", header: "Tenant" },
-            { key: "agents", header: "Agents", className: "text-right" },
-          ]}
-          rows={agentByCompany
-            .sort((a, b) => b.agents - a.agents)
-            .slice(0, 10)
-            .map((row, idx) => ({
-              id: idx,
-              cells: {
-                company: (
-                  <div className="flex items-center gap-2.5">
-                    <AdminCellAvatar emoji="🏢" accent="#22d3ee" />
-                    <span className="text-[13px] font-medium text-white/85">{row.company}</span>
-                  </div>
-                ),
-                agents: (
-                  <span className="font-mono text-[13px] font-semibold text-white/90">
-                    {row.agents}
-                  </span>
-                ),
-              },
-            }))}
-          emptyHint="No agents provisioned yet."
-        />
-      </Section>
+      <p className="text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/30">
+        <ShieldCheck className="mr-1 inline h-3 w-3" />
+        live · {messages.length} message{messages.length === 1 ? "" : "s"} ·{" "}
+        {conversations} conversation{conversations === 1 ? "" : "s"}
+      </p>
     </div>
   );
 }

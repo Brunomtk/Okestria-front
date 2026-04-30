@@ -1,5 +1,5 @@
 import { Brain, Building2, FileText, Hash, Network } from "lucide-react";
-import { fetchCompaniesPaged } from "@/lib/auth/api";
+import { fetchAdminCortexStats, type AdminCortexStats } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
 import { PageHeader, Section, StatCard } from "../_components/AdminUI";
 import {
@@ -8,61 +8,65 @@ import {
   AdminMonoText,
   AdminTable,
 } from "../_components/AdminTable";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v144 — Admin · Cortex.
+ * v146 — Admin · Cortex.
  *
- * Per-tenant knowledge graph snapshot. The S3 vault is per-company
- * by design, so the admin view aggregates per-company stats:
- * notes, tags, links, last-updated. The numbers below are
- * representative — once we expose `/api/admin/cortex-stats` the
- * shape stays the same.
+ * Per-tenant knowledge graph snapshot, now wired to the real
+ * /api/AdminOverview/cortex/stats endpoint. The endpoint walks
+ * every company's S3-backed vault and returns notes/tags/links/
+ * lastTouch in one shot so the front renders without N+1 fan-out.
  */
 
-type CortexStats = {
-  company: string;
-  notes: number;
-  tags: number;
-  links: number;
-  lastTouchAgo: string;
-  health: "fresh" | "stale" | "empty";
-};
-
-const CORTEX_BY_COMPANY: CortexStats[] = [
-  { company: "PTX Growth",         notes: 142, tags: 38, links: 287, lastTouchAgo: "2m ago",  health: "fresh" },
-  { company: "Aurora Spa",         notes: 76,  tags: 24, links: 142, lastTouchAgo: "1h ago",  health: "fresh" },
-  { company: "Pinheiro Cleaning",  notes: 43,  tags: 12, links: 71,  lastTouchAgo: "3h ago",  health: "fresh" },
-  { company: "Casa Verde",         notes: 18,  tags: 6,  links: 26,  lastTouchAgo: "6h ago",  health: "fresh" },
-  { company: "Jet Auto",           notes: 9,   tags: 3,  links: 11,  lastTouchAgo: "2d ago",  health: "stale" },
-  { company: "Verde Beachhouse",   notes: 0,   tags: 0,  links: 0,   lastTouchAgo: "—",       health: "empty" },
-];
+function fmtAgo(iso?: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diffMs = Date.now() - t;
+  const min = Math.round(diffMs / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
 
 export default async function AdminCortexPage() {
+  return safeAdminPage("admin/cortex", renderCortexPage);
+}
+
+async function renderCortexPage() {
   const session = await requireAdminSession();
-  const companiesResp = await fetchCompaniesPaged(session.token!, {
-    pageNumber: 1,
-    pageSize: 50,
-  }).catch(() => null);
-  const companies = companiesResp?.result ?? [];
+  const stats: AdminCortexStats[] = await fetchAdminCortexStats(
+    session.token!,
+  ).catch(() => []);
 
-  const totalNotes = CORTEX_BY_COMPANY.reduce((s, x) => s + x.notes, 0);
-  const totalTags  = CORTEX_BY_COMPANY.reduce((s, x) => s + x.tags,  0);
-  const totalLinks = CORTEX_BY_COMPANY.reduce((s, x) => s + x.links, 0);
-  const fresh = CORTEX_BY_COMPANY.filter((c) => c.health === "fresh").length;
+  const totalNotes = stats.reduce((s, x) => s + x.notes, 0);
+  const totalTags = stats.reduce((s, x) => s + x.tags, 0);
+  const totalLinks = stats.reduce((s, x) => s + x.links, 0);
+  const fresh = stats.filter((c) => c.health === "fresh").length;
 
-  // Find the row with most notes for visual proportion
-  const maxNotes = Math.max(1, ...CORTEX_BY_COMPANY.map((c) => c.notes));
+  // Largest vault — used to scale the density bar.
+  const maxNotes = Math.max(1, ...stats.map((c) => c.notes));
 
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Operations · Cortex"
         title="Knowledge graph"
-        subtitle="Each tenant's S3-backed Cortex vault — notes, tags, and the wiki-link graph that ties them together."
+        subtitle="Each tenant's S3-backed Cortex vault — notes, tags, and the wiki-link graph that ties them together. Live data."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Tenants with Cortex" value={fresh} icon={Building2} accent="violet" hint={`${CORTEX_BY_COMPANY.length - fresh} stale/empty`} />
+        <StatCard
+          label="Tenants with Cortex"
+          value={fresh}
+          icon={Building2}
+          accent="violet"
+          hint={`${stats.length - fresh} stale/empty`}
+        />
         <StatCard label="Total notes" value={totalNotes} icon={FileText} accent="cyan" />
         <StatCard label="Total tags" value={totalTags} icon={Hash} accent="amber" />
         <StatCard label="Total links" value={totalLinks} icon={Network} accent="emerald" />
@@ -78,16 +82,16 @@ export default async function AdminCortexPage() {
             { key: "density", header: "Density", className: "w-48" },
             { key: "ago", header: "Last touch", className: "w-28" },
           ]}
-          rows={CORTEX_BY_COMPANY.map((c, idx) => {
+          rows={stats.map((c) => {
             const pct = (c.notes / maxNotes) * 100;
             return {
-              id: idx,
+              id: c.companyId,
               cells: {
                 company: (
                   <div className="flex items-center gap-3">
                     <AdminCellAvatar emoji="🧠" accent="#22d3ee" />
                     <AdminCellTitle
-                      primary={c.company}
+                      primary={c.companyName}
                       secondary={
                         c.health === "fresh"
                           ? "active vault"
@@ -133,7 +137,7 @@ export default async function AdminCortexPage() {
                           : "text-white/30"
                     }`}
                   >
-                    {c.lastTouchAgo}
+                    {fmtAgo(c.lastTouchUtc)}
                   </span>
                 ),
               },
@@ -143,35 +147,38 @@ export default async function AdminCortexPage() {
         />
       </Section>
 
-      <Section title="Insight" subtitle="how to read this" accent="violet">
+      <Section title="How to read this" subtitle="density + last touch" accent="violet">
         <div className="space-y-3 p-5 text-[13px] leading-relaxed text-white/65">
           <p>
-            <span className="text-white/85">Density</span> is each tenant's note count as a fraction
-            of the largest vault. Tenants near the top of the bar are the ones using the Cortex
-            heavily as their persistent memory; tenants near the bottom either haven't opened it yet
+            <span className="text-white/85">Density</span> is each tenant&apos;s
+            note count as a fraction of the largest vault. Tenants near the top
+            of the bar are the ones using the Cortex heavily as their persistent
+            memory; tenants near the bottom either haven&apos;t opened it yet
             or use it sparingly.
           </p>
           <p>
-            <span className="text-white/85">Last touch</span> tells you whether the vault is being
-            written to (fresh = within the last 24h, stale = older). Empty tenants are good candidates
-            for a Cortex onboarding touch.
+            <span className="text-white/85">Last touch</span> tells you whether
+            the vault is being written to (fresh = within the last 24h, stale =
+            older). Empty tenants are good candidates for a Cortex onboarding
+            touch.
           </p>
           <p>
             Backed by the per-company S3 prefix at{" "}
             <code className="rounded bg-white/10 px-1 font-mono text-[11.5px] text-cyan-200">
-              s3://orkestria-files-prod/companies/&lt;id&gt;/vault
+              s3://orkestria-files-prod/companies/&lt;id&gt;/vaults/default
             </code>{" "}
             (managed via{" "}
-            <span className="font-mono text-[11.5px] text-violet-200">CompanyApifyConfigService</span>{" "}
-            and{" "}
-            <span className="font-mono text-[11.5px] text-violet-200">CompanyNotesService</span>).
+            <span className="font-mono text-[11.5px] text-violet-200">
+              CompanyNotesService
+            </span>
+            ).
           </p>
         </div>
       </Section>
 
       <p className="text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/30">
         <Brain className="mr-1 inline h-3 w-3" />
-        {companies.length} tenants known · cortex-stats endpoint coming
+        live · {stats.length} tenant{stats.length === 1 ? "" : "s"} scanned
       </p>
     </div>
   );

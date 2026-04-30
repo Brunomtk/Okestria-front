@@ -1,232 +1,187 @@
 import {
+  AlertCircle,
   Bot,
-  Cpu,
+  CheckCircle2,
   Database,
-  HardDrive,
   Mail,
   Network,
   ShieldCheck,
-  Activity,
+  Target,
+  Timer,
 } from "lucide-react";
-import { requireAdminSession, getAdminDashboardData } from "../_lib/admin";
-import { PageHeader, Section, StatusPill } from "../_components/AdminUI";
+import { fetchAdminHealth, type AdminHealthSubsystem } from "@/lib/auth/api";
+import { requireAdminSession } from "../_lib/admin";
+import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v143 — System health overview. Aggregates the existing config /
- * count signals from the backend and presents them as a single
- * panel with a status pill per subsystem. The pings + numbers will
- * shift once we have a real /health endpoint, but the layout is the
- * canonical "is everything green?" page operators look at.
+ * v147 — Admin · System health.
+ *
+ * Wired to /api/AdminOverview/health/subsystems. Each subsystem is
+ * probed live (db round-trip, gateway snapshot, cron/squad/lead
+ * counts) — no mock numbers. Latency comes from the back's
+ * Stopwatch around each probe.
  */
 
-type Subsystem = {
-  id: string;
-  label: string;
-  description: string;
-  status: "ok" | "warn" | "error" | "idle";
-  metric: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: string;
-};
+type Pill = "ok" | "warn" | "error" | "idle";
+
+function statusToPill(status: string): { pill: Pill; label: string } {
+  switch (status.toLowerCase()) {
+    case "healthy":
+      return { pill: "ok", label: "healthy" };
+    case "degraded":
+      return { pill: "warn", label: "degraded" };
+    case "unhealthy":
+      return { pill: "error", label: "unhealthy" };
+    default:
+      return { pill: "idle", label: status || "unknown" };
+  }
+}
+
+function iconForSubsystem(id: string): React.ComponentType<{ className?: string }> {
+  switch (id) {
+    case "db":               return Database;
+    case "gateway":          return Network;
+    case "squad-executions": return Bot;
+    case "cron":             return Timer;
+    case "lead-gen":         return Target;
+    case "lead-email":       return Mail;
+    default:                 return ShieldCheck;
+  }
+}
+
+function fmtAgo(iso?: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 1_000) return "just now";
+  if (diff < 60_000) return `${Math.round(diff / 1000)}s ago`;
+  if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
+  return `${Math.round(diff / 3600_000)}h ago`;
+}
 
 export default async function AdminHealthPage() {
+  return safeAdminPage("admin/health", renderHealthPage);
+}
+
+async function renderHealthPage() {
   const session = await requireAdminSession();
-  const data = await getAdminDashboardData(session.token!);
+  const subsystems: AdminHealthSubsystem[] = await fetchAdminHealth(
+    session.token!,
+  ).catch(() => []);
 
-  const gatewayOk = data.runtimeConfigured && data.runtimeHasToken;
-  const subsystems: Subsystem[] = [
-    {
-      id: "gateway",
-      label: "OpenClaw gateway",
-      description: "WebSocket bridge between back and the agent runtime",
-      status: gatewayOk ? "ok" : "warn",
-      metric: data.runtimeBaseUrl ? `${new URL(data.runtimeBaseUrl).host}` : "not configured",
-      icon: Network,
-      accent: "#22d3ee",
-    },
-    {
-      id: "database",
-      label: "Postgres",
-      description: "Primary tenant + ops store",
-      status: "ok",
-      metric: `${data.companies.length + data.users.length + data.agents.length + data.leads.length} rows snapshot`,
-      icon: Database,
-      accent: "#a78bfa",
-    },
-    {
-      id: "ai",
-      label: "AI provider",
-      description: "Claude / OpenAI tier configured per tenant",
-      status: "ok",
-      metric: "claude-sonnet-4-5 default",
-      icon: Cpu,
-      accent: "#34d399",
-    },
-    {
-      id: "agents",
-      label: "Agent runtime",
-      description: "Active agents currently registered to gateway sessions",
-      status: data.agents.length > 0 ? "ok" : "idle",
-      metric: `${data.agents.length} agents`,
-      icon: Bot,
-      accent: "#a78bfa",
-    },
-    {
-      id: "email",
-      label: "Email — himalaya bridge",
-      description: "Per-user IMAP/SMTP credentials wired through the bridge",
-      status: "ok",
-      metric: "operator opt-in · per-user",
-      icon: Mail,
-      accent: "#f59e0b",
-    },
-    {
-      id: "storage",
-      label: "S3 vault",
-      description: "Per-company Obsidian-compatible notes vault",
-      status: "ok",
-      metric: "orkestria-files-prod · us-east-2",
-      icon: HardDrive,
-      accent: "#34d399",
-    },
-  ];
+  const healthy = subsystems.filter((s) => s.status === "healthy").length;
+  const degraded = subsystems.filter((s) => s.status === "degraded").length;
+  const unhealthy = subsystems.filter((s) => s.status === "unhealthy").length;
 
-  const okCount = subsystems.filter((s) => s.status === "ok").length;
-  const warnCount = subsystems.filter((s) => s.status === "warn" || s.status === "error").length;
+  const dbLatency = subsystems.find((s) => s.id === "db")?.latencyMs ?? null;
+  const overall: Pill =
+    unhealthy > 0 ? "error" : degraded > 0 ? "warn" : healthy > 0 ? "ok" : "idle";
+  const overallLabel =
+    unhealthy > 0
+      ? "issues detected"
+      : degraded > 0
+        ? "running degraded"
+        : healthy > 0
+          ? "all systems normal"
+          : "no probes available";
 
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Overview · Health"
+        eyebrow="Overview · System"
         title="System health"
-        subtitle="Each subsystem of Orkestria with its current operational status. Green = healthy, amber = needs attention."
-        right={
-          <div className="flex items-center gap-2">
-            <StatusPill status="ok" label={`${okCount} healthy`} />
-            {warnCount > 0 ? (
-              <StatusPill status="warn" label={`${warnCount} need attention`} />
-            ) : (
-              <StatusPill status="ok" label="all green" />
-            )}
-          </div>
-        }
+        subtitle="Every backend subsystem probed live — Postgres round-trip, OpenClaw gateway, queues. No mocks."
+        right={<StatusPill status={overall} label={overallLabel} />}
       />
 
-      <Section title="Subsystems" subtitle="Live ping" accent="emerald">
-        <ul className="divide-y divide-white/5">
-          {subsystems.map((s) => (
-            <li key={s.id} className="flex items-center gap-4 px-5 py-4">
-              <span
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
-                style={{
-                  background: `${s.accent}1f`,
-                  border: `1px solid ${s.accent}55`,
-                  color: s.accent,
-                }}
-              >
-                <s.icon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className="text-[14px] font-semibold text-white/90">{s.label}</p>
-                  <p className="font-mono text-[10.5px] text-white/40">· {s.metric}</p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Subsystems" value={subsystems.length} icon={ShieldCheck} accent="violet" />
+        <StatCard label="Healthy" value={healthy} icon={CheckCircle2} accent="emerald" />
+        <StatCard label="Degraded" value={degraded} icon={AlertCircle} accent="amber" />
+        <StatCard
+          label="DB latency"
+          value={dbLatency != null ? `${dbLatency}ms` : "—"}
+          icon={Database}
+          accent={dbLatency != null && dbLatency < 250 ? "cyan" : dbLatency != null ? "amber" : "rose"}
+          hint="SELECT 1"
+        />
+      </div>
+
+      <Section title="Live subsystem probes" subtitle="this request" accent="violet">
+        <div className="space-y-3 p-5">
+          {subsystems.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-8 text-center text-[13px] text-white/45">
+              No probe data — the health endpoint returned nothing.
+            </div>
+          ) : (
+            subsystems.map((s) => {
+              const pill = statusToPill(s.status);
+              const Icon = iconForSubsystem(s.id);
+              return (
+                <div
+                  key={s.id}
+                  className="flex items-start justify-between gap-4 rounded-xl border border-white/10 bg-black/25 p-4"
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                      style={{
+                        background: "rgba(167,139,250,0.10)",
+                        border: "1px solid rgba(167,139,250,0.25)",
+                        color: "#a78bfa",
+                      }}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-white/90">
+                        {s.name}
+                      </p>
+                      <p className="mt-0.5 text-[11.5px] leading-snug text-white/55">
+                        {s.detail ?? "—"}
+                      </p>
+                      <p className="mt-1 font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/35">
+                        last checked · {fmtAgo(s.lastCheckedUtc)}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5">
+                    <StatusPill status={pill.pill} label={pill.label} />
+                    {s.latencyMs != null ? (
+                      <span className="font-mono text-[11px] text-white/55">
+                        {s.latencyMs}ms
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <p className="mt-0.5 truncate text-[12.5px] text-white/55">{s.description}</p>
-              </div>
-              <StatusPill
-                status={s.status}
-                label={
-                  s.status === "ok"
-                    ? "operational"
-                    : s.status === "warn"
-                      ? "attention"
-                      : s.status === "error"
-                        ? "down"
-                        : "idle"
-                }
-              />
-            </li>
-          ))}
-        </ul>
+              );
+            })
+          )}
+        </div>
       </Section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="Recent uptime" subtitle="Last 24h · 5m intervals" accent="violet">
-          <div className="p-5">
-            {/* Faux uptime bar — when a real probe lands, render its
-                samples here as the same bar primitives. */}
-            <div className="grid grid-cols-[repeat(48,minmax(0,1fr))] gap-[2px]">
-              {Array.from({ length: 48 }).map((_, i) => {
-                const ok = i % 17 !== 3 && i % 11 !== 7; // mostly green
-                return (
-                  <span
-                    key={i}
-                    className={`h-7 rounded-sm ${ok ? "bg-emerald-400/85" : "bg-amber-400/80"}`}
-                    title={`t-${(48 - i) * 5}m · ${ok ? "ok" : "spike"}`}
-                  />
-                );
-              })}
-            </div>
-            <div className="mt-3 flex items-center justify-between font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/40">
-              <span>24h ago</span>
-              <span className="inline-flex items-center gap-1.5 text-emerald-300">
-                <Activity className="h-3 w-3" /> 99.6% uptime
-              </span>
-              <span>now</span>
-            </div>
-          </div>
-        </Section>
-
-        <Section title="On-call" subtitle="Active rotation" accent="amber">
-          <div className="p-5">
-            <div className="rounded-xl border border-white/8 bg-white/[0.025] p-4">
-              <div className="flex items-center gap-3">
-                <span
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-[16px]"
-                  style={{
-                    background: "rgba(167,139,250,0.18)",
-                    border: "1px solid rgba(167,139,250,0.45)",
-                  }}
-                >
-                  🛡️
-                </span>
-                <div>
-                  <p className="text-[13.5px] font-semibold text-white/90">
-                    Lucas · PTX Growth
-                  </p>
-                  <p className="font-mono text-[11px] text-white/45">primary · weekday</p>
-                </div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-                <Stat label="Pages 24h" value="0" tone="ok" />
-                <Stat label="Last incident" value="11d ago" tone="info" />
-              </div>
-            </div>
-            <div className="mt-3 rounded-xl border border-emerald-400/20 bg-emerald-500/[0.06] px-3 py-2 text-[12.5px] text-emerald-200/85">
-              <ShieldCheck className="mr-1.5 inline h-3.5 w-3.5" />
-              No active incidents — system steady.
-            </div>
-          </div>
-        </Section>
-      </div>
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone: "ok" | "info" | "warn";
-}) {
-  const c = { ok: "text-emerald-200", info: "text-cyan-200", warn: "text-amber-200" }[tone];
-  return (
-    <div className="rounded-lg border border-white/8 bg-white/[0.02] px-2.5 py-1.5">
-      <p className="font-mono text-[9.5px] uppercase tracking-[0.18em] text-white/40">{label}</p>
-      <p className={`mt-0.5 font-mono text-[13px] font-semibold ${c}`}>{value}</p>
+      <Section title="How to read this" subtitle="probe semantics" accent="cyan">
+        <div className="space-y-3 p-5 text-[13px] leading-relaxed text-white/65">
+          <p>
+            <span className="text-white/85">Healthy</span> means the subsystem
+            answered the probe in time and returned what we expected. The
+            <span className="text-white/85"> latency</span> column shows the
+            probe's wall-clock duration in milliseconds.
+          </p>
+          <p>
+            <span className="text-white/85">Degraded</span> means the subsystem
+            answered, but slowly or with a warning (e.g. gateway returned a
+            5xx). Dispatches still proceed, just with tighter retry spacing.
+          </p>
+          <p>
+            <span className="text-white/85">Unhealthy</span> means the probe
+            could not reach the subsystem at all. The dispatcher
+            short-circuits and parks affected runs.
+          </p>
+        </div>
+      </Section>
     </div>
   );
 }

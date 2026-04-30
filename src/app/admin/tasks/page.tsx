@@ -3,10 +3,12 @@ import {
   Building2,
   CheckCircle2,
   Clock,
+  ListTodo,
   PauseCircle,
   PlayCircle,
+  XCircle,
 } from "lucide-react";
-import { fetchCompaniesPaged, fetchSquadsByCompany } from "@/lib/auth/api";
+import { fetchAdminTasks, type AdminTaskRow } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
 import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
 import {
@@ -15,171 +17,142 @@ import {
   AdminMonoText,
   AdminTable,
 } from "../_components/AdminTable";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v144 — Admin · Tasks. Squad task executions across tenants.
- * Each row is one self-contained task (an agent picked up an
- * action and is currently running, or completed it). Aggregates
- * squads per company since a unified task feed isn't shipped yet.
+ * v147 — Admin · Tasks.
+ *
+ * One row per squad-execution step across all tenants. Wired to
+ * /api/AdminOverview/tasks/all — joins step → execution → company
+ * + agent for the display columns.
  */
 
-type TaskMock = {
-  id: string;
-  title: string;
-  agent: string;
-  agentEmoji: string;
-  agentColor: string;
-  company: string;
-  status: "running" | "queued" | "done" | "failed";
-  durationSec: number;
-  startedMinAgo: number;
-};
-
-const TASKS: TaskMock[] = [
-  { id: "t-281", title: "Draft outreach for Aurora Spa",                   agent: "Lúcio", agentEmoji: "💼", agentColor: "#a78bfa", company: "PTX Growth",        status: "running", durationSec: 42,  startedMinAgo: 0 },
-  { id: "t-280", title: "Enrich 23 Apollo leads with website + email",     agent: "Lúcia", agentEmoji: "🎯", agentColor: "#22d3ee", company: "PTX Growth",        status: "running", durationSec: 178, startedMinAgo: 3 },
-  { id: "t-279", title: "Save daily news brief to Cortex",                  agent: "Mira",  agentEmoji: "📝", agentColor: "#fb7185", company: "Aurora Spa",        status: "done",    durationSec: 24,  startedMinAgo: 6 },
-  { id: "t-278", title: "Reply to 3rd touch · Casa Verde",                  agent: "Olga",  agentEmoji: "🤝", agentColor: "#f59e0b", company: "Pinheiro Cleaning", status: "done",    durationSec: 19,  startedMinAgo: 9 },
-  { id: "t-277", title: "Compile weekly competitor digest",                 agent: "Yann",  agentEmoji: "📊", agentColor: "#34d399", company: "Casa Verde",        status: "done",    durationSec: 312, startedMinAgo: 12 },
-  { id: "t-276", title: "Schedule follow-up sequence (10 step) for Casa V.",agent: "Lúcio", agentEmoji: "💼", agentColor: "#a78bfa", company: "PTX Growth",        status: "done",    durationSec: 36,  startedMinAgo: 18 },
-  { id: "t-275", title: "Birthday outreach · Jet Auto contacts",            agent: "Olga",  agentEmoji: "🤝", agentColor: "#f59e0b", company: "Jet Auto",          status: "queued",  durationSec: 0,   startedMinAgo: 22 },
-  { id: "t-274", title: "Validate IMAP credentials for new operator",       agent: "Mira",  agentEmoji: "📝", agentColor: "#fb7185", company: "Aurora Spa",        status: "failed",  durationSec: 4,   startedMinAgo: 35 },
-];
-
-function fmtDuration(s: number): string {
-  if (s < 1) return "—";
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return r === 0 ? `${m}m` : `${m}m ${r}s`;
+function fmtAgo(iso?: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `${Math.round(diff / 3600_000)}h ago`;
+  return `${Math.round(diff / 86400_000)}d ago`;
 }
-function fmtAgo(min: number): string {
-  if (min < 1) return "now";
-  if (min < 60) return `${min}m ago`;
-  return `${Math.floor(min / 60)}h ago`;
+
+function fmtDuration(start?: string | null, end?: string | null): string {
+  if (!start) return "—";
+  const s = new Date(start).getTime();
+  const e = end ? new Date(end).getTime() : Date.now();
+  if (!Number.isFinite(s) || !Number.isFinite(e)) return "—";
+  const ms = Math.max(0, e - s);
+  if (ms < 1_000) return `${ms}ms`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  if (ms < 3600_000) return `${Math.round(ms / 60_000)}m`;
+  return `${Math.round(ms / 3600_000)}h`;
+}
+
+type Pill = "ok" | "warn" | "info" | "error" | "idle";
+function statusToPill(status: string): { pill: Pill; label: string } {
+  const v = status.toLowerCase();
+  if (v === "running") return { pill: "info", label: "running" };
+  if (v === "completed" || v === "succeeded" || v === "done")
+    return { pill: "ok", label: "done" };
+  if (v === "failed" || v === "error") return { pill: "error", label: "failed" };
+  if (v === "paused" || v === "blocked") return { pill: "warn", label: v };
+  if (v === "pending" || v === "queued") return { pill: "idle", label: v };
+  return { pill: "idle", label: v || "—" };
 }
 
 export default async function AdminTasksPage() {
+  return safeAdminPage("admin/tasks", renderTasksPage);
+}
+
+async function renderTasksPage() {
   const session = await requireAdminSession();
-  const companiesResp = await fetchCompaniesPaged(session.token!, {
-    pageNumber: 1,
-    pageSize: 50,
-  }).catch(() => null);
-  const companies = companiesResp?.result ?? [];
-
-  const squadGroups = await Promise.all(
-    companies.map((c) =>
-      fetchSquadsByCompany(c.id, session.token!).catch(() => []).then((s) => ({
-        company: c.name ?? `Company #${c.id}`,
-        count: s.length,
-      })),
-    ),
+  const tasks: AdminTaskRow[] = await fetchAdminTasks(session.token!, 100).catch(
+    () => [],
   );
-  const totalSquads = squadGroups.reduce((s, x) => s + x.count, 0);
 
-  const running = TASKS.filter((t) => t.status === "running").length;
-  const queued = TASKS.filter((t) => t.status === "queued").length;
-  const done = TASKS.filter((t) => t.status === "done").length;
-  const failed = TASKS.filter((t) => t.status === "failed").length;
+  const running = tasks.filter((t) => t.status.toLowerCase() === "running").length;
+  const done = tasks.filter((t) =>
+    ["completed", "done", "succeeded"].includes(t.status.toLowerCase()),
+  ).length;
+  const failed = tasks.filter((t) =>
+    ["failed", "error"].includes(t.status.toLowerCase()),
+  ).length;
+  const pending = tasks.filter((t) =>
+    ["pending", "queued", "blocked", "paused"].includes(t.status.toLowerCase()),
+  ).length;
 
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Operations · Tasks"
-        title="Squad tasks"
-        subtitle="Every individual agent action, executed or queued, across the whole platform."
+        title="Tasks"
+        subtitle="Every squad execution step across the platform — one row per agent call. Live data."
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Running" value={running} icon={PlayCircle} accent="cyan" />
-        <StatCard label="Queued" value={queued} icon={PauseCircle} accent="amber" />
-        <StatCard label="Done · last hour" value={done} icon={CheckCircle2} accent="emerald" />
-        <StatCard label="Failed · last hour" value={failed} icon={Clock} accent="rose" />
+        <StatCard label="Total tasks" value={tasks.length} icon={ListTodo} accent="cyan" hint="recent 100" />
+        <StatCard label="Running" value={running} icon={PlayCircle} accent="emerald" />
+        <StatCard label="Done" value={done} icon={CheckCircle2} accent="violet" />
+        <StatCard label={failed > 0 ? "Failed" : "Pending"} value={failed > 0 ? failed : pending} icon={failed > 0 ? XCircle : PauseCircle} accent={failed > 0 ? "rose" : "amber"} hint={failed > 0 ? `${pending} pending` : "queue"} />
       </div>
 
-      <Section title="Recent tasks" subtitle="newest first" accent="cyan">
+      <Section title={`Recent tasks · ${tasks.length}`} subtitle="latest update first" accent="cyan">
         <AdminTable
           columns={[
             { key: "id", header: "#", className: "w-20" },
             { key: "task", header: "Task" },
+            { key: "agent", header: "Agent" },
             { key: "company", header: "Tenant" },
             { key: "duration", header: "Duration", className: "w-24" },
-            { key: "ago", header: "Started", className: "w-24" },
-            { key: "status", header: "Status", className: "w-28" },
+            { key: "ago", header: "Updated", className: "w-28" },
+            { key: "status", header: "Status", className: "w-32" },
           ]}
-          rows={TASKS.map((t) => ({
-            id: t.id,
-            cells: {
-              id: <AdminMonoText>{t.id}</AdminMonoText>,
-              task: (
-                <div className="flex items-center gap-3">
-                  <AdminCellAvatar emoji={t.agentEmoji} accent={t.agentColor} />
-                  <AdminCellTitle primary={t.title} secondary={t.agent} />
-                </div>
-              ),
-              company: (
-                <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
-                  <Building2 className="h-3.5 w-3.5 text-white/40" />
-                  {t.company}
-                </div>
-              ),
-              duration: (
-                <span className="font-mono text-[11.5px] text-white/65">
-                  {fmtDuration(t.durationSec)}
-                </span>
-              ),
-              ago: (
-                <span className="font-mono text-[11px] text-white/45">{fmtAgo(t.startedMinAgo)}</span>
-              ),
-              status: (
-                <StatusPill
-                  status={
-                    t.status === "running" ? "info" :
-                    t.status === "queued"  ? "warn" :
-                    t.status === "done"    ? "ok"   :
-                                              "error"
-                  }
-                  label={t.status}
-                />
-              ),
-            },
-          }))}
-          emptyHint="No tasks running right now."
-        />
-      </Section>
-
-      <Section title="Squads provisioned per tenant" subtitle="capacity" accent="violet">
-        <AdminTable
-          columns={[
-            { key: "company", header: "Tenant" },
-            { key: "squads", header: "Squads", className: "text-right" },
-          ]}
-          rows={squadGroups
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 10)
-            .map((row, idx) => ({
-              id: idx,
+          rows={tasks.map((t) => {
+            const s = statusToPill(t.status);
+            return {
+              id: `${t.executionId}-${t.id}`,
               cells: {
-                company: (
-                  <div className="flex items-center gap-2.5">
-                    <AdminCellAvatar emoji="🏢" accent="#a78bfa" />
-                    <span className="text-[13px] font-medium text-white/85">{row.company}</span>
+                id: <AdminMonoText>#{t.id}</AdminMonoText>,
+                task: (
+                  <div className="flex items-center gap-3">
+                    <AdminCellAvatar emoji="📌" accent="#22d3ee" />
+                    <AdminCellTitle
+                      primary={t.title || `Step ${t.stepOrder}`}
+                      secondary={`${t.executionTitle} · step #${t.stepOrder}`}
+                    />
                   </div>
                 ),
-                squads: (
-                  <span className="font-mono text-[13px] font-semibold text-white/90">
-                    {row.count}
+                agent: (
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-white/75">
+                    <Bot className="h-3.5 w-3.5 text-white/40" />
+                    {t.agentName ?? `Agent #${t.agentId}`}
+                  </div>
+                ),
+                company: (
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
+                    <Building2 className="h-3.5 w-3.5 text-white/40" />
+                    {t.companyName}
+                  </div>
+                ),
+                duration: (
+                  <span className="font-mono text-[11px] text-white/55">
+                    {fmtDuration(t.startedAtUtc, t.finishedAtUtc)}
                   </span>
                 ),
+                ago: <AdminMonoText>{fmtAgo(t.updatedDate)}</AdminMonoText>,
+                status: <StatusPill status={s.pill} label={s.label} />,
               },
-            }))}
-          emptyHint="No squads provisioned yet."
+            };
+          })}
+          emptyHint="No squad-execution steps yet. Once a squad runs, every agent call shows up here."
         />
       </Section>
 
       <p className="text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/30">
-        <Bot className="mr-1 inline h-3 w-3" />
-        Aggregating · {totalSquads} squads available · live task feed coming
+        <Clock className="mr-1 inline h-3 w-3" />
+        live · {tasks.length} task{tasks.length === 1 ? "" : "s"}
       </p>
     </div>
   );

@@ -396,6 +396,158 @@ export async function fetchRuntimeConfigStatus(token: string) {
   return requestJson<RuntimeConfigStatusResponse>(`/api/Runtime/config-status`, undefined, token);
 }
 
+// ── v146 — Admin overview endpoints (cross-tenant) ──────────────────
+
+export type AdminCortexStats = {
+  companyId: number;
+  companyName: string;
+  notes: number;
+  tags: number;
+  links: number;
+  health: 'fresh' | 'stale' | 'empty' | string;
+  lastTouchUtc?: string | null;
+};
+
+export type AdminCronJobRow = {
+  companyId: number;
+  companyName: string;
+  id: number;
+  name: string;
+  kind: string;
+  status: string;
+  cronExpression?: string | null;
+  timezone: string;
+  nextRunAtUtc?: string | null;
+  lastRunAtUtc?: string | null;
+  lastRunStatus?: string | null;
+  runCount: number;
+  failureCount: number;
+  agentId?: number | null;
+  agentName?: string | null;
+};
+
+export type AdminMissionRow = {
+  companyId: number;
+  companyName: string;
+  id: number;
+  executionKey: string;
+  squadId: number;
+  squadName?: string | null;
+  title: string;
+  status: string;
+  mode: string;
+  currentStepOrder: number;
+  requestedByUserId?: number | null;
+  requestedByUserName?: string | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+  createdDate: string;
+  updatedDate: string;
+};
+
+export async function fetchAdminCortexStats(token: string) {
+  return requestJson<AdminCortexStats[]>('/api/AdminOverview/cortex/stats', undefined, token);
+}
+
+export async function fetchAdminCronJobs(token: string) {
+  return requestJson<AdminCronJobRow[]>('/api/AdminOverview/cron/all', undefined, token);
+}
+
+export async function fetchAdminMissions(token: string) {
+  return requestJson<AdminMissionRow[]>('/api/AdminOverview/missions/all', undefined, token);
+}
+
+// ── v147 — Admin overview · Activity / Tasks / Chats / Health ───────
+
+export type AdminActivityEvent = {
+  id: string;
+  kind: string;
+  title: string;
+  subtitle?: string | null;
+  companyId?: number | null;
+  companyName?: string | null;
+  atUtc: string;
+};
+
+export type AdminTaskRow = {
+  companyId: number;
+  companyName: string;
+  id: number;
+  executionId: number;
+  executionTitle: string;
+  squadId?: number | null;
+  squadName?: string | null;
+  stepOrder: number;
+  stepKind: string;
+  title: string;
+  status: string;
+  agentId: number;
+  agentName?: string | null;
+  agentSlug?: string | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+  createdDate: string;
+  updatedDate: string;
+};
+
+export type AdminChatRow = {
+  companyId: number;
+  companyName: string;
+  id: number;
+  executionId: number;
+  executionTitle: string;
+  squadId?: number | null;
+  squadName?: string | null;
+  stepId?: number | null;
+  role: string;
+  authorType: string;
+  authorId?: number | null;
+  authorName?: string | null;
+  preview: string;
+  createdDate: string;
+};
+
+export type AdminHealthSubsystem = {
+  id: string;
+  name: string;
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'unknown' | string;
+  latencyMs?: number | null;
+  detail?: string | null;
+  lastCheckedUtc?: string | null;
+};
+
+export async function fetchAdminActivity(token: string, take = 50) {
+  return requestJson<AdminActivityEvent[]>(
+    `/api/AdminOverview/activity/recent?take=${take}`,
+    undefined,
+    token,
+  );
+}
+
+export async function fetchAdminTasks(token: string, take = 100) {
+  return requestJson<AdminTaskRow[]>(
+    `/api/AdminOverview/tasks/all?take=${take}`,
+    undefined,
+    token,
+  );
+}
+
+export async function fetchAdminChats(token: string, take = 80) {
+  return requestJson<AdminChatRow[]>(
+    `/api/AdminOverview/chats/recent?take=${take}`,
+    undefined,
+    token,
+  );
+}
+
+export async function fetchAdminHealth(token: string) {
+  return requestJson<AdminHealthSubsystem[]>(
+    '/api/AdminOverview/health/subsystems',
+    undefined,
+    token,
+  );
+}
+
 export type GatewaySettingsResponse = {
   configured: boolean;
   baseUrl: string;

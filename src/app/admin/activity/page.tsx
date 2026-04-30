@@ -1,175 +1,152 @@
 import {
   Bot,
-  CheckCircle2,
-  Edit3,
+  Building2,
   History,
-  Mail,
   Plus,
   ShieldCheck,
-  Trash2,
-  Users,
+  Target,
+  UserPlus,
 } from "lucide-react";
+import { fetchAdminActivity, type AdminActivityEvent } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
-import { PageHeader, Section, StatusPill } from "../_components/AdminUI";
+import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
+import {
+  AdminCellAvatar,
+  AdminCellTitle,
+  AdminMonoText,
+  AdminTable,
+} from "../_components/AdminTable";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v143 — Admin activity log.
+ * v147 — Admin · Activity log.
  *
- * The back doesn't expose a unified audit trail yet, so this page
- * renders a curated set of typical operations the admin would care
- * about (squad created, agent skills updated, tenant suspended,
- * etc.). When the real audit endpoint lands, this page just swaps
- * `MOCK_EVENTS` for the live feed — the layout stays.
+ * Wired to /api/AdminOverview/activity/recent. The back synthesizes
+ * a unified activity feed by reading recent rows from User,
+ * Company, Lead and SquadExecution and merging them by created
+ * date. No new schema — pure projection over what already exists.
  */
 
-type EventKind =
-  | "company.created"
-  | "company.suspended"
-  | "user.invited"
-  | "agent.created"
-  | "agent.updated"
-  | "agent.deleted"
-  | "billing.subscribed"
-  | "tenant.login";
-
-type ActivityEvent = {
-  id: string;
-  kind: EventKind;
-  actor: string;
-  target: string;
-  agoMinutes: number;
-  detail?: string;
-};
-
-const MOCK_EVENTS: ActivityEvent[] = [
-  { id: "e1", kind: "company.created",   actor: "lucas@ptx",        target: "Acme Roofing",        agoMinutes: 2,    detail: "Plan: Starter · 4 seats" },
-  { id: "e2", kind: "user.invited",      actor: "lucas@ptx",        target: "darley@acme.us",      agoMinutes: 4 },
-  { id: "e3", kind: "agent.updated",     actor: "darley@ptx",       target: "Lúcio · Sales rep",   agoMinutes: 11,   detail: "Tone profile reset" },
-  { id: "e4", kind: "billing.subscribed",actor: "system",           target: "Pinheiro Cleaning",   agoMinutes: 16,   detail: "Promoted Free → Pro" },
-  { id: "e5", kind: "agent.created",     actor: "lucas@ptx",        target: "Olga · Closer",       agoMinutes: 22 },
-  { id: "e6", kind: "tenant.login",      actor: "lucas@ptxgrowth",  target: "PTX Growth",          agoMinutes: 38 },
-  { id: "e7", kind: "company.suspended", actor: "lucas@ptx",        target: "Verde Beachhouse",    agoMinutes: 64,   detail: "Manual hold · pending payment" },
-  { id: "e8", kind: "agent.deleted",     actor: "darley@ptx",       target: "Yann · Analyst (v1)", agoMinutes: 92,   detail: "Replaced by v2 profile" },
-];
-
-const ICONS: Record<EventKind, React.ComponentType<{ className?: string }>> = {
-  "company.created":    Plus,
-  "company.suspended":  ShieldCheck,
-  "user.invited":       Mail,
-  "agent.created":      Bot,
-  "agent.updated":      Edit3,
-  "agent.deleted":      Trash2,
-  "billing.subscribed": CheckCircle2,
-  "tenant.login":       Users,
-};
-
-const ACCENT: Record<EventKind, string> = {
-  "company.created":    "#34d399",
-  "company.suspended":  "#fb7185",
-  "user.invited":       "#22d3ee",
-  "agent.created":      "#a78bfa",
-  "agent.updated":      "#22d3ee",
-  "agent.deleted":      "#fb7185",
-  "billing.subscribed": "#f59e0b",
-  "tenant.login":       "#a78bfa",
-};
-
-const STATUS_BY_KIND: Record<EventKind, "ok" | "warn" | "error" | "info"> = {
-  "company.created":    "ok",
-  "company.suspended":  "error",
-  "user.invited":       "info",
-  "agent.created":      "ok",
-  "agent.updated":      "info",
-  "agent.deleted":      "error",
-  "billing.subscribed": "ok",
-  "tenant.login":       "info",
-};
-
-function fmtAgo(min: number): string {
-  if (min < 1) return "just now";
-  if (min < 60) return `${min}m ago`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  return `${d}d ago`;
+function fmtAgo(iso: string): string {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `${Math.round(diff / 3600_000)}h ago`;
+  return `${Math.round(diff / 86400_000)}d ago`;
 }
 
-function fmtKind(k: EventKind): string {
-  return k.replace(".", " · ");
+type Pill = "ok" | "warn" | "info" | "error" | "idle";
+
+function kindPresentation(kind: string): {
+  emoji: string;
+  accent: string;
+  pill: Pill;
+  label: string;
+} {
+  const k = kind.toLowerCase();
+  if (k === "company.created") return { emoji: "🏢", accent: "#a78bfa", pill: "ok", label: "company.created" };
+  if (k.startsWith("user.admin.")) return { emoji: "🛡️", accent: "#fb7185", pill: "info", label: "admin.created" };
+  if (k.startsWith("user.")) return { emoji: "👤", accent: "#22d3ee", pill: "info", label: "user.created" };
+  if (k.startsWith("lead.")) return { emoji: "🎯", accent: "#f59e0b", pill: "info", label: "lead.created" };
+  if (k.includes("squad.execution")) {
+    if (k.endsWith(".running")) return { emoji: "🚀", accent: "#34d399", pill: "info", label: "execution.running" };
+    if (k.endsWith(".completed") || k.endsWith(".succeeded") || k.endsWith(".done"))
+      return { emoji: "✅", accent: "#34d399", pill: "ok", label: "execution.done" };
+    if (k.endsWith(".failed") || k.endsWith(".error"))
+      return { emoji: "⚠️", accent: "#fb7185", pill: "error", label: "execution.failed" };
+    return { emoji: "🛡️", accent: "#22d3ee", pill: "idle", label: "execution.created" };
+  }
+  return { emoji: "·", accent: "#94a3b8", pill: "idle", label: kind };
 }
 
 export default async function AdminActivityPage() {
-  await requireAdminSession();
+  return safeAdminPage("admin/activity", renderActivityPage);
+}
 
-  const totalToday = MOCK_EVENTS.filter((e) => e.agoMinutes < 24 * 60).length;
-  const totalCritical = MOCK_EVENTS.filter((e) => STATUS_BY_KIND[e.kind] === "error").length;
+async function renderActivityPage() {
+  const session = await requireAdminSession();
+  const events: AdminActivityEvent[] = await fetchAdminActivity(
+    session.token!,
+    50,
+  ).catch(() => []);
+
+  const counts = events.reduce(
+    (acc, e) => {
+      const k = e.kind.toLowerCase();
+      if (k === "company.created") acc.companies++;
+      else if (k.startsWith("user.")) acc.users++;
+      else if (k.startsWith("lead.")) acc.leads++;
+      else if (k.includes("squad.execution")) acc.executions++;
+      return acc;
+    },
+    { companies: 0, users: 0, leads: 0, executions: 0 },
+  );
 
   return (
     <div className="space-y-8">
       <PageHeader
-        eyebrow="Overview · Activity"
+        eyebrow="Overview"
         title="Activity log"
-        subtitle="Every meaningful change across tenants, agents, billing, and infrastructure — a single timeline."
-        right={
-          <div className="flex items-center gap-2">
-            <StatusPill status="info" label={`${totalToday} today`} />
-            <StatusPill status={totalCritical > 0 ? "error" : "ok"} label={totalCritical > 0 ? `${totalCritical} critical` : "all clear"} />
-          </div>
-        }
+        subtitle="Latest events across the whole platform — new tenants, sign-ups, leads dropped, squad runs. Synthesized live from the database."
       />
 
-      <Section title="Recent events" subtitle="Newest first" accent="cyan">
-        <ul className="divide-y divide-white/5">
-          {MOCK_EVENTS.map((event) => {
-            const Icon = ICONS[event.kind];
-            const accent = ACCENT[event.kind];
-            return (
-              <li key={event.id} className="px-5 py-3.5">
-                <div className="flex items-start gap-3">
-                  <span
-                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
-                    style={{
-                      background: `${accent}1f`,
-                      border: `1px solid ${accent}55`,
-                      color: accent,
-                    }}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                      <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/40">
-                        {fmtKind(event.kind)}
-                      </span>
-                      <span className="text-[10.5px] text-white/30">·</span>
-                      <span className="font-mono text-[10.5px] text-white/40">
-                        {fmtAgo(event.agoMinutes)}
-                      </span>
-                    </div>
-                    <div className="mt-1 text-[13.5px] text-white/85">
-                      <span className="text-white/55">{event.actor}</span>
-                      <span className="mx-2 text-white/25">→</span>
-                      <span className="font-medium">{event.target}</span>
-                    </div>
-                    {event.detail ? (
-                      <div className="mt-0.5 text-[12px] text-white/45">
-                        {event.detail}
-                      </div>
-                    ) : null}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="New tenants" value={counts.companies} icon={Plus} accent="violet" hint="recent" />
+        <StatCard label="New users" value={counts.users} icon={UserPlus} accent="cyan" hint="recent" />
+        <StatCard label="New leads" value={counts.leads} icon={Target} accent="amber" hint="recent" />
+        <StatCard label="Squad runs" value={counts.executions} icon={Bot} accent="emerald" hint="recent" />
+      </div>
+
+      <Section title={`Recent events · ${events.length}`} subtitle="newest first" accent="cyan">
+        <AdminTable
+          columns={[
+            { key: "kind", header: "Event", className: "w-44" },
+            { key: "title", header: "What happened" },
+            { key: "company", header: "Tenant" },
+            { key: "ago", header: "When", className: "w-28" },
+          ]}
+          rows={events.map((e) => {
+            const p = kindPresentation(e.kind);
+            return {
+              id: e.id,
+              cells: {
+                kind: (
+                  <div className="flex items-center gap-2.5">
+                    <AdminCellAvatar emoji={p.emoji} accent={p.accent} />
+                    <StatusPill status={p.pill} label={p.label} />
                   </div>
-                  <StatusPill
-                    status={STATUS_BY_KIND[event.kind]}
-                    label={STATUS_BY_KIND[event.kind] === "ok" ? "applied" : STATUS_BY_KIND[event.kind] === "error" ? "destructive" : STATUS_BY_KIND[event.kind] === "warn" ? "review" : "info"}
+                ),
+                title: (
+                  <AdminCellTitle
+                    primary={e.title}
+                    secondary={e.subtitle ?? undefined}
                   />
-                </div>
-              </li>
-            );
+                ),
+                company: e.companyName ? (
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
+                    <Building2 className="h-3.5 w-3.5 text-white/40" />
+                    {e.companyName}
+                  </div>
+                ) : (
+                  <span className="font-mono text-[11px] text-white/30">—</span>
+                ),
+                ago: (
+                  <AdminMonoText>{fmtAgo(e.atUtc)}</AdminMonoText>
+                ),
+              },
+            };
           })}
-        </ul>
+          emptyHint="No activity yet — once tenants/users/leads land, they'll appear here."
+        />
       </Section>
 
       <p className="text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/30">
-        <History className="mx-auto mb-1 inline h-3 w-3" /> activity log · feed driven by backend audit endpoint
+        <History className="mr-1 inline h-3 w-3" />
+        live · {events.length} event{events.length === 1 ? "" : "s"} ·{" "}
+        <ShieldCheck className="ml-1 inline h-3 w-3" />
+        admin-only feed
       </p>
     </div>
   );

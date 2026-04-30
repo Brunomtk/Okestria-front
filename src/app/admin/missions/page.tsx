@@ -1,13 +1,15 @@
 import {
   Bot,
+  Building2,
   CheckCircle2,
-  Clock,
   Pause,
   Play,
+  Sparkles,
   Target,
+  XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { fetchCompaniesPaged, fetchSquadsByCompany } from "@/lib/auth/api";
+import { fetchAdminMissions, type AdminMissionRow } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
 import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
 import {
@@ -16,74 +18,71 @@ import {
   AdminMonoText,
   AdminTable,
 } from "../_components/AdminTable";
+import { safeAdminPage } from "../_lib/safe-page";
 
 /**
- * v144 — Admin · Missions.
+ * v146 — Admin · Missions.
  *
- * "Missions" are squad executions running across tenants. The
- * back doesn't expose a unified `/admin/missions` endpoint yet,
- * so we aggregate squads per company + render a curated set of
- * representative running missions on top of the live squad list.
- * Designed to plug straight into a real cross-tenant mission feed
- * the moment one lands.
+ * "Missions" are squad executions running across tenants. Wired to
+ * /api/AdminOverview/missions/all — one flat array ordered by last
+ * updated, with every step's status and the requesting user.
  */
 
-type MissionMock = {
-  id: string;
-  company: string;
-  squad: string;
-  goal: string;
-  startedMinAgo: number;
-  agents: number;
-  progress: number;
-  status: "running" | "paused" | "done";
-};
+function fmtAgo(iso?: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diff = Date.now() - t;
+  if (diff < 60_000) return "just now";
+  if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
+  if (diff < 86400_000) return `${Math.round(diff / 3600_000)}h ago`;
+  return `${Math.round(diff / 86400_000)}d ago`;
+}
 
-const MISSIONS: MissionMock[] = [
-  { id: "m-001", company: "PTX Growth",       squad: "Outbound · SEA",      goal: "Generate 50 leads + 10-step sequence",     startedMinAgo: 12,  agents: 3, progress: 64, status: "running" },
-  { id: "m-002", company: "Aurora Spa",       squad: "Inbox triage",        goal: "Route 24h inbox & reply within 30min",     startedMinAgo: 4,   agents: 2, progress: 38, status: "running" },
-  { id: "m-003", company: "Pinheiro Cleaning",squad: "Closer follow-up",    goal: "Reach 11 quoted leads, schedule callbacks",startedMinAgo: 78,  agents: 4, progress: 92, status: "running" },
-  { id: "m-004", company: "Casa Verde",       squad: "Onboarding",          goal: "Stand up new account, push welcome kit",   startedMinAgo: 240, agents: 2, progress: 100, status: "done" },
-  { id: "m-005", company: "Jet Auto",         squad: "Market intel",        goal: "Weekly competitor digest",                  startedMinAgo: 32,  agents: 2, progress: 18, status: "paused" },
-];
-
-function fmtAgo(min: number): string {
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
+function statusToPill(s: string): {
+  status: "ok" | "warn" | "info" | "error" | "idle";
+  label: string;
+} {
+  const v = s.toLowerCase();
+  if (v === "running") return { status: "info", label: "running" };
+  if (v === "paused") return { status: "warn", label: "paused" };
+  if (v === "failed" || v === "error") return { status: "error", label: "failed" };
+  if (v === "completed" || v === "done" || v === "succeeded") return { status: "ok", label: "done" };
+  if (v === "draft") return { status: "idle", label: "draft" };
+  return { status: "idle", label: v || "unknown" };
 }
 
 export default async function AdminMissionsPage() {
+  return safeAdminPage("admin/missions", renderMissionsPage);
+}
+
+async function renderMissionsPage() {
   const session = await requireAdminSession();
+  const missions: AdminMissionRow[] = await fetchAdminMissions(
+    session.token!,
+  ).catch(() => []);
 
-  const companiesResp = await fetchCompaniesPaged(session.token!, {
-    pageNumber: 1,
-    pageSize: 50,
-  }).catch(() => null);
-  const companies = companiesResp?.result ?? [];
+  const running = missions.filter((m) => m.status.toLowerCase() === "running").length;
+  const paused = missions.filter((m) => m.status.toLowerCase() === "paused").length;
+  const done = missions.filter((m) =>
+    ["completed", "done", "succeeded"].includes(m.status.toLowerCase()),
+  ).length;
+  const failed = missions.filter((m) =>
+    ["failed", "error"].includes(m.status.toLowerCase()),
+  ).length;
 
-  const squadCounts = await Promise.all(
-    companies.map((c) =>
-      fetchSquadsByCompany(c.id, session.token!).catch(() => []).then((s) => ({
-        company: c.name ?? `Company #${c.id}`,
-        count: s.length,
-      })),
-    ),
-  );
-  const totalSquads = squadCounts.reduce((s, x) => s + x.count, 0);
-
-  const running = MISSIONS.filter((m) => m.status === "running").length;
-  const paused = MISSIONS.filter((m) => m.status === "paused").length;
-  const done = MISSIONS.filter((m) => m.status === "done").length;
+  // Squad load by tenant (count of executions per company).
+  const byCompany = new Map<string, number>();
+  for (const m of missions) {
+    byCompany.set(m.companyName, (byCompany.get(m.companyName) ?? 0) + 1);
+  }
 
   return (
     <div className="space-y-8">
       <PageHeader
         eyebrow="Operations · Leads & Missions"
         title="Missions"
-        subtitle="Squad executions running across all tenants. Each mission is a chained agent flow — lead scout → sales rep → closer → analyst, etc."
+        subtitle="Squad executions running across all tenants. Each mission is a chained agent flow — lead scout → sales rep → closer → analyst, etc. Live data."
         right={
           <Link
             href="/admin/leads"
@@ -95,102 +94,95 @@ export default async function AdminMissionsPage() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total squads" value={totalSquads} icon={Bot} accent="violet" hint="across tenants" />
-        <StatCard label="Running" value={running} icon={Play} accent="emerald" />
+        <StatCard label="Total missions" value={missions.length} icon={Sparkles} accent="emerald" hint={`${byCompany.size} tenants`} />
+        <StatCard label="Running" value={running} icon={Play} accent="cyan" />
         <StatCard label="Paused" value={paused} icon={Pause} accent="amber" />
-        <StatCard label="Completed" value={done} icon={CheckCircle2} accent="cyan" hint="last 24h" />
+        <StatCard label={failed > 0 ? "Failed" : "Completed"} value={failed > 0 ? failed : done} icon={failed > 0 ? XCircle : CheckCircle2} accent={failed > 0 ? "rose" : "violet"} hint={failed > 0 ? `${done} done` : "lifetime"} />
       </div>
 
-      <Section title="Active missions" subtitle="curated · awaiting unified endpoint" accent="emerald">
+      <Section title="All missions" subtitle="latest update first" accent="emerald">
         <AdminTable
           columns={[
             { key: "id", header: "#", className: "w-20" },
             { key: "mission", header: "Mission" },
-            { key: "agents", header: "Agents", className: "w-20" },
-            { key: "progress", header: "Progress", className: "w-48" },
+            { key: "company", header: "Tenant" },
+            { key: "step", header: "Step", className: "w-20" },
+            { key: "ago", header: "Updated", className: "w-28" },
             { key: "status", header: "Status", className: "w-32" },
           ]}
-          rows={MISSIONS.map((m) => ({
-            id: m.id,
-            cells: {
-              id: <AdminMonoText>{m.id}</AdminMonoText>,
-              mission: (
-                <div className="flex items-center gap-3">
-                  <AdminCellAvatar emoji="🎯" accent="#34d399" />
-                  <AdminCellTitle
-                    primary={m.goal}
-                    secondary={`${m.company} · ${m.squad} · ${fmtAgo(m.startedMinAgo)} ago`}
-                  />
-                </div>
-              ),
-              agents: (
-                <span className="inline-flex items-center gap-1 font-mono text-[12px] text-white/70">
-                  <Bot className="h-3 w-3 text-white/40" />
-                  {m.agents}
-                </span>
-              ),
-              progress: (
-                <div>
-                  <div className="relative h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                    <div
-                      className="absolute inset-y-0 left-0 rounded-full"
-                      style={{
-                        width: `${m.progress}%`,
-                        background:
-                          "linear-gradient(90deg, #22d3ee 0%, #a78bfa 60%, #f59e0b 100%)",
-                        boxShadow: "0 0 8px rgba(167,139,250,0.5)",
-                      }}
+          rows={missions.map((m) => {
+            const pill = statusToPill(m.status);
+            return {
+              id: `${m.companyId}-${m.id}`,
+              cells: {
+                id: <AdminMonoText>#{m.id}</AdminMonoText>,
+                mission: (
+                  <div className="flex items-center gap-3">
+                    <AdminCellAvatar emoji="🎯" accent="#34d399" />
+                    <AdminCellTitle
+                      primary={m.title || `Mission #${m.id}`}
+                      secondary={`${m.squadName ?? `Squad #${m.squadId}`} · ${m.mode} · started ${fmtAgo(m.startedAtUtc ?? m.createdDate)}`}
                     />
                   </div>
-                  <div className="mt-1 font-mono text-[10px] text-white/40">
-                    {m.progress}%
+                ),
+                company: (
+                  <div className="flex items-center gap-1.5 text-[12.5px] text-white/70">
+                    <Building2 className="h-3.5 w-3.5 text-white/40" />
+                    {m.companyName}
                   </div>
-                </div>
-              ),
-              status: (
-                <StatusPill
-                  status={m.status === "running" ? "info" : m.status === "paused" ? "warn" : "ok"}
-                  label={m.status}
-                />
-              ),
-            },
-          }))}
-          emptyHint="No missions running right now."
+                ),
+                step: (
+                  <span className="font-mono text-[11px] text-white/65">
+                    #{m.currentStepOrder}
+                  </span>
+                ),
+                ago: (
+                  <span className="font-mono text-[11px] text-white/55">
+                    {fmtAgo(m.updatedDate)}
+                  </span>
+                ),
+                status: <StatusPill status={pill.status} label={pill.label} />,
+              },
+            };
+          })}
+          emptyHint="No squad executions across any tenant yet."
         />
       </Section>
 
-      <Section title="Squad load by tenant" subtitle="live count" accent="violet">
+      <Section title="Mission load by tenant" subtitle="live count" accent="violet">
         <AdminTable
           columns={[
             { key: "company", header: "Tenant" },
-            { key: "count", header: "Squads", className: "text-right" },
+            { key: "count", header: "Missions", className: "text-right" },
           ]}
-          rows={squadCounts
-            .sort((a, b) => b.count - a.count)
+          rows={[...byCompany.entries()]
+            .sort((a, b) => b[1] - a[1])
             .slice(0, 10)
-            .map((row, idx) => ({
+            .map(([company, count], idx) => ({
               id: idx,
               cells: {
                 company: (
                   <div className="flex items-center gap-2.5">
                     <AdminCellAvatar emoji="🏢" accent="#a78bfa" />
-                    <span className="text-[13px] font-medium text-white/85">{row.company}</span>
+                    <span className="text-[13px] font-medium text-white/85">
+                      {company}
+                    </span>
                   </div>
                 ),
                 count: (
                   <span className="font-mono text-[13px] font-semibold text-white/90">
-                    {row.count}
+                    {count}
                   </span>
                 ),
               },
             }))}
-          emptyHint="No squads provisioned yet."
+          emptyHint="No missions executed anywhere yet."
         />
       </Section>
 
       <p className="text-center font-mono text-[10.5px] uppercase tracking-[0.22em] text-white/30">
-        <Clock className="mr-1 inline h-3 w-3" />
-        squad runtime endpoint coming · this view auto-upgrades when it lands
+        <Bot className="mr-1 inline h-3 w-3" />
+        live · {missions.length} mission{missions.length === 1 ? "" : "s"}
       </p>
     </div>
   );
