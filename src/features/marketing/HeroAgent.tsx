@@ -283,10 +283,14 @@ export function HeroAgent({
       ) : null}
 
       <Canvas
-        camera={{ position: [0, 0.4, 4.6], fov: 28 }}
+        // v142 hotfix — pulled the camera much closer + widened fov so
+        // the figure actually FILLS the hero canvas instead of looking
+        // tiny in a void of dark gradient. Was [0, 0.4, 4.6] @ fov 28
+        // which made the agent ~30% of the frame at best.
+        camera={{ position: [0, 0.5, 3.4], fov: 36 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.05, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.15, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Lighting matches the office scene defaults so the agent

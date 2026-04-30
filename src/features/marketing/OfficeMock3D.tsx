@@ -246,10 +246,14 @@ function WalkingAgent({
     const posX = a.x + (b.x - a.x) * progress;
     const posZ = a.z + (b.z - a.z) * progress;
 
-    // Walking bob — only while moving.
+    // Walking bob — only while moving. The +0.78 offset compensates
+    // for OfficeFigure's internal `position={[0, -0.78, 0]}` so the
+    // figure's FEET land on FLOOR_Y instead of 0.78 units below it
+    // (the bug in v142.0 where agents showed only torso+head because
+    // their lower bodies were sunk into the floor mesh).
     const cadence = t * 6;
     const bob = isWalking ? Math.abs(Math.sin(cadence)) * 0.05 : Math.sin(t * 0.8) * 0.005;
-    group.position.set(posX, FLOOR_Y + bob, posZ);
+    group.position.set(posX, FLOOR_Y + 0.78 + bob, posZ);
 
     // Heading — face direction of travel.
     if (isWalking) {
@@ -277,7 +281,7 @@ function WalkingAgent({
       }
     }
 
-    onPosUpdate(seed, { x: posX, y: FLOOR_Y + bob + 1.3, z: posZ });
+    onPosUpdate(seed, { x: posX, y: FLOOR_Y + 0.78 + bob + 1.6, z: posZ });
   });
 
   return (
@@ -543,11 +547,15 @@ export function OfficeMock3D({ className = "" }: { className?: string }) {
 
       <Canvas
         shadows
-        camera={{ position: [0, 5.5, 11], fov: 38 }}
+        // v142 hotfix — pulled the camera in + lowered the angle so
+        // the agents fill more of the canvas and the back wall stays
+        // properly proportioned. Was [0, 5.5, 11] @ fov 38 which made
+        // the floor look enormous and squished everything else.
+        camera={{ position: [0, 4.2, 9.5], fov: 34 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
         onCreated={({ camera }) => {
-          camera.lookAt(0, 0.6, 0);
+          camera.lookAt(0, 1.1, 0);
           cameraRef.current = camera as THREE.PerspectiveCamera;
         }}
         style={{ width: "100%", height: "100%" }}

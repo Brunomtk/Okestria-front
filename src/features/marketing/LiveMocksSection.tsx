@@ -376,10 +376,10 @@ function Plant({ x, y }: { x: number; y: number }) {
 
 type ChatMsg = { id: string; from: "user" | "agent"; text: string; full?: string };
 const CHAT_SCRIPT: ChatMsg[] = [
-  { id: "u1", from: "user",  text: "Lúcio, quem fechou hoje? Resumo curto." },
-  { id: "a1", from: "agent", text: "", full: "Hoje tivemos 3 fechamentos: Pinheiro Cleaning ($2.4k MRR), Aurora Spa ($890), e Jet Auto ($1.8k). Pinheiro indicou outro lead — Casa Verde — que já te coloquei na sua caixa." },
-  { id: "u2", from: "user",  text: "Top. Manda o follow-up pra Casa Verde." },
-  { id: "a2", from: "agent", text: "", full: "Feito. Sequence iniciado — primeira mensagem dispara em 12 min." },
+  { id: "u1", from: "user",  text: "Lucio, who closed today? Quick summary." },
+  { id: "a1", from: "agent", text: "", full: "We closed 3 today: Pinheiro Cleaning ($2.4k MRR), Aurora Spa ($890), and Jet Auto ($1.8k). Pinheiro referred another lead — Casa Verde — already in your inbox." },
+  { id: "u2", from: "user",  text: "Nice. Kick off the follow-up sequence for Casa Verde." },
+  { id: "a2", from: "agent", text: "", full: "Done. Sequence started — first message fires in 12 min." },
 ];
 
 function ChatMock() {
