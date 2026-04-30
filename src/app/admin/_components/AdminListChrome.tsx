@@ -8,7 +8,7 @@
 
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { buildPageHref, type AdminSearchParams } from "../_lib/admin";
+import { buildPageHref, type AdminSearchParams } from "../_lib/list-utils";
 
 export function SearchBar({
   query,
