@@ -1,376 +1,213 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
+/**
+ * v139 — Orkestria full-screen loader.
+ *
+ * Built around the new Cortex Cluster mark: the satellite ring
+ * rotates slowly, the core breathes, and a soft particle drift in
+ * the background gives the page a sense of "the system is thinking".
+ * The wordmark sits below the mark with a gradient that matches the
+ * rest of the brand surfaces.
+ *
+ * The progress bar is opt-out (`showProgress={false}`) for cases
+ * where the parent already drives the perceived work (e.g. waiting
+ * on a single API call we know is fast).
+ */
 
-const loadingMessages = [
-  'Initializing workspace...',
-  'Connecting to agents...',
-  'Loading your squads...',
-  'Preparing dashboard...',
-  'Almost there...',
+import { useEffect, useState } from "react";
+import { OrkestriaMark } from "@/components/OrkestriaMark";
+
+const DEFAULT_MESSAGES = [
+  "Initializing workspace…",
+  "Wiring up agents…",
+  "Loading your squads…",
+  "Syncing the cortex…",
+  "Almost there…",
 ];
 
 interface OrkestriaLoaderProps {
   message?: string;
+  messages?: string[];
   showProgress?: boolean;
 }
 
-export function OrkestriaLoader({ message, showProgress = true }: OrkestriaLoaderProps) {
-  const [currentMessage, setCurrentMessage] = useState(0);
+export function OrkestriaLoader({
+  message,
+  messages,
+  showProgress = true,
+}: OrkestriaLoaderProps) {
+  const cycleMessages = messages ?? DEFAULT_MESSAGES;
+  const [currentIdx, setCurrentIdx] = useState(0);
   const [progress, setProgress] = useState(0);
 
+  // Cycle through messages every 2.5s.
   useEffect(() => {
-    const messageInterval = setInterval(() => {
-      setCurrentMessage((prev) => (prev + 1) % loadingMessages.length);
+    if (message) return; // explicit message wins
+    const interval = setInterval(() => {
+      setCurrentIdx((prev) => (prev + 1) % cycleMessages.length);
     }, 2500);
+    return () => clearInterval(interval);
+  }, [cycleMessages.length, message]);
 
-    return () => clearInterval(messageInterval);
-  }, []);
-
+  // Animated progress that crawls toward 90% (never claims to finish).
   useEffect(() => {
     if (!showProgress) return;
-    
-    const progressInterval = setInterval(() => {
+    const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 90) return prev;
-        return prev + Math.random() * 10;
+        return Math.min(90, prev + Math.random() * 10);
       });
     }, 500);
-
-    return () => clearInterval(progressInterval);
+    return () => clearInterval(interval);
   }, [showProgress]);
 
+  const visibleMessage = message ?? cycleMessages[currentIdx];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#030810] overflow-hidden">
-      {/* Animated background gradients */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-to-r from-violet-500/20 via-fuchsia-500/20 to-orange-500/20 rounded-full blur-[120px] animate-pulse-slow" />
-        <div className="absolute top-1/4 left-1/4 w-[400px] h-[400px] bg-violet-600/10 rounded-full blur-[80px] animate-float-slow" />
-        <div className="absolute bottom-1/4 right-1/4 w-[300px] h-[300px] bg-orange-500/10 rounded-full blur-[60px] animate-float-slow-reverse" />
+    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[#06080f]">
+      {/* Cosmic background gradient — same family as Cortex modal. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.95) 45%, #06080f 100%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at 80% 75%, rgba(34,211,238,0.07), transparent 50%)," +
+            "radial-gradient(circle at 18% 78%, rgba(245,158,11,0.05), transparent 45%)",
+        }}
+      />
+
+      {/* Subtle drifting particles — pure CSS, ~24 elements, GPU-cheap. */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+        {Array.from({ length: 24 }).map((_, i) => {
+          const left = (i * 41) % 100;
+          const top = (i * 73) % 100;
+          const dur = 6 + (i % 5);
+          const delay = (i % 7) * 0.5;
+          return (
+            <div
+              key={i}
+              className="ork-particle"
+              style={{
+                left: `${left}%`,
+                top: `${top}%`,
+                animationDuration: `${dur}s`,
+                animationDelay: `${delay}s`,
+              }}
+            />
+          );
+        })}
       </div>
 
-      {/* Particle effects */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(20)].map((_, i) => (
+      <div className="relative z-10 flex flex-col items-center px-6">
+        {/* The mark, animated (rotating ring + breathing core). */}
+        <div className="relative mb-8">
+          {/* Ambient halo behind the mark. */}
           <div
-            key={i}
-            className="absolute w-1 h-1 bg-white/30 rounded-full animate-particle"
+            aria-hidden
+            className="absolute inset-0 -m-12 rounded-full"
             style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 5}s`,
-              animationDuration: `${3 + Math.random() * 4}s`,
+              background:
+                "radial-gradient(circle at center, rgba(167,139,250,0.18) 0%, rgba(167,139,250,0) 60%)",
             }}
           />
-        ))}
-      </div>
-
-      {/* Main content */}
-      <div className="relative z-10 flex flex-col items-center">
-        {/* Logo animation container */}
-        <div className="relative w-40 h-40 mb-8">
-          {/* Outer glow ring */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-r from-violet-500/30 via-fuchsia-500/30 to-violet-500/30 blur-xl animate-pulse-glow" />
-          
-          {/* Rotating outer ring */}
-          <div className="absolute inset-2 rounded-full border-2 border-violet-500/20 animate-spin-slow" />
-          <div className="absolute inset-4 rounded-full border border-fuchsia-500/10 animate-spin-reverse" />
-          
-          {/* Main logo SVG animation */}
-          <svg
-            viewBox="0 0 200 200"
-            className="absolute inset-0 w-full h-full"
-          >
-            {/* Definitions for gradients */}
-            <defs>
-              {/* Purple gradient for the C shape */}
-              <linearGradient id="purpleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#8B5CF6" />
-                <stop offset="50%" stopColor="#A855F7" />
-                <stop offset="100%" stopColor="#D946EF" />
-              </linearGradient>
-              
-              {/* Orange gradient for the dot */}
-              <linearGradient id="orangeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#F97316" />
-                <stop offset="100%" stopColor="#FBBF24" />
-              </linearGradient>
-
-              {/* Glow filter */}
-              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-
-              {/* Stronger glow for orange dot */}
-              <filter id="orangeGlow" x="-100%" y="-100%" width="300%" height="300%">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur" />
-                <feMerge>
-                  <feMergeNode in="coloredBlur" />
-                  <feMergeNode in="SourceGraphic" />
-                </feMerge>
-              </filter>
-            </defs>
-
-            {/* The C-shaped arc - animated stroke */}
-            <g className="animate-logo-draw">
-              <path
-                d="M 140 100
-                   A 50 50 0 1 0 100 50"
-                fill="none"
-                stroke="url(#purpleGradient)"
-                strokeWidth="20"
-                strokeLinecap="round"
-                filter="url(#glow)"
-                className="animate-stroke-dash"
-              />
-            </g>
-
-            {/* Inner arc for depth */}
-            <path
-              d="M 130 100
-                 A 40 40 0 1 0 100 60"
-              fill="none"
-              stroke="rgba(139, 92, 246, 0.3)"
-              strokeWidth="8"
-              strokeLinecap="round"
-              className="animate-pulse-subtle"
-            />
-
-            {/* The orange dot - with orbit animation */}
-            <g className="animate-orbit">
-              <circle
-                cx="130"
-                cy="60"
-                r="18"
-                fill="url(#orangeGradient)"
-                filter="url(#orangeGlow)"
-                className="animate-pulse-dot"
-              />
-              {/* Inner highlight on dot */}
-              <circle
-                cx="125"
-                cy="55"
-                r="5"
-                fill="rgba(255, 255, 255, 0.4)"
-              />
-            </g>
-
-            {/* Orbiting particles around the logo */}
-            <g className="animate-spin-slow">
-              <circle cx="100" cy="30" r="2" fill="#8B5CF6" opacity="0.6" />
-              <circle cx="170" cy="100" r="1.5" fill="#D946EF" opacity="0.5" />
-              <circle cx="100" cy="170" r="2" fill="#F97316" opacity="0.4" />
-              <circle cx="30" cy="100" r="1.5" fill="#A855F7" opacity="0.5" />
-            </g>
-          </svg>
-
-          {/* Pulsing ring effect */}
-          <div className="absolute inset-0 rounded-full border border-violet-500/30 animate-ping-slow" />
+          <OrkestriaMark size={160} animated ariaLabel="Orkestria" />
         </div>
 
-        {/* Brand name */}
-        <h1 className="text-3xl font-bold mb-4 bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-400 bg-clip-text text-transparent animate-gradient-x">
-          Orkestria
-        </h1>
+        {/* Wordmark — gradient, tracking-tight. */}
+        <div className="mb-3 inline-flex items-end gap-1.5">
+          <span
+            className="bg-clip-text text-[28px] font-semibold tracking-tight text-transparent"
+            style={{
+              backgroundImage: "linear-gradient(135deg, #22d3ee 0%, #a78bfa 100%)",
+            }}
+          >
+            Orkestria
+          </span>
+        </div>
 
-        {/* Loading message */}
-        <p className="text-white/60 text-sm mb-6 h-5 transition-all duration-500">
-          {message || loadingMessages[currentMessage]}
-        </p>
+        {/* Status message — fades on change. */}
+        <div className="mb-7 h-5 max-w-md text-center">
+          <p
+            key={visibleMessage}
+            className="ork-fade text-[13px] text-white/55"
+          >
+            {visibleMessage}
+          </p>
+        </div>
 
-        {/* Progress bar */}
-        {showProgress && (
-          <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
+        {/* Progress bar — gradient sweep (when shown). */}
+        {showProgress ? (
+          <div className="relative h-[3px] w-56 overflow-hidden rounded-full bg-white/[0.06]">
             <div
-              className="h-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-500 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${progress}%` }}
+              className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-300 ease-out"
+              style={{
+                width: `${progress}%`,
+                background:
+                  "linear-gradient(90deg, #22d3ee 0%, #a78bfa 60%, #f59e0b 100%)",
+                boxShadow:
+                  "0 0 12px rgba(167,139,250,0.45), 0 0 24px rgba(34,211,238,0.25)",
+              }}
+            />
+          </div>
+        ) : (
+          // Indeterminate sweep when progress is hidden.
+          <div className="relative h-[3px] w-56 overflow-hidden rounded-full bg-white/[0.06]">
+            <div
+              className="ork-sweep absolute inset-y-0 w-1/3 rounded-full"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent 0%, #22d3ee 30%, #a78bfa 70%, transparent 100%)",
+              }}
             />
           </div>
         )}
 
-        {/* Loading dots */}
-        <div className="flex gap-2 mt-6">
-          {[0, 1, 2].map((i) => (
-            <div
-              key={i}
-              className="w-2 h-2 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 animate-bounce"
-              style={{ animationDelay: `${i * 0.15}s` }}
-            />
-          ))}
-        </div>
+        {/* Subtle eyebrow under the bar to anchor the brand. */}
+        <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.28em] text-white/30">
+          Orchestrate · Squads · Cortex
+        </p>
       </div>
 
-      {/* CSS Animations */}
       <style jsx>{`
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 0.5; transform: scale(1); }
-          50% { opacity: 0.8; transform: scale(1.05); }
+        @keyframes ork-particle-drift {
+          0%   { transform: translate3d(0, 0, 0); opacity: 0; }
+          25%  { opacity: 0.55; }
+          50%  { transform: translate3d(20px, -16px, 0); opacity: 0.4; }
+          75%  { opacity: 0.55; }
+          100% { transform: translate3d(0, 0, 0); opacity: 0; }
         }
-        
-        @keyframes float-slow {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          50% { transform: translateY(-20px) translateX(10px); }
+        .ork-particle {
+          position: absolute;
+          width: 2px;
+          height: 2px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.45);
+          box-shadow: 0 0 6px rgba(167, 139, 250, 0.45);
+          animation: ork-particle-drift linear infinite;
         }
-        
-        @keyframes float-slow-reverse {
-          0%, 100% { transform: translateY(0) translateX(0); }
-          50% { transform: translateY(20px) translateX(-10px); }
+        @keyframes ork-fade-in {
+          from { opacity: 0; transform: translateY(2px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
+        .ork-fade {
+          animation: ork-fade-in 0.45s ease-out;
         }
-        
-        @keyframes spin-reverse {
-          from { transform: rotate(360deg); }
-          to { transform: rotate(0deg); }
+        @keyframes ork-sweep {
+          0%   { transform: translateX(-120%); }
+          100% { transform: translateX(360%); }
         }
-        
-        @keyframes ping-slow {
-          0% { transform: scale(1); opacity: 0.5; }
-          75%, 100% { transform: scale(1.3); opacity: 0; }
-        }
-        
-        @keyframes orbit {
-          0% { transform: rotate(0deg) translateX(0); }
-          25% { transform: rotate(5deg) translateX(2px); }
-          50% { transform: rotate(0deg) translateX(0); }
-          75% { transform: rotate(-5deg) translateX(-2px); }
-          100% { transform: rotate(0deg) translateX(0); }
-        }
-        
-        @keyframes pulse-dot {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.1); }
-        }
-        
-        @keyframes pulse-subtle {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.6; }
-        }
-        
-        @keyframes stroke-dash {
-          0% { stroke-dasharray: 0 1000; }
-          100% { stroke-dasharray: 1000 0; }
-        }
-        
-        @keyframes gradient-x {
-          0%, 100% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-        }
-        
-        @keyframes particle {
-          0% { transform: translateY(0) scale(1); opacity: 0; }
-          10% { opacity: 1; }
-          90% { opacity: 1; }
-          100% { transform: translateY(-100vh) scale(0); opacity: 0; }
-        }
-        
-        .animate-pulse-slow {
-          animation: pulse-slow 4s ease-in-out infinite;
-        }
-        
-        .animate-float-slow {
-          animation: float-slow 6s ease-in-out infinite;
-        }
-        
-        .animate-float-slow-reverse {
-          animation: float-slow-reverse 7s ease-in-out infinite;
-        }
-        
-        .animate-spin-slow {
-          animation: spin-slow 20s linear infinite;
-        }
-        
-        .animate-spin-reverse {
-          animation: spin-reverse 15s linear infinite;
-        }
-        
-        .animate-ping-slow {
-          animation: ping-slow 2s cubic-bezier(0, 0, 0.2, 1) infinite;
-        }
-        
-        .animate-orbit {
-          animation: orbit 3s ease-in-out infinite;
-        }
-        
-        .animate-pulse-dot {
-          animation: pulse-dot 2s ease-in-out infinite;
-        }
-        
-        .animate-pulse-subtle {
-          animation: pulse-subtle 2s ease-in-out infinite;
-        }
-        
-        .animate-stroke-dash {
-          stroke-dasharray: 1000;
-          stroke-dashoffset: 1000;
-          animation: stroke-dash 2s ease-out forwards;
-        }
-        
-        .animate-gradient-x {
-          background-size: 200% 200%;
-          animation: gradient-x 3s ease infinite;
-        }
-        
-        .animate-particle {
-          animation: particle 5s ease-in-out infinite;
-        }
-        
-        .animate-pulse-glow {
-          animation: pulse-slow 3s ease-in-out infinite;
+        .ork-sweep {
+          animation: ork-sweep 1.6s ease-in-out infinite;
         }
       `}</style>
     </div>
   );
 }
-
-// Simpler inline loader for smaller spaces
-export function OrkestriaLoaderInline({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
-  const sizeClasses = {
-    sm: 'w-8 h-8',
-    md: 'w-12 h-12',
-    lg: 'w-16 h-16',
-  };
-
-  return (
-    <div className={`relative ${sizeClasses[size]}`}>
-      <svg viewBox="0 0 200 200" className="w-full h-full animate-spin-slow">
-        <defs>
-          <linearGradient id="inlinePurple" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#8B5CF6" />
-            <stop offset="100%" stopColor="#D946EF" />
-          </linearGradient>
-          <linearGradient id="inlineOrange" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#F97316" />
-            <stop offset="100%" stopColor="#FBBF24" />
-          </linearGradient>
-        </defs>
-        <path
-          d="M 140 100 A 50 50 0 1 0 100 50"
-          fill="none"
-          stroke="url(#inlinePurple)"
-          strokeWidth="20"
-          strokeLinecap="round"
-        />
-        <circle cx="130" cy="60" r="18" fill="url(#inlineOrange)" />
-      </svg>
-      <style jsx>{`
-        @keyframes spin-slow {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .animate-spin-slow {
-          animation: spin-slow 2s linear infinite;
-        }
-      `}</style>
-    </div>
-  );
-}
-
-export default OrkestriaLoader;

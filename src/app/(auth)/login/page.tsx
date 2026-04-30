@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { authenticateUser } from "@/lib/auth/api";
 import { persistAuthSession } from "@/lib/auth/session-client";
+import { OrkestriaMark } from "@/components/OrkestriaMark";
 
 // -------------------------------------------------------------------------
 // Ambient background — soft particles + connecting lines. Cheap enough to
@@ -337,19 +338,13 @@ function LoginPageInner() {
       {/* -------------------------- LEFT PANEL -------------------------- */}
       <aside className="relative hidden w-1/2 flex-col justify-between p-10 lg:flex xl:p-14 2xl:p-16">
         <div className="relative z-10 flex flex-col gap-10">
-          {/* Logo */}
+          {/* Logo — v139 Cortex Cluster mark + gradient wordmark. */}
           <Link href="/home" className="group inline-flex items-center gap-3 self-start">
             <div className="relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/30 to-violet-500/30 opacity-0 blur-md transition-opacity group-hover:opacity-100" />
-              <Image
-                src="/images/logo.png"
-                alt="Orkestria"
-                width={40}
-                height={40}
-                className="relative h-10 w-10 transition-transform group-hover:scale-105"
-              />
+              <OrkestriaMark size={40} className="relative transition-transform group-hover:scale-105" />
             </div>
-            <span className="text-xl font-semibold bg-gradient-to-r from-white via-violet-200 to-pink-200 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-xl font-semibold text-transparent">
               Orkestria
             </span>
           </Link>
@@ -406,13 +401,7 @@ function LoginPageInner() {
         {/* Mobile logo */}
         <div className="mb-10 lg:hidden">
           <Link href="/home" className="inline-flex items-center gap-3">
-            <Image
-              src="/images/logo.png"
-              alt="Orkestria"
-              width={34}
-              height={34}
-              className="h-8 w-8"
-            />
+            <OrkestriaMark size={34} />
             <span className="font-semibold text-white">Orkestria</span>
           </Link>
         </div>

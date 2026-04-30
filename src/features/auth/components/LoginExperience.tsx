@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { OrkestriaMark } from '@/components/OrkestriaMark';
 import {
   ArrowLeft,
   ArrowRight,
@@ -84,12 +85,9 @@ export function LoginExperience() {
         {/* Logo */}
         <div className="relative z-10 mb-auto">
           <Link href="/home" className="flex items-center gap-3 group">
-            <Image
-              src="/images/logo.png"
-              alt="Orkestria"
-              width={40}
-              height={40}
-              className="h-10 w-10 transition-transform group-hover:scale-110"
+            <OrkestriaMark
+              size={40}
+              className="transition-transform group-hover:scale-110"
             />
             <span className="text-xl font-semibold bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">
               Orkestria
@@ -140,13 +138,7 @@ export function LoginExperience() {
         {/* Mobile logo */}
         <div className="mb-8 lg:hidden">
           <Link href="/home" className="flex items-center gap-3">
-            <Image
-              src="/images/logo.png"
-              alt="Orkestria"
-              width={32}
-              height={32}
-              className="h-8 w-8"
-            />
+            <OrkestriaMark size={32} />
             <span className="font-semibold text-white">Orkestria</span>
           </Link>
         </div>

@@ -20,6 +20,8 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
+import { OrkestriaMark } from "@/components/OrkestriaMark";
+import { LiveMocksSection } from "@/features/marketing/LiveMocksSection";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animated particles background
@@ -1082,13 +1084,7 @@ export default function LandingPage() {
           <nav className="mx-auto max-w-7xl px-6 flex items-center justify-between">
             <Link href="/home" className="flex items-center gap-4 group">
               <div className="relative">
-                <Image
-                  src="/images/logo.png"
-                  alt="Orkestria"
-                  width={56}
-                  height={56}
-                  className="h-14 w-14 transition-transform group-hover:scale-110"
-                />
+                <OrkestriaMark size={56} className="transition-transform group-hover:scale-110" />
                 <div className="absolute inset-0 bg-violet-500/40 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity" />
               </div>
               <span className="text-2xl font-bold bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent">
@@ -1230,6 +1226,9 @@ export default function LandingPage() {
 
         {/* Live agents in action — THE new showcase */}
         <AgentsInActionSection />
+
+        {/* v139 — Live mocks: chat / cron / cortex / squads + office strip */}
+        <LiveMocksSection />
 
         {/* Features Section */}
         <section id="features" className="py-24 px-6">
@@ -1442,13 +1441,7 @@ export default function LandingPage() {
         <footer className="border-t border-white/5 py-12 px-6">
           <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6">
             <Link href="/home" className="flex items-center gap-3">
-              <Image
-                src="/images/logo.png"
-                alt="Orkestria"
-                width={32}
-                height={32}
-                className="h-8 w-8"
-              />
+              <OrkestriaMark size={32} />
               <span className="font-semibold text-white/80">Orkestria</span>
             </Link>
             <div className="flex items-center gap-6 text-sm text-white/40">

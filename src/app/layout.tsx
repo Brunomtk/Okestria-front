@@ -4,11 +4,16 @@ import AuthKeepAlive from "@/lib/auth/AuthKeepAlive";
 
 export const metadata: Metadata = {
   title: "Orkestria",
-  description: "Orkestria workspace - Orchestrate work with intelligent squads.",
+  description: "Orkestria workspace — orchestrate work with intelligent agent squads.",
   icons: {
-    icon: "/images/logo.png",
-    shortcut: "/images/logo.png",
-    apple: "/images/logo.png",
+    // v139 — new Cortex Cluster mark in SVG so the favicon stays
+    // crisp at every density (especially on retina + dark mode).
+    icon: [
+      { url: "/images/orkestria-mark.svg", type: "image/svg+xml" },
+      { url: "/images/orkestria-mark.svg", sizes: "any" },
+    ],
+    shortcut: "/images/orkestria-mark.svg",
+    apple: "/images/orkestria-mark.svg",
   },
 };
 

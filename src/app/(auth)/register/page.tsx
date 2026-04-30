@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { OrkestriaMark } from "@/components/OrkestriaMark";
 import {
   ArrowRight,
   Building2,
@@ -108,17 +109,11 @@ export default function RegisterPage() {
 
       {/* Left Panel - Form */}
       <div className="relative flex w-full flex-col justify-center px-6 py-12 lg:w-1/2 lg:px-16 xl:px-24">
-        {/* Logo */}
+        {/* Logo — v139 mark + gradient wordmark. */}
         <div className="mb-8">
           <Link href="/home" className="flex items-center gap-3 group">
-            <Image
-              src="/images/logo.png"
-              alt="Orkestria"
-              width={40}
-              height={40}
-              className="h-10 w-10 transition-transform group-hover:scale-110"
-            />
-            <span className="text-xl font-semibold bg-gradient-to-r from-violet-400 to-pink-400 bg-clip-text text-transparent">
+            <OrkestriaMark size={40} className="transition-transform group-hover:scale-110" />
+            <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-violet-400 bg-clip-text text-xl font-semibold text-transparent">
               Orkestria
             </span>
           </Link>

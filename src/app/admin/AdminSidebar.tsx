@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { OrkestriaMark } from "@/components/OrkestriaMark";
 import {
   Building2,
   Users,
@@ -51,9 +52,9 @@ export function AdminSidebar({ fullName, email }: { fullName?: string; email?: s
   return (
     <aside className="fixed left-0 top-0 z-40 flex h-screen w-[280px] flex-col border-r border-border bg-sidebar">
       <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-        <Image src="/images/okestria-logo.png" alt="Okestria" width={36} height={36} className="rounded-lg" />
+        <OrkestriaMark size={36} />
         <div className="flex flex-col">
-          <span className="text-sm font-semibold text-foreground">Okestria</span>
+          <span className="text-sm font-semibold text-foreground">Orkestria</span>
           <span className="text-[10px] uppercase tracking-widest text-muted-foreground">Admin Panel</span>
         </div>
       </div>
