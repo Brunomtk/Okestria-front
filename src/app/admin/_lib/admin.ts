@@ -1,5 +1,7 @@
-import 'server-only';
-
+// NOTE: this module pulls in `next/headers` via getBackendSession,
+// so it MUST stay server-only. If you need any of the helpers below
+// from a client component, import them from `./list-utils` instead
+// (those are the bits that don't touch headers / fetch-with-cookies).
 import { redirect } from 'next/navigation';
 import { getBackendSession } from '@/lib/auth/session';
 import {
