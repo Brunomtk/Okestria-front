@@ -17,6 +17,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   ArrowRight,
   Bot,
@@ -30,6 +31,22 @@ import {
   Timer,
   Users2,
 } from "lucide-react";
+
+// v142 — Real 3D office mock, dynamic-imported so Three.js stays out
+// of the SSR bundle. The component uses the same `OfficeFigure` rig
+// the operator sees inside the workspace, so the landing-page preview
+// is no longer a fake — it's the actual product surface.
+const OfficeMock3D = dynamic(
+  () => import("./OfficeMock3D").then((m) => m.OfficeMock3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-[460px] items-center justify-center text-[12px] text-white/45">
+        <span className="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-violet-300" />
+      </div>
+    ),
+  },
+);
 
 const PALETTE = {
   cyan: "#22d3ee",
@@ -911,6 +928,60 @@ function FeatureBlock({
 // Section root
 // ═════════════════════════════════════════════════════════════════════
 
+// Wraps the 3D office scene with the same "operational" chrome the
+// SVG mock used in v141 — header pill + footer ribbon — so the
+// transition to the real R3F scene preserves the visual language.
+function OfficeRoomShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="relative overflow-hidden rounded-3xl border border-white/8"
+      style={{
+        background: "linear-gradient(180deg, rgba(13,16,28,0.95) 0%, rgba(8,11,20,0.98) 100%)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04), 0 30px 80px rgba(0,0,0,0.5)",
+      }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-px z-10"
+        style={{ background: "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)" }}
+      />
+      <div className="relative z-10 flex items-center justify-between border-b border-white/8 px-6 py-3">
+        <div className="flex items-center gap-3">
+          <span
+            className="flex h-8 w-8 items-center justify-center rounded-lg"
+            style={{
+              background: "radial-gradient(circle at 30% 30%, rgba(167,139,250,0.5) 0%, rgba(76,29,149,0.3) 60%, transparent 100%)",
+              border: "1px solid rgba(167,139,250,0.4)",
+            }}
+          >
+            🏢
+          </span>
+          <div>
+            <div className="text-[13px] font-semibold text-white">Office</div>
+            <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-violet-300/70">
+              Live workspace · 5 agents
+            </div>
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/[0.08] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-emerald-200">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/60" />
+            <span className="relative h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          </span>
+          OPERATIONAL
+        </div>
+      </div>
+      <div className="relative">{children}</div>
+      <div className="relative z-10 flex items-center justify-between border-t border-white/8 px-6 py-3 font-mono text-[10.5px] uppercase tracking-[0.18em] text-white/40">
+        <span>5 agents · 4 desks · always rendering</span>
+        <span className="inline-flex items-center gap-1.5 text-cyan-300/85">
+          <Bot className="h-3 w-3" /> live preview · by Ptx
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export function LiveMocksSection() {
   return (
     <section id="live-demo" className="relative px-6 py-32">
@@ -942,23 +1013,26 @@ export function LiveMocksSection() {
           </p>
         </div>
 
-        {/* Block 01 — Office (full width) */}
+        {/* Block 01 — Office (full width, REAL 3D scene) */}
         <div className="mb-12">
           <div className="mb-6 flex items-end justify-between gap-4">
             <div>
               <div className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-emerald-300/85">
                 01 · Live in the office
               </div>
-              <h3 className="mt-2 text-2xl font-bold tracking-tight md:text-3xl">
+              <h3 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
                 Your agents, walking the floor
               </h3>
-              <p className="mt-2 max-w-xl text-[14.5px] text-white/55">
-                Five agents move between desks, sit, work, and chime in. The same scene runs
-                inside the workspace — this is your team picking up cycles.
+              <p className="mt-3 max-w-xl text-[14.5px] leading-relaxed text-white/55">
+                Five agents — the same 3D figures that live inside your workspace — pick up
+                cycles between desks, sit down to work, and chime in when something happens.
+                This is the actual scene, not a screenshot.
               </p>
             </div>
           </div>
-          <OfficeRoom />
+          <OfficeRoomShell>
+            <OfficeMock3D className="h-[520px] w-full" />
+          </OfficeRoomShell>
         </div>
 
         {/* Block 02 — Chat */}

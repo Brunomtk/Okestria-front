@@ -1209,62 +1209,80 @@ export default function LandingPage() {
             {/* v140 — Real 3D agent (the same OfficeFigure used inside
                 the workspace). Renders a randomly-seeded character that
                 cycles idle → wave → walk → point in a 15s loop. */}
+            {/* v142 — Hero stage made bigger + restructured.
+                The agent now lives in a tall framed card with proper
+                top header (live indicator + brand) and a footer band
+                of stat tiles. Reads as a real product preview, not a
+                floating decoration. */}
             <div className="relative">
-              {/* Glow plate behind the agent */}
               <div
                 aria-hidden
-                className="pointer-events-none absolute inset-0 -m-4 rounded-[40px]"
+                className="pointer-events-none absolute -inset-6 rounded-[44px]"
                 style={{
                   background:
-                    "radial-gradient(ellipse at 50% 40%, rgba(124,58,237,0.18) 0%, rgba(34,211,238,0.06) 45%, transparent 70%)",
+                    "radial-gradient(ellipse at 50% 40%, rgba(124,58,237,0.22) 0%, rgba(34,211,238,0.08) 45%, transparent 75%)",
                 }}
               />
               <div
-                className="relative h-[480px] rounded-[32px] border border-white/10 backdrop-blur-md md:h-[540px]"
+                className="relative flex h-[560px] flex-col overflow-hidden rounded-[28px] border border-white/10 backdrop-blur-md md:h-[620px]"
                 style={{
                   background:
-                    "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.16) 0%, rgba(15,23,42,0.85) 50%, rgba(6,8,15,0.95) 100%)",
+                    "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.86) 50%, rgba(6,8,15,0.96) 100%)",
+                  boxShadow:
+                    "inset 0 1px 0 rgba(255,255,255,0.04), 0 30px 80px rgba(0,0,0,0.55)",
                 }}
               >
                 {/* Top hairline */}
                 <div
                   aria-hidden
-                  className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[32px]"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px"
                   style={{
                     background:
                       "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)",
                   }}
                 />
-                {/* Eyebrow chip on top-left */}
-                <div className="absolute left-4 top-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-violet-200/85 backdrop-blur">
-                  <span className="relative flex h-1.5 w-1.5">
-                    <span className="absolute inset-0 animate-ping rounded-full bg-violet-300/60" />
-                    <span className="relative h-1.5 w-1.5 rounded-full bg-violet-300" />
-                  </span>
-                  Live agent
+
+                {/* Header strip */}
+                <div className="flex items-center justify-between border-b border-white/8 px-5 py-3">
+                  <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-violet-200/85 backdrop-blur">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inset-0 animate-ping rounded-full bg-violet-300/60" />
+                      <span className="relative h-1.5 w-1.5 rounded-full bg-violet-300" />
+                    </span>
+                    Live agent
+                  </div>
+                  <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/35">
+                    Orkestria · by Ptx
+                  </div>
                 </div>
 
-                <HeroAgent className="absolute inset-0" />
+                {/* Agent canvas takes all the available room — gives the
+                    figure space to walk + pose without cramping. */}
+                <div className="relative flex-1">
+                  <HeroAgent className="absolute inset-0" />
+                </div>
 
-                {/* Floating "agent stat" pills around the figure */}
-                <div className="pointer-events-none absolute bottom-6 left-6 right-6 grid grid-cols-3 gap-2 text-center text-[11px]">
-                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-300/80">
+                {/* Stat band footer */}
+                <div className="grid grid-cols-3 gap-px border-t border-white/8 bg-white/[0.04] text-center text-[11.5px]">
+                  <div className="bg-[rgba(8,11,20,0.55)] px-3 py-3">
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-cyan-300/80">
                       Status
                     </div>
-                    <div className="mt-0.5 text-white/85">Operational</div>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-violet-300/80">
-                      Tasks
+                    <div className="mt-1 text-[13px] font-semibold text-white/90">
+                      Operational
                     </div>
-                    <div className="mt-0.5 text-white/85">12 today</div>
                   </div>
-                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
-                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
-                      Squads
+                  <div className="bg-[rgba(8,11,20,0.55)] px-3 py-3">
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-violet-300/80">
+                      Tasks today
                     </div>
-                    <div className="mt-0.5 text-white/85">3 active</div>
+                    <div className="mt-1 text-[13px] font-semibold text-white/90">12</div>
+                  </div>
+                  <div className="bg-[rgba(8,11,20,0.55)] px-3 py-3">
+                    <div className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-amber-300/80">
+                      Squads active
+                    </div>
+                    <div className="mt-1 text-[13px] font-semibold text-white/90">3</div>
                   </div>
                 </div>
               </div>
@@ -1507,20 +1525,26 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Footer */}
+        {/* Footer — v142: brand attribution by Ptx group, the parent
+            company that owns and runs Orkestria. */}
         <footer className="border-t border-white/5 py-12 px-6">
-          <div className="mx-auto max-w-7xl flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 md:flex-row">
             <Link href="/home" className="flex items-center gap-3">
               <OrkestriaMark size={32} />
-              <span className="font-semibold text-white/80">Orkestria</span>
+              <div className="flex flex-col">
+                <span className="font-semibold text-white/85">Orkestria</span>
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-white/40">
+                  by Ptx
+                </span>
+              </div>
             </Link>
             <div className="flex items-center gap-6 text-sm text-white/40">
-              <span>&copy; 2026 Orkestria. All rights reserved.</span>
+              <span>&copy; 2026 Ptx Group. All rights reserved.</span>
             </div>
             <div className="flex items-center gap-6 text-sm text-white/50">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-              <a href="#" className="hover:text-white transition-colors">Contact</a>
+              <a href="#" className="transition-colors hover:text-white">Privacy</a>
+              <a href="#" className="transition-colors hover:text-white">Terms</a>
+              <a href="#" className="transition-colors hover:text-white">Contact</a>
             </div>
           </div>
         </footer>

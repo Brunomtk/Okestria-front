@@ -88,21 +88,26 @@ export function OrkestriaMark({
         </radialGradient>
       </defs>
 
-      {/* Animated rotation wraps the satellite ring + spokes; the
-          core stays fixed so its shape never wobbles. */}
-      <g
-        transform-origin="128 128"
-        style={
-          animated
-            ? {
-                animation: "orkestria-rotate 24s linear infinite",
-                transformOrigin: "128px 128px",
-                transformBox: "fill-box",
-              }
-            : undefined
-        }
-      >
-        {/* Hexagonal outline */}
+      {/*
+        v142 — rotation now uses SVG-native <animateTransform> with
+        an explicit pivot at (128, 128). The v141 version drove this
+        via CSS `transform: rotate()` + `transform-box: fill-box`,
+        which silently drifted on Safari and on certain compound
+        transforms (the "satellites slowly leaving orbit" bug). The
+        SVG path is rock-solid across browsers.
+      */}
+      <g>
+        {animated ? (
+          <animateTransform
+            attributeName="transform"
+            type="rotate"
+            from="0 128 128"
+            to="360 128 128"
+            dur="32s"
+            repeatCount="indefinite"
+          />
+        ) : null}
+
         <polygon
           points="128,48 197.28,88 197.28,168 128,208 58.72,168 58.72,88"
           fill="none"
@@ -111,7 +116,6 @@ export function OrkestriaMark({
           strokeOpacity="0.45"
           strokeLinejoin="round"
         />
-        {/* Spokes from the center to each satellite */}
         {[
           [128, 48],
           [197.28, 88],
@@ -131,14 +135,12 @@ export function OrkestriaMark({
             strokeLinecap="round"
           />
         ))}
-        {/* Satellite halos */}
         <circle cx="128" cy="48" r="22" fill={`url(#${ids.amber})`} />
         <circle cx="197.28" cy="88" r="20" fill={`url(#${ids.violetGlow})`} />
         <circle cx="197.28" cy="168" r="20" fill={`url(#${ids.violetGlow})`} />
         <circle cx="128" cy="208" r="20" fill={`url(#${ids.violetGlow})`} />
         <circle cx="58.72" cy="168" r="20" fill={`url(#${ids.violetGlow})`} />
         <circle cx="58.72" cy="88" r="20" fill={`url(#${ids.violetGlow})`} />
-        {/* Satellite cores — top is amber (lead), others alternate */}
         <circle cx="128" cy="48" r="10" fill={PALETTE.amber} />
         <circle cx="128" cy="48" r="4" fill={PALETTE.amberSoft} />
         <circle cx="197.28" cy="88" r="9" fill={PALETTE.cyan} />
@@ -148,34 +150,28 @@ export function OrkestriaMark({
         <circle cx="58.72" cy="88" r="9" fill={PALETTE.cyan} />
       </g>
 
-      {/* Core — gradient sphere + white inner; pulses when animated */}
-      <g
-        style={
-          animated
-            ? {
-                animation: "orkestria-breathe 3.6s ease-in-out infinite",
-                transformOrigin: "128px 128px",
-                transformBox: "fill-box",
-              }
-            : undefined
-        }
-      >
-        <circle cx="128" cy="128" r="14" fill={`url(#${ids.grad})`} />
-        <circle cx="128" cy="128" r="6" fill={PALETTE.ink} />
+      {/*
+        Core — gradient sphere + white inner. Breathes via translate
+        → scale → translate so the scale pivots on (128, 128) without
+        any CSS-transform-origin drift.
+      */}
+      <g transform="translate(128 128)">
+        {animated ? (
+          <animateTransform
+            attributeName="transform"
+            type="scale"
+            values="1; 1.07; 1"
+            keyTimes="0; 0.5; 1"
+            dur="3.6s"
+            additive="sum"
+            repeatCount="indefinite"
+          />
+        ) : null}
+        <g transform="translate(-128 -128)">
+          <circle cx="128" cy="128" r="14" fill={`url(#${ids.grad})`} />
+          <circle cx="128" cy="128" r="6" fill={PALETTE.ink} />
+        </g>
       </g>
-
-      {animated ? (
-        <style>{`
-          @keyframes orkestria-rotate {
-            from { transform: rotate(0deg); }
-            to   { transform: rotate(360deg); }
-          }
-          @keyframes orkestria-breathe {
-            0%, 100% { transform: scale(1); }
-            50%      { transform: scale(1.08); }
-          }
-        `}</style>
-      ) : null}
     </svg>
   );
 }

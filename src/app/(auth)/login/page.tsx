@@ -142,9 +142,14 @@ function LoginPageInner() {
           style={{ animationDelay: "0ms" }}
         >
           <OrkestriaMark size={28} animated className="transition-transform group-hover:scale-105" />
-          <span className="bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent">
-            Orkestria
-          </span>
+          <div className="flex flex-col leading-none">
+            <span className="bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent">
+              Orkestria
+            </span>
+            <span className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.22em] text-white/35">
+              by Ptx
+            </span>
+          </div>
         </Link>
         <Link
           href="/home"
