@@ -3,13 +3,37 @@ import { requireAdminSession } from "./_lib/admin";
 import { AdminSidebar } from "./AdminSidebar";
 
 /**
- * v143 — Admin layout now lives on the same dark cosmic surface as
- * the rest of the brand (Cortex modal, OrkestriaLoader, login).
- * Two layered radial gradients give the page depth without any
- * particles or grids competing with the data UI on top.
+ * v145 — Admin layout.
+ *
+ * Sits on the same dark cosmic surface as the rest of the brand
+ * (Cortex modal, OrkestriaLoader, login). Two layered radial
+ * gradients give the page depth without competing with the data
+ * UI on top.
+ *
+ * Defensive: if `requireAdminSession()` throws anything other than
+ * a Next.js redirect, we log it server-side so it shows up in the
+ * host logs (Vercel / VPS stdout) and let it bubble to the global
+ * error boundary instead of silently 500-ing the whole admin tree.
  */
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const session = await requireAdminSession();
+  let session;
+  try {
+    session = await requireAdminSession();
+  } catch (err) {
+    // `redirect()` throws a tagged Next.js error — let it through.
+    if (
+      err &&
+      typeof err === "object" &&
+      "digest" in err &&
+      typeof (err as { digest?: unknown }).digest === "string" &&
+      ((err as { digest: string }).digest.startsWith("NEXT_REDIRECT") ||
+        (err as { digest: string }).digest.startsWith("NEXT_NOT_FOUND"))
+    ) {
+      throw err;
+    }
+    console.error("[admin/layout] requireAdminSession failed:", err);
+    throw err;
+  }
 
   return (
     <div className="relative flex min-h-screen overflow-hidden bg-[#04060d] text-white">

@@ -1,7 +1,15 @@
-// NOTE: this module pulls in `next/headers` via getBackendSession,
-// so it MUST stay server-only. If you need any of the helpers below
-// from a client component, import them from `./list-utils` instead
-// (those are the bits that don't touch headers / fetch-with-cookies).
+// ─────────────────────────────────────────────────────────────────────
+// Admin server helpers.
+//
+// This module pulls in `next/headers` via getBackendSession and is
+// therefore SERVER-ONLY. Client components must NOT import from here.
+// The client-safe helpers (search-param parsing, pagination, page-href
+// builder) are duplicated in `./list-utils.ts` so client components can
+// reach them without dragging the server graph into the browser bundle.
+//
+// Keep both copies in lock-step.
+// ─────────────────────────────────────────────────────────────────────
+
 import { redirect } from 'next/navigation';
 import { getBackendSession } from '@/lib/auth/session';
 import {
@@ -23,15 +31,9 @@ import {
   type OkestriaUser,
 } from '@/lib/auth/api';
 
-// Client-safe pieces (kept here as re-exports for backward compatibility).
-export {
-  buildPageHref,
-  getPageNumber,
-  getSearchTerm,
-  getSingleParam,
-  paginate,
-  type AdminSearchParams,
-} from './list-utils';
+// ── Search-params shape + pagination helpers ─────────────────────────
+
+export type AdminSearchParams = Record<string, string | string[] | undefined>;
 
 export type AdminBillingRow = {
   companyId: number;
@@ -51,12 +53,64 @@ export type AdminBillingRow = {
   agentsLimit: number | null;
 };
 
+export function getSingleParam(params: AdminSearchParams, key: string) {
+  const value = params[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export function getPageNumber(params: AdminSearchParams) {
+  const raw = getSingleParam(params, 'page');
+  const parsed = Number(raw ?? '1');
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
+export function getSearchTerm(params: AdminSearchParams) {
+  return (getSingleParam(params, 'q') ?? '').trim().toLowerCase();
+}
+
+export function paginate<T>(items: T[], page: number, pageSize: number) {
+  const safePageSize = Math.max(pageSize, 1);
+  const total = items.length;
+  const pageCount = Math.max(1, Math.ceil(total / safePageSize));
+  const currentPage = Math.min(Math.max(page, 1), pageCount);
+  const start = (currentPage - 1) * safePageSize;
+  return {
+    total,
+    pageCount,
+    currentPage,
+    items: items.slice(start, start + safePageSize),
+  };
+}
+
+export function buildPageHref(basePath: string, params: AdminSearchParams, page: number) {
+  const search = new URLSearchParams();
+  const q = getSingleParam(params, 'q');
+  if (q) search.set('q', q);
+  if (page > 1) search.set('page', String(page));
+  const query = search.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
+
+// ── Session guard ────────────────────────────────────────────────────
+
 export async function requireAdminSession() {
-  const session = await getBackendSession();
+  let session: Awaited<ReturnType<typeof getBackendSession>> = null;
+  try {
+    session = await getBackendSession();
+  } catch (err) {
+    // getBackendSession should never throw, but if it does (transient
+    // backend hiccup, cookie API change in a future Next), bounce the
+    // user to login instead of nuking the whole admin tree with a 500.
+    console.error('[admin/requireAdminSession] getBackendSession threw:', err);
+    redirect('/login');
+  }
+
   if (!session?.token) redirect('/login');
   if (session.role !== 'admin' && session.roleType !== 1) redirect('/company');
   return session;
 }
+
+// ── Filtering helpers ────────────────────────────────────────────────
 
 export function filterCompanies(items: OkestriaCompany[], query: string) {
   if (!query) return items;
@@ -85,10 +139,12 @@ export function filterBillingRows(items: AdminBillingRow[], query: string) {
   if (!query) return items;
   return items.filter((item) =>
     [item.companyName, item.companyEmail, item.planName, item.subscriptionStatus].some((value) =>
-      value.toLowerCase().includes(query),
+      (value ?? '').toLowerCase().includes(query),
     ),
   );
 }
+
+// ── Aggregated dashboard data ────────────────────────────────────────
 
 export async function getAdminDashboardData(token: string) {
   const [companiesRes, usersRes, leadsRes] = await Promise.all([
