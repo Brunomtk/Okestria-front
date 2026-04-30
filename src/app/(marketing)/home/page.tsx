@@ -25,10 +25,14 @@ import { LiveMocksSection } from "@/features/marketing/LiveMocksSection";
 import { HeroLiveActivity } from "@/features/marketing/HeroLiveActivity";
 import dynamic from "next/dynamic";
 
-// React Three Fiber must run client-side; dynamic + ssr:false keeps
-// Three.js out of the SSR bundle so the marketing page TTFB stays fast.
-const HeroAgent = dynamic(
-  () => import("@/features/marketing/HeroAgent").then((m) => m.HeroAgent),
+// v142.7 — HeroAgentDashboard is a SPLIT layout (small 3D portrait
+// + product info panel) instead of one big 3D figure floating in
+// space. Lives in @/features/marketing/HeroAgentDashboard. The old
+// HeroAgent stays around for any caller that still wants the full-
+// canvas character (login screen, etc.) but the homepage hero uses
+// the dashboard now.
+const HeroAgentDashboard = dynamic(
+  () => import("@/features/marketing/HeroAgentDashboard").then((m) => m.HeroAgentDashboard),
   { ssr: false },
 );
 
@@ -1262,21 +1266,13 @@ export default function LandingPage() {
                     canvas + a live activity feed that fills the
                     remaining space, so every pixel of the card has
                     purpose. */}
-                <div className="relative h-[380px] shrink-0">
-                  {/* v142.4 — taller canvas + hidden phase label.
-                      Combined with the close-in camera in HeroAgent,
-                      the figure now fills the frame top-to-bottom
-                      with a focused portrait composition. */}
-                  <HeroAgent className="absolute inset-0" showPhaseLabel={false} />
-                  {/* Soft fade into the activity feed below */}
-                  <div
-                    aria-hidden
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
-                    style={{
-                      background:
-                        "linear-gradient(to bottom, transparent, rgba(6,8,15,0.92))",
-                    }}
-                  />
+                {/* v142.7 — Replaced the giant single-3D-character
+                    canvas with a dashboard split: small 3D portrait
+                    (220×220) + a real product info panel (role,
+                    current task, progress, stats). Way denser, way
+                    more useful, no empty void. */}
+                <div className="relative shrink-0 px-2 pt-1">
+                  <HeroAgentDashboard className="block" />
                 </div>
 
                 <HeroLiveActivity />
