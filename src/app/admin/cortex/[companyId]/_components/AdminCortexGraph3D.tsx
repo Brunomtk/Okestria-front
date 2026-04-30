@@ -3,28 +3,26 @@
 /**
  * v150 — Admin · Cortex 3D graph viewer.
  *
- * Thin client wrapper around the same `react-force-graph-3d` setup
- * the office uses (CortexForceGraph). Source-of-truth on rendering
- * stays in features/office; this just feeds it the admin-scoped
- * graph payload (`/api/AdminOverview/cortex/{companyId}/graph`).
+ * Reuses the same `CortexForceGraph` wrapper the office uses (which
+ * itself wraps `react-force-graph-3d`). Imported via `next/dynamic`
+ * with `ssr: false` because the underlying lib touches `window` at
+ * module load — same pattern as `CortexModal`.
+ *
+ * The wrapper accepts `any` props (see `CortexForceGraph`), so we
+ * pass the graph data + visual config as a plain object and skip
+ * TypeScript's strict prop typing on the lib.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AdminCortexGraph } from "@/lib/auth/api";
 
-// react-force-graph-3d touches `window` on import, so it MUST stay client-only.
-const ForceGraph3D = dynamic(
-  () => import("react-force-graph-3d").then((m) => m.default),
+// `CortexForceGraph` is the office's wrapper — already "use client" and
+// already typed `any` so it accepts the visual config we pass below.
+const ForceGraph = dynamic(
+  () => import("@/features/office/components/CortexForceGraph"),
   { ssr: false },
 );
-
-type Node = AdminCortexGraph["nodes"][number] & {
-  x?: number;
-  y?: number;
-  z?: number;
-};
-type Link = AdminCortexGraph["links"][number];
 
 const NODE_COLOR_FOR_KIND: Record<string, string> = {
   note: "#a78bfa",
@@ -66,6 +64,32 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
 
   const isEmpty = data.nodes.length === 0;
 
+  // Visual config bag — passed through to the underlying ForceGraph3D
+  // via the wrapper. Typed via the wrapper's `any` so we don't have to
+  // wrestle the lib's strict generics here.
+  const graphProps = {
+    width: size.w,
+    height: size.h,
+    graphData: data,
+    backgroundColor: "rgba(0,0,0,0)",
+    nodeRelSize: 5,
+    nodeVal: (n: { degree?: number }) => 0.6 + (n.degree ?? 0) * 0.6,
+    nodeColor: (n: { kind?: string }) =>
+      NODE_COLOR_FOR_KIND[n.kind ?? ""] ?? "#94a3b8",
+    nodeLabel: (n: { kind?: string; label?: string }) =>
+      n.kind === "tag" ? `#${n.label ?? ""}` : `${n.label ?? ""}`,
+    linkColor: (l: { kind?: string }) =>
+      LINK_COLOR_FOR_KIND[l.kind ?? ""] ?? "rgba(255,255,255,0.25)",
+    linkOpacity: 0.65,
+    linkWidth: 0.75,
+    linkDirectionalParticles: (l: { kind?: string }) =>
+      l.kind === "wiki" ? 1 : 0,
+    linkDirectionalParticleSpeed: 0.006,
+    linkDirectionalParticleWidth: 1.2,
+    enableNodeDrag: true,
+    showNavInfo: false,
+  };
+
   return (
     <div
       ref={containerRef}
@@ -81,28 +105,7 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
           </p>
         </div>
       ) : (
-        <ForceGraph3D
-          width={size.w}
-          height={size.h}
-          graphData={data}
-          backgroundColor="rgba(0,0,0,0)"
-          nodeRelSize={5}
-          nodeVal={(n: Node) => 0.6 + (n.degree ?? 0) * 0.6}
-          nodeColor={(n: Node) => NODE_COLOR_FOR_KIND[n.kind] ?? "#94a3b8"}
-          nodeLabel={(n: Node) =>
-            n.kind === "tag" ? `#${n.label}` : `${n.label}`
-          }
-          linkColor={(l: Link) =>
-            LINK_COLOR_FOR_KIND[l.kind] ?? "rgba(255,255,255,0.25)"
-          }
-          linkOpacity={0.65}
-          linkWidth={0.75}
-          linkDirectionalParticles={(l: Link) => (l.kind === "wiki" ? 1 : 0)}
-          linkDirectionalParticleSpeed={0.006}
-          linkDirectionalParticleWidth={1.2}
-          enableNodeDrag
-          showNavInfo={false}
-        />
+        <ForceGraph {...graphProps} />
       )}
 
       {!isEmpty ? (
