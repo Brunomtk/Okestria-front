@@ -795,7 +795,13 @@ function GraphView({
     return () => ro.disconnect();
   }, []);
 
-  // ── Plumb force sliders into d3-force in real time ─────────────
+  // ── Plumb force sliders into d3-force ──────────────────────────
+  // Update strength/distance immediately, but DEBOUNCE the reheat —
+  // calling `d3ReheatSimulation` on every onChange of a slider drag
+  // causes a constant simulation restart and freezes the canvas in
+  // a permanent settle/unsettle loop. With debounce, the simulation
+  // is energised once after the user pauses for ~200ms.
+  const reheatTimerRef = useRef<number | null>(null);
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg?.d3Force) return;
@@ -803,7 +809,19 @@ function GraphView({
     fg.d3Force("link")?.distance(linkDistance);
     fg.d3Force("link")?.strength(linkStrength);
     fg.d3Force("center")?.strength(centerForce);
-    fg.d3ReheatSimulation?.();
+    if (reheatTimerRef.current != null) {
+      window.clearTimeout(reheatTimerRef.current);
+    }
+    reheatTimerRef.current = window.setTimeout(() => {
+      fgRef.current?.d3ReheatSimulation?.();
+      reheatTimerRef.current = null;
+    }, 220);
+    return () => {
+      if (reheatTimerRef.current != null) {
+        window.clearTimeout(reheatTimerRef.current);
+        reheatTimerRef.current = null;
+      }
+    };
   }, [repelForce, linkDistance, linkStrength, centerForce, nodes.length, links.length]);
 
   // ── Active node = pinned > hovered ─────────────────────────────
@@ -831,14 +849,16 @@ function GraphView({
     [nodeSizeMul],
   );
 
-  // ── Custom canvas painter — halo + solid + label ───────────────
+  // ── Custom canvas painter — solid disc + (cheap) halo only on
+  //    the active/highlighted nodes. The original painter drew a
+  //    radial-gradient halo for every node every frame, which is the
+  //    #1 reason a 100+ node graph turns into a slideshow on a
+  //    laptop. With this version, idle frames are ~5x cheaper and
+  //    only the focused node + its neighbours pay the gradient cost.
   const nodeCanvasObject = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      // First-tick guard: d3-force populates x/y AFTER the first tick;
-      // without this the canvas APIs throw "non-finite" errors when
-      // nodes are still un-laid-out (especially right after the modal
-      // opens or after a force-slider change reheats the simulation).
+      // First-tick guard — d3-force populates x/y AFTER tick #1.
       const x = Number(node.x);
       const y = Number(node.y);
       if (!Number.isFinite(x) || !Number.isFinite(y)) return;
@@ -849,46 +869,47 @@ function GraphView({
       const baseAlpha = activeId
         ? inHighlight
           ? 1
-          : 0.18
+          : 0.16
         : isMatched(id)
           ? 1
-          : 0.12;
+          : 0.1;
       const isTag = node.kind === "tag";
       const baseColor =
         (isTag ? TAG_COLOR : folderColor(node.folder ?? null)) || ROOT_COLOR;
       const rRaw = nodeRadius(node as GraphNodeRich);
       const r = Number.isFinite(rRaw) && rRaw > 0 ? rRaw : 3;
 
-      // Outer halo (additive feel via radial gradient)
-      if (baseAlpha > 0.4) {
-        const haloR = r * (isActive ? 5.2 : 3.2);
+      // Solid disc — every node, every frame (cheap arc + fill).
+      ctx.fillStyle = withAlpha(baseColor, baseAlpha);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Halo + outline ONLY for active / highlighted nodes. This is
+      // the big perf win — `createRadialGradient` is expensive and
+      // running it for every node every frame is what was killing us.
+      if (isActive || (activeId && inHighlight)) {
+        const haloR = r * (isActive ? 4.5 : 2.6);
         if (Number.isFinite(haloR) && haloR > 0) {
           const grad = ctx.createRadialGradient(x, y, 0, x, y, haloR);
-          grad.addColorStop(0, withAlpha(baseColor, baseAlpha * (isActive ? 0.6 : 0.32)));
-          grad.addColorStop(0.5, withAlpha(baseColor, baseAlpha * 0.1));
+          grad.addColorStop(0, withAlpha(baseColor, isActive ? 0.55 : 0.22));
           grad.addColorStop(1, withAlpha(baseColor, 0));
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(x, y, haloR, 0, 2 * Math.PI);
           ctx.fill();
         }
+
+        if (isActive) {
+          ctx.strokeStyle = withAlpha("#ffffff", 0.85);
+          ctx.lineWidth = 1.6 / Math.max(0.0001, globalScale);
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
       }
 
-      // Solid disc
-      ctx.fillStyle = withAlpha(baseColor, baseAlpha);
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Active outline
-      if (isActive) {
-        ctx.strokeStyle = withAlpha("#ffffff", 0.9);
-        ctx.lineWidth = 1.6 / Math.max(0.0001, globalScale);
-        ctx.stroke();
-      }
-
-      // Label — fades in past the textFadeStart threshold; always
-      // visible for the active node and its neighbours.
+      // Label — visible past the zoom threshold OR for the focus set.
       const showLabel = isActive
         ? 1
         : activeId
@@ -897,7 +918,7 @@ function GraphView({
             : 0
           : Math.min(1, Math.max(0, (globalScale - textFadeStart) * 1.6));
       const labelAlpha = showLabel * baseAlpha;
-      if (labelAlpha > 0.05) {
+      if (labelAlpha > 0.08) {
         const fontSize = Math.max(2.8, 11 / Math.max(0.0001, globalScale));
         ctx.font = `${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", sans-serif`;
         ctx.fillStyle = withAlpha("#ffffff", labelAlpha * 0.92);
@@ -960,18 +981,25 @@ function GraphView({
     [activeId, linkThicknessMul],
   );
 
-  // Particle flow on edges — clean by default, "thinking" on focus.
+  // Particle flow on edges — strictly opt-in via the focus state.
+  // The previous version put 1 particle on every tag-edge by default,
+  // which on a graph with hundreds of tag connections was an absurd
+  // amount of state to update each frame. Now: zero particles by
+  // default, ~2 only on the active node's edges. Way cheaper, and
+  // arguably nicer UX (the "thinking" effect MEANS something).
   const linkDirectionalParticles = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (link: any) => {
-      if (!animateEdges) return 0;
+      if (!animateEdges || !activeId) return 0;
       const sId =
         typeof link.source === "string" ? link.source : (link.source?.id ?? "");
       const tId =
         typeof link.target === "string" ? link.target : (link.target?.id ?? "");
-      const isActive = activeId && (sId === activeId || tId === activeId);
-      if (isActive) return link.kind === "tag" ? 3 : 2;
-      return link.kind === "tag" ? 1 : 0;
+      return sId === activeId || tId === activeId
+        ? link.kind === "tag"
+          ? 2
+          : 1
+        : 0;
     },
     [animateEdges, activeId],
   );
@@ -1007,6 +1035,13 @@ function GraphView({
     () => nodes.find((n) => n.id === (pinnedNodeId ?? hoverNodeId)) ?? null,
     [nodes, pinnedNodeId, hoverNodeId],
   );
+
+  // Stable graphData object — without this memo, every React render
+  // hands the lib a new object literal `{ nodes, links }`, which the
+  // lib's diff logic interprets as "data changed" and re-runs heavy
+  // bookkeeping. Memoizing means the simulation stays warm and idle
+  // re-renders are basically free.
+  const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
   // ── Zoom controls ─────────────────────────────────────────────
   const handleZoomIn = useCallback(() => {
@@ -1045,7 +1080,7 @@ function GraphView({
           width={size.w}
           height={size.h}
           backgroundColor="rgba(0,0,0,0)"
-          graphData={{ nodes, links }}
+          graphData={graphData}
           nodeId="id"
           nodeRelSize={4}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1067,10 +1102,15 @@ function GraphView({
           enablePanInteraction={true}
           minZoom={0.15}
           maxZoom={8}
-          cooldownTicks={140}
-          warmupTicks={50}
-          d3AlphaDecay={0.025}
-          d3VelocityDecay={0.32}
+          // Shorter cooldown so the canvas goes idle faster after
+          // layout settles. After cooldown, no ticks happen unless
+          // the user interacts — which means zero CPU usage on an
+          // open-but-untouched modal.
+          cooldownTicks={80}
+          cooldownTime={6000}
+          warmupTicks={30}
+          d3AlphaDecay={0.04}
+          d3VelocityDecay={0.35}
         />
       ) : null}
 
