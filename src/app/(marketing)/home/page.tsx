@@ -1294,10 +1294,10 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* Live agents in action — THE new showcase */}
-        <AgentsInActionSection />
-
-        {/* v139 — Live mocks: chat / cron / cortex / squads + office strip */}
+        {/* v141 — Inside Orkestria, right now (replaces both the
+            v138 AgentsInActionSection and the v139 4-up mocks grid
+            with a roomier feature-by-feature layout + a real
+            isometric office preview). */}
         <LiveMocksSection />
 
         {/* Features Section */}

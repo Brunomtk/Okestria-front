@@ -1,257 +1,64 @@
 "use client";
 
+/**
+ * v141 — Minimalist login.
+ *
+ * Re-designed from scratch. Old version was a busy two-column split
+ * with marketing copy + activity feed + 3D agent + feature cards on
+ * the left and a form on the right. The new version is a single
+ * centered column on a quiet cosmic background — premium, calm,
+ * professional. The brand mark animates softly, the form fields fade
+ * in on mount, the submit button has a subtle gradient sweep on
+ * hover. Nothing competes with the user's only goal here: log in.
+ */
+
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import {
-  ArrowLeft,
   ArrowRight,
-  Bot,
-  CheckCircle2,
   Eye,
   EyeOff,
-  LockKeyhole,
+  Loader2,
   Mail,
-  MessageSquare,
-  Shield,
-  Sparkles,
-  Zap,
-  type LucideIcon,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { authenticateUser } from "@/lib/auth/api";
 import { persistAuthSession } from "@/lib/auth/session-client";
 import { OrkestriaMark } from "@/components/OrkestriaMark";
-import dynamicImport from "next/dynamic";
 
-// 3D agent — same OfficeFigure as inside the workspace. Welcomes the
-// operator on the login page so they see the product before they sign
-// in. SSR-disabled because Three.js needs `window`.
-const HeroAgent = dynamicImport(
-  () => import("@/features/marketing/HeroAgent").then((m) => m.HeroAgent),
-  { ssr: false },
-);
-
-// -------------------------------------------------------------------------
-// Ambient background — soft particles + connecting lines. Cheap enough to
-// run on any laptop, and gives the page a subtle living-network feel.
-// -------------------------------------------------------------------------
-function ParticlesBackground() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animationId: number;
-    const particles: Array<{
-      x: number;
-      y: number;
-      vx: number;
-      vy: number;
-      size: number;
-      opacity: number;
-    }> = [];
-
-    const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-
-    const createParticles = () => {
-      const count = Math.floor((canvas.width * canvas.height) / 22000);
-      for (let i = 0; i < count; i++) {
-        particles.push({
-          x: Math.random() * canvas.width,
-          y: Math.random() * canvas.height,
-          vx: (Math.random() - 0.5) * 0.18,
-          vy: (Math.random() - 0.5) * 0.18,
-          size: Math.random() * 1.4 + 0.4,
-          opacity: Math.random() * 0.35 + 0.08,
-        });
-      }
-    };
-
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      particles.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
-        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(120, 190, 255, ${p.opacity})`;
-        ctx.fill();
-      });
-
-      particles.forEach((p1, i) => {
-        particles.slice(i + 1).forEach((p2) => {
-          const dx = p1.x - p2.x;
-          const dy = p1.y - p2.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 110) {
-            ctx.beginPath();
-            ctx.moveTo(p1.x, p1.y);
-            ctx.lineTo(p2.x, p2.y);
-            ctx.strokeStyle = `rgba(120, 190, 255, ${0.08 * (1 - dist / 110)})`;
-            ctx.stroke();
-          }
-        });
-      });
-
-      animationId = requestAnimationFrame(animate);
-    };
-
-    resize();
-    createParticles();
-    animate();
-
-    window.addEventListener("resize", resize);
-    return () => {
-      window.removeEventListener("resize", resize);
-      cancelAnimationFrame(animationId);
-    };
-  }, []);
-
-  return (
-    <canvas
-      ref={canvasRef}
-      className="pointer-events-none fixed inset-0 z-0"
-      style={{ opacity: 0.45 }}
-    />
-  );
-}
-
-// -------------------------------------------------------------------------
-// Live agent activity pill. Cycles through short "what the agents are doing
-// right now" phrases so the login screen feels alive — same spirit as the
-// landing page.
-// -------------------------------------------------------------------------
-const ACTIVITY_TICKS: Array<{
-  icon: LucideIcon;
-  color: string;
-  agent: string;
-  text: string;
-}> = [
-  {
-    icon: Bot,
-    color: "text-cyan-300",
-    agent: "Prospector",
-    text: "Found 38 new qualified leads in São Paulo",
-  },
-  {
-    icon: MessageSquare,
-    color: "text-violet-300",
-    agent: "Outreach",
-    text: "Sent 12 personalised replies on WhatsApp",
-  },
-  {
-    icon: Zap,
-    color: "text-amber-300",
-    agent: "Follow-up",
-    text: "Re-engaged 7 cold leads from last week",
-  },
-  {
-    icon: CheckCircle2,
-    color: "text-emerald-300",
-    agent: "Closer",
-    text: "Booked 3 meetings for tomorrow morning",
-  },
-];
-
-function LiveActivityFeed() {
-  const [index, setIndex] = useState(0);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setIndex((prev) => (prev + 1) % ACTIVITY_TICKS.length);
-    }, 3200);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const tick = ACTIVITY_TICKS[index];
-  const Icon = tick.icon;
-
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] backdrop-blur-xl">
-      <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-violet-500/5" />
-      <div className="relative flex items-center gap-4 px-5 py-4">
-        <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 ring-1 ring-white/10">
-          <Icon className={`h-5 w-5 ${tick.color}`} />
-          <span className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/70" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs font-medium text-white/50">
-            <span>{tick.agent} agent</span>
-            <span className="text-white/20">•</span>
-            <span className="text-emerald-400">Active now</span>
-          </div>
-          <p
-            key={index}
-            className="mt-1 truncate text-sm font-medium text-white animate-fade-in"
-          >
-            {tick.text}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -------------------------------------------------------------------------
-// Feature card — tight spacing, consistent icon chip.
-// -------------------------------------------------------------------------
-function FeatureCard({
-  icon: Icon,
-  title,
-  description,
-  delay,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  delay: number;
-}) {
-  return (
-    <div
-      className="group flex items-start gap-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-all duration-300 hover:border-cyan-400/30 hover:bg-white/[0.06] animate-slide-in-left"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500/20 to-violet-500/20 ring-1 ring-white/10 transition-transform group-hover:scale-110">
-        <Icon className="h-5 w-5 text-cyan-300" />
-      </div>
-      <div className="min-w-0">
-        <p className="font-medium text-white">{title}</p>
-        <p className="mt-0.5 text-sm text-white/50">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-// Accept only same-origin paths like "/company/office?x=1" — this blocks
-// the classic open-redirect foot-gun where a crafted `?returnTo=https://evil`
-// would bounce the user off-site right after login.
+// Accept only same-origin paths — same logic as v139 (open-redirect guard).
 function sanitizeReturnTo(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
-  if (trimmed.startsWith("/login")) return null; // avoid redirect loop
-  return trimmed;
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed, "http://localhost");
+    if (u.origin !== "http://localhost") return null;
+    const path = `${u.pathname}${u.search}${u.hash}`;
+    if (!path.startsWith("/") || path.startsWith("//")) return null;
+    return path;
+  } catch {
+    return null;
+  }
 }
 
-// Fallback rendered during static-export bailout for useSearchParams().
-// Matches the page background so there's no flash when Suspense resolves.
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
 function LoginPageFallback() {
   return (
-    <div className="fixed inset-0 flex items-center justify-center bg-[#030810]">
-      <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-cyan-400" />
+    <div className="relative flex min-h-screen items-center justify-center bg-[#04060d] text-white/60">
+      <div className="flex items-center gap-3">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Loading…</span>
+      </div>
     </div>
   );
 }
@@ -260,6 +67,7 @@ function LoginPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = sanitizeReturnTo(searchParams?.get("returnTo") ?? null);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -275,33 +83,25 @@ function LoginPageInner() {
 
   const isDisabled = useMemo(
     () => !email.trim() || !password.trim() || isLoading,
-    [email, password, isLoading]
+    [email, password, isLoading],
   );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitLockRef.current || isLoading) return;
-
     submitLockRef.current = true;
     setError(null);
     setIsLoading(true);
-
     try {
       const session = await authenticateUser({
         email: email.trim(),
         password,
         rememberMe,
       });
-
       persistAuthSession(session);
-
-      // If the user landed here after a "Sua sessão expirou" bounce, send
-      // them back to the screen they were on instead of the default role
-      // landing page — that's what "não sai da tela" means in practice.
       const defaultPath = session.type === 1 ? "/admin/companies" : "/company/office";
       const targetPath = returnTo ?? defaultPath;
       window.location.assign(targetPath);
-      return;
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Unable to authenticate at this time.";
@@ -311,359 +111,294 @@ function LoginPageInner() {
     }
   }
 
-  const features: Array<{
-    icon: LucideIcon;
-    title: string;
-    description: string;
-  }> = [
-    {
-      icon: Bot,
-      title: "Focused AI squads",
-      description: "Build agents for prospecting, outreach, follow-up and execution.",
-    },
-    {
-      icon: Zap,
-      title: "One clean workspace",
-      description: "Simple to launch, easy to control, ready to scale.",
-    },
-    {
-      icon: Sparkles,
-      title: "Live orchestration",
-      description: "Watch your operation run in real time — no guesswork.",
-    },
-  ];
-
   return (
-    <div className="relative flex min-h-screen overflow-hidden bg-[#030810]">
-      {/* Ambient layers */}
-      <ParticlesBackground />
-      <div className="pointer-events-none fixed inset-0">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_85%_55%_at_50%_-15%,rgba(59,130,246,0.14),transparent)]" />
-        <div className="absolute right-0 top-0 h-[640px] w-[640px] bg-[radial-gradient(circle,rgba(139,92,246,0.09),transparent_55%)]" />
-        <div className="absolute bottom-0 left-0 h-[560px] w-[560px] bg-[radial-gradient(circle,rgba(6,182,212,0.09),transparent_55%)]" />
-        <div className="absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 bg-gradient-to-b from-cyan-500/10 via-violet-500/5 to-transparent blur-3xl" />
-      </div>
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-[#04060d] px-6 py-10">
+      {/* Quiet cosmic background — three layered radial gradients, no
+          particles, no grid. Sets the mood without competing for
+          attention. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.92) 50%, #04060d 100%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at 18% 80%, rgba(34,211,238,0.06), transparent 45%)," +
+            "radial-gradient(circle at 82% 78%, rgba(245,158,11,0.05), transparent 45%)",
+        }}
+      />
 
-      {/* -------------------------- LEFT PANEL --------------------------
-          v140 — Restructured: brand + activity at the top, a 3D agent
-          stage as the centerpiece, headline + copy + features below.
-          The figure is the same one operators see once they log in,
-          so the welcome feels like a smooth handoff into the product
-          rather than a marketing veneer. */}
-      <aside className="relative hidden w-1/2 flex-col gap-6 overflow-hidden p-10 lg:flex xl:p-14 2xl:p-16">
-        {/* Brand + activity — sits at the very top */}
-        <div className="relative z-10 flex flex-col gap-5">
-          <Link href="/home" className="group inline-flex items-center gap-3 self-start">
-            <div className="relative">
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/30 to-violet-500/30 opacity-0 blur-md transition-opacity group-hover:opacity-100" />
-              <OrkestriaMark size={40} className="relative transition-transform group-hover:scale-105" />
-            </div>
-            <span className="bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-xl font-semibold text-transparent">
-              Orkestria
-            </span>
-          </Link>
-          <LiveActivityFeed />
-        </div>
+      {/* Top brand bar — sits floating, no border, very minimal */}
+      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-6 py-5">
+        <Link
+          href="/home"
+          className="login-fade-in group inline-flex items-center gap-2.5"
+          style={{ animationDelay: "0ms" }}
+        >
+          <OrkestriaMark size={28} animated className="transition-transform group-hover:scale-105" />
+          <span className="bg-gradient-to-r from-white via-violet-200 to-cyan-200 bg-clip-text text-[15px] font-semibold tracking-tight text-transparent">
+            Orkestria
+          </span>
+        </Link>
+        <Link
+          href="/home"
+          className="login-fade-in text-[13px] text-white/45 transition-colors hover:text-white/85"
+          style={{ animationDelay: "80ms" }}
+        >
+          Back to home
+        </Link>
+      </header>
 
-        {/* Agent stage — visible above the fold on common laptop heights */}
-        <div className="relative z-10">
+      {/* Centered card — 420px max, glassy, calm */}
+      <main className="relative z-10 w-full max-w-[420px]">
+        <div
+          className="login-fade-in relative overflow-hidden rounded-3xl border border-white/8 backdrop-blur-xl"
+          style={{
+            background:
+              "linear-gradient(180deg, rgba(15,18,30,0.85) 0%, rgba(8,11,20,0.92) 100%)",
+            boxShadow:
+              "0 30px 80px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04)",
+            animationDelay: "120ms",
+          }}
+        >
+          {/* Top hairline */}
           <div
-            className="relative h-[300px] w-full overflow-hidden rounded-3xl border border-white/10 backdrop-blur xl:h-[340px]"
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-px"
             style={{
               background:
-                "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.16) 0%, rgba(15,23,42,0.85) 50%, rgba(6,8,15,0.95) 100%)",
+                "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)",
             }}
-          >
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 top-0 h-px"
-              style={{
-                background:
-                  "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)",
-              }}
-            />
-            <HeroAgent className="absolute inset-0" showPhaseLabel />
-            {/* Stat chips bottom corner */}
-            <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Live agent
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur">
-                <Shield className="h-3 w-3 text-cyan-300" />
-                Secure session
-              </span>
+          />
+
+          <div className="px-7 py-9">
+            {/* Animated mark + welcome */}
+            <div className="login-fade-in mb-7 flex flex-col items-center text-center" style={{ animationDelay: "200ms" }}>
+              <div className="relative">
+                <div
+                  aria-hidden
+                  className="absolute inset-0 -m-3 rounded-full"
+                  style={{
+                    background:
+                      "radial-gradient(circle at center, rgba(167,139,250,0.30) 0%, rgba(167,139,250,0) 65%)",
+                  }}
+                />
+                <OrkestriaMark size={56} animated />
+              </div>
+              <h1 className="mt-5 text-[26px] font-semibold leading-tight tracking-tight text-white">
+                Welcome back
+              </h1>
+              <p className="mt-1 text-[13.5px] text-white/50">
+                Sign in to continue to your workspace.
+              </p>
             </div>
-          </div>
-        </div>
 
-        {/* Headline + copy + features — below the stage */}
-        <div className="relative z-10 space-y-5">
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/25 bg-cyan-400/5 px-3 py-1 text-xs font-medium text-cyan-300 backdrop-blur-sm animate-fade-in-up">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/80" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
-            </span>
-            Your squads are already working
-          </div>
-
-          <h1 className="text-3xl font-bold leading-[1.1] tracking-tight text-white xl:text-4xl 2xl:text-[2.7rem] animate-fade-in-up">
-            Welcome back to
-            <br />
-            <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-amber-300 bg-clip-text text-transparent">
-              your workspace
-            </span>
-          </h1>
-
-          <p className="max-w-md text-[15px] leading-relaxed text-white/55 animate-fade-in-up animation-delay-200">
-            Coordinate your agents, leads, knowledge and execution from one
-            polished workspace built to move fast.
-          </p>
-
-          <div className="grid gap-2.5">
-            {features.slice(0, 3).map((feature, i) => (
-              <FeatureCard
-                key={feature.title}
-                icon={feature.icon}
-                title={feature.title}
-                description={feature.description}
-                delay={400 + i * 120}
-              />
-            ))}
-          </div>
-        </div>
-      </aside>
-
-      {/* -------------------------- RIGHT PANEL ------------------------- */}
-      <section className="relative flex w-full flex-col justify-center px-6 py-10 sm:px-10 lg:w-1/2 lg:px-12 xl:px-20 2xl:px-28">
-        {/* Mobile logo */}
-        <div className="mb-10 lg:hidden">
-          <Link href="/home" className="inline-flex items-center gap-3">
-            <OrkestriaMark size={34} />
-            <span className="font-semibold text-white">Orkestria</span>
-          </Link>
-        </div>
-
-        <div className="relative mx-auto w-full max-w-md animate-fade-in">
-          {/* Back to home */}
-          <Link
-            href="/home"
-            className="group mb-10 inline-flex items-center gap-2 text-sm text-white/45 transition-colors hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-0.5" />
-            Back to home
-          </Link>
-
-          {/* Header */}
-          <div className="mb-9">
-            <h2 className="text-3xl font-bold tracking-tight text-white xl:text-[2rem]">
-              Sign in to Orkestria
-            </h2>
-            <p className="mt-2 text-white/50">
-              Enter your credentials to access your workspace.
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-5" aria-busy={isLoading}>
-            {/* Email field */}
-            <div className="space-y-2">
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-white/75"
+            <form onSubmit={handleSubmit} className="space-y-3.5" aria-busy={isLoading}>
+              {/* Email */}
+              <Field
+                label="Email"
+                icon={<Mail className="h-4 w-4" />}
+                style={{ animationDelay: "320ms" }}
               >
-                Email
-              </label>
-              <div className="group relative">
-                <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30 transition-colors group-focus-within:text-cyan-300" />
                 <input
-                  id="email"
                   type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@company.com"
-                  autoComplete="email"
-                  className="h-14 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-12 pr-4 text-[15px] text-white outline-none transition-all placeholder:text-white/30 hover:border-white/15 focus:border-cyan-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-cyan-500/15"
+                  className="w-full bg-transparent pl-9 pr-3 py-2.5 text-[14px] text-white placeholder-white/30 outline-none"
                 />
-              </div>
-            </div>
+              </Field>
 
-            {/* Password field */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-white/75"
-                >
-                  Password
+              {/* Password */}
+              <Field
+                label="Password"
+                icon={<Lock className="h-4 w-4" />}
+                style={{ animationDelay: "400ms" }}
+                rightSlot={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-white/40 transition-colors hover:text-white/80"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                }
+              >
+                <input
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-transparent pl-9 pr-9 py-2.5 text-[14px] text-white placeholder-white/30 outline-none"
+                />
+              </Field>
+
+              {/* Remember + forgot */}
+              <div
+                className="login-fade-in flex items-center justify-between pt-1 text-[12.5px]"
+                style={{ animationDelay: "480ms" }}
+              >
+                <label className="inline-flex cursor-pointer items-center gap-2 text-white/55 transition-colors hover:text-white/80">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-3.5 w-3.5 cursor-pointer accent-violet-400"
+                  />
+                  Remember me
                 </label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-medium text-cyan-300 transition-colors hover:text-cyan-200"
-                >
+                <Link href="/forgot" className="text-white/55 transition-colors hover:text-violet-200">
                   Forgot password?
                 </Link>
               </div>
-              <div className="group relative">
-                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30 transition-colors group-focus-within:text-cyan-300" />
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  className="h-14 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-12 pr-14 text-[15px] text-white outline-none transition-all placeholder:text-white/30 hover:border-white/15 focus:border-cyan-400/60 focus:bg-white/[0.06] focus:ring-4 focus:ring-cyan-500/15"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 rounded-lg p-1 text-white/35 transition-colors hover:bg-white/5 hover:text-white"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
-                </button>
-              </div>
-            </div>
 
-            {/* Remember me */}
-            <div className="flex items-center justify-between pt-1">
+              {/* Error */}
+              {error ? (
+                <div
+                  role="alert"
+                  className="rounded-xl border border-rose-400/30 bg-rose-500/[0.08] px-3 py-2 text-[12.5px] text-rose-200"
+                >
+                  {error}
+                </div>
+              ) : null}
+
+              {/* Submit */}
               <button
-                type="button"
-                onClick={() => setRememberMe(!rememberMe)}
-                className="group inline-flex items-center gap-3"
-                aria-pressed={rememberMe}
+                type="submit"
+                disabled={isDisabled}
+                className="login-fade-in group relative mt-2 inline-flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl text-[14px] font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ animationDelay: "560ms" }}
               >
                 <span
-                  className={`relative h-6 w-11 rounded-full transition-all ${
-                    rememberMe
-                      ? "bg-gradient-to-r from-cyan-500 to-violet-500 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_0_20px_-4px_rgba(139,92,246,0.4)]"
-                      : "bg-white/10 ring-1 ring-inset ring-white/5"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-md transition-all ${
-                      rememberMe ? "left-[1.375rem]" : "left-1"
-                    }`}
-                  />
-                </span>
-                <span className="text-sm text-white/65 transition-colors group-hover:text-white/85">
-                  Keep me signed in
+                  aria-hidden
+                  className="absolute inset-0 transition-opacity"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f59e0b 100%)",
+                  }}
+                />
+                <span
+                  aria-hidden
+                  className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, #22d3ee 0%, #a78bfa 35%, #f59e0b 70%, #a78bfa 100%)",
+                    backgroundSize: "200% 100%",
+                    animation: "login-sweep 2.4s linear infinite",
+                  }}
+                />
+                <span className="relative z-10 inline-flex items-center gap-2 text-[#0b0e14]">
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      Sign in
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                    </>
+                  )}
                 </span>
               </button>
-            </div>
+            </form>
 
-            {/* Error */}
-            {error && (
-              <div className="flex items-start gap-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200 animate-shake">
-                <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-rose-500/20">
-                  <span className="text-xs font-bold text-rose-300">!</span>
-                </div>
-                <p className="flex-1">{error}</p>
-              </div>
-            )}
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={isDisabled}
-              className="group relative mt-2 flex h-14 w-full items-center justify-center gap-2 overflow-hidden rounded-xl font-semibold text-white shadow-[0_8px_30px_-6px_rgba(139,92,246,0.45)] transition-all hover:shadow-[0_10px_40px_-6px_rgba(139,92,246,0.6)] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
+            {/* Divider + register CTA */}
+            <div
+              className="login-fade-in mt-6 flex items-center gap-3 text-[11px] uppercase tracking-[0.2em] text-white/30"
+              style={{ animationDelay: "640ms" }}
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 via-violet-500 to-pink-500 transition-transform group-hover:scale-[1.03]" />
-              <div className="absolute inset-0 opacity-0 transition-opacity group-hover:opacity-100">
-                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-              </div>
-              <span className="relative z-10 text-[15px]">
-                {isLoading ? "Signing in..." : "Sign in"}
-              </span>
-              {!isLoading && (
-                <ArrowRight className="relative z-10 h-5 w-5 transition-transform group-hover:translate-x-1" />
-              )}
-            </button>
-          </form>
-
-          {/* Divider + Register */}
-          <div className="mt-10">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-white/10" />
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-[#030810] px-3 uppercase tracking-wider text-white/35">
-                  New to Orkestria?
-                </span>
-              </div>
+              <span className="h-px flex-1 bg-white/10" />
+              new here?
+              <span className="h-px flex-1 bg-white/10" />
             </div>
-            <div className="mt-6 text-center">
+
+            <div
+              className="login-fade-in mt-4 text-center text-[13px] text-white/55"
+              style={{ animationDelay: "720ms" }}
+            >
               <Link
                 href="/register"
-                className="inline-flex items-center gap-2 text-sm font-medium text-cyan-300 transition-colors hover:text-cyan-200"
+                className="inline-flex items-center gap-1.5 font-medium text-white/75 transition-colors hover:text-white"
               >
                 Create your workspace
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
           </div>
         </div>
 
-        {/* Mobile footer */}
-        <div className="mt-12 flex items-center justify-center gap-2 text-xs text-white/35 lg:hidden">
-          <Shield className="h-3.5 w-3.5" />
-          <span>Secure access for admin &amp; company workspaces</span>
+        {/* Trust footnote */}
+        <div
+          className="login-fade-in mt-5 flex items-center justify-center gap-2 text-[11.5px] text-white/30"
+          style={{ animationDelay: "800ms" }}
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          <span>Encrypted in transit · sessions you can revoke</span>
         </div>
-      </section>
+      </main>
 
-      <style jsx>{`
-        @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
+      <style jsx global>{`
+        @keyframes login-fade-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes fade-in-up {
-          from { opacity: 0; transform: translateY(16px); }
-          to { opacity: 1; transform: translateY(0); }
+        .login-fade-in {
+          animation: login-fade-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
-        @keyframes slide-in-left {
-          from { opacity: 0; transform: translateX(-24px); }
-          to { opacity: 1; transform: translateX(0); }
+        @keyframes login-sweep {
+          0%   { background-position: 0% 0%; }
+          100% { background-position: 200% 0%; }
         }
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
-          20%, 40%, 60%, 80% { transform: translateX(4px); }
-        }
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out forwards;
-        }
-        .animate-fade-in-up {
-          animation: fade-in-up 0.6s ease-out forwards;
-        }
-        .animate-slide-in-left {
-          animation: slide-in-left 0.5s ease-out forwards;
-          opacity: 0;
-        }
-        .animate-shake {
-          animation: shake 0.45s ease-in-out;
-        }
-        .animation-delay-200 {
-          animation-delay: 200ms;
+        /* Soft focus ring inside the field — more elegant than the
+           default browser ring. */
+        .login-field:focus-within {
+          border-color: rgba(167,139,250,0.55) !important;
+          box-shadow:
+            0 0 0 1px rgba(167,139,250,0.25),
+            0 4px 18px rgba(167,139,250,0.12);
         }
       `}</style>
     </div>
   );
 }
 
-// Default export wraps the inner component in a Suspense boundary because
-// `useSearchParams()` requires one during Next.js static export — otherwise
-// `next build` fails with "useSearchParams() should be wrapped in a suspense
-// boundary" on /login.
-export default function LoginPage() {
+// ── Field primitive ──────────────────────────────────────────────────
+
+function Field({
+  label,
+  icon,
+  rightSlot,
+  children,
+  style,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  rightSlot?: React.ReactNode;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
   return (
-    <Suspense fallback={<LoginPageFallback />}>
-      <LoginPageInner />
-    </Suspense>
+    <label className="login-fade-in block" style={style}>
+      <span className="mb-1.5 block text-[11.5px] font-medium text-white/55">
+        {label}
+      </span>
+      <div className="login-field relative flex items-center rounded-xl border border-white/10 bg-white/[0.025] transition-all">
+        <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-white/35">
+          {icon}
+        </span>
+        {children}
+        {rightSlot}
+      </div>
+    </label>
   );
 }
