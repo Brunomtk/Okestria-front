@@ -51,6 +51,8 @@ import {
   Loader2,
   Maximize2,
   Network,
+  Pause,
+  Play,
   Plus,
   RefreshCcw,
   Save,
@@ -632,23 +634,12 @@ function ModeTab({
 // on usability and animation feel.
 // ─────────────────────────────────────────────────────────────────────
 
-// ── Canvas helpers ─────────────────────────────────────────────────
-
-const HEX_RE = /^#([0-9a-f]{6})$/i;
-
-function withAlpha(hex: string, alpha: number): string {
-  const m = HEX_RE.exec(hex);
-  if (!m) return hex;
-  const v = m[1]!;
-  const r = parseInt(v.slice(0, 2), 16);
-  const g = parseInt(v.slice(2, 4), 16);
-  const b = parseInt(v.slice(4, 6), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+// ── Helpers used inside GraphView ──────────────────────────────────
 
 function truncateLabel(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + "…";
 }
+
 
 
 function GraphView({
@@ -663,9 +654,8 @@ function GraphView({
   onOpenSelected: (path: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  // The lib instance — typed as `any` because the imperative API isn't
-  // exported as a clean TypeScript surface and we only call a handful
-  // of methods (zoom, centerAt, zoomToFit, d3Force, d3ReheatSimulation).
+  // The lib instance — we call cameraPosition / zoomToFit / d3Force /
+  // d3ReheatSimulation imperatively.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
@@ -675,23 +665,23 @@ function GraphView({
   const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // ── Filters (Obsidian sections) ────────────────────────────────
+  // ── Filters ─────────────────────────────────────────────────────
   const [showTags, setShowTags] = useState(true);
   const [showOrphans, setShowOrphans] = useState(true);
 
-  // ── Display sliders ────────────────────────────────────────────
+  // ── Display ─────────────────────────────────────────────────────
   const [nodeSizeMul, setNodeSizeMul] = useState(1.0);
   const [linkThicknessMul, setLinkThicknessMul] = useState(1.0);
-  const [textFadeStart, setTextFadeStart] = useState(1.4);
   const [animateEdges, setAnimateEdges] = useState(true);
+  const [autoRotate, setAutoRotate] = useState(true);
 
-  // ── Force sliders (rewires d3 in real time) ────────────────────
+  // ── Forces ──────────────────────────────────────────────────────
   const [centerForce, setCenterForce] = useState(0.18);
   const [repelForce, setRepelForce] = useState(180);
   const [linkDistance, setLinkDistance] = useState(60);
   const [linkStrength, setLinkStrength] = useState(0.55);
 
-  // ── Settings panel section open/close ──────────────────────────
+  // ── Sections ────────────────────────────────────────────────────
   const [section, setSection] = useState({
     filters: true,
     groups: true,
@@ -706,7 +696,7 @@ function GraphView({
     [graph],
   );
 
-  // ── Graph data: filter by tags/orphans, build neighbour map ────
+  // ── Filtered graph data ────────────────────────────────────────
   const { nodes, links, neighbours, topTags, folderCounts } = useMemo(() => {
     if (!graph) {
       return {
@@ -720,8 +710,6 @@ function GraphView({
     let n: GraphNodeRich[] = graph.nodes.map((node) => ({ ...node }));
     if (!showTags) n = n.filter((node) => node.kind !== "tag");
 
-    // Adjacency on the FULL link list so orphan detection is correct
-    // even when tags are hidden.
     const adj = new Map<string, number>();
     for (const l of graph.links) {
       adj.set(l.source, (adj.get(l.source) ?? 0) + 1);
@@ -748,9 +736,7 @@ function GraphView({
     for (const node of n) {
       if (node.kind === "tag") tagCount.set(node.label, node.degree);
     }
-    const top = [...tagCount.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 12);
+    const top = [...tagCount.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
 
     const fc = new Map<string, number>();
     for (const node of n) {
@@ -763,7 +749,6 @@ function GraphView({
     return { nodes: n, links: l, neighbours: nb, topTags: top, folderCounts: fc };
   }, [graph, showTags, showOrphans]);
 
-  // ── Search highlight ───────────────────────────────────────────
   const matchedIds = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return null;
@@ -775,7 +760,7 @@ function GraphView({
     return m;
   }, [searchTerm, nodes]);
 
-  // ── Resize observer keeps the canvas crisp on window changes ───
+  // ── Resize observer ────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -795,12 +780,7 @@ function GraphView({
     return () => ro.disconnect();
   }, []);
 
-  // ── Plumb force sliders into d3-force ──────────────────────────
-  // Update strength/distance immediately, but DEBOUNCE the reheat —
-  // calling `d3ReheatSimulation` on every onChange of a slider drag
-  // causes a constant simulation restart and freezes the canvas in
-  // a permanent settle/unsettle loop. With debounce, the simulation
-  // is energised once after the user pauses for ~200ms.
+  // ── Force sliders → d3 (debounced reheat — same lesson as 2D) ──
   const reheatTimerRef = useRef<number | null>(null);
   useEffect(() => {
     const fg = fgRef.current;
@@ -824,6 +804,27 @@ function GraphView({
     };
   }, [repelForce, linkDistance, linkStrength, centerForce, nodes.length, links.length]);
 
+  // ── Auto-rotate the camera around origin (only when nothing is
+  //     pinned and the toggle is on). Cheap rAF loop, NO impact on
+  //     the simulation cost.
+  useEffect(() => {
+    if (!autoRotate || pinnedNodeId) return;
+    const fg = fgRef.current;
+    if (!fg?.cameraPosition) return;
+    let raf = 0;
+    let t = 0;
+    const distance = 380;
+    const step = () => {
+      t += 0.0008;
+      const x = distance * Math.sin(t);
+      const z = distance * Math.cos(t);
+      fgRef.current?.cameraPosition?.({ x, y: 60, z });
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [autoRotate, pinnedNodeId, nodes.length]);
+
   // ── Active node = pinned > hovered ─────────────────────────────
   const activeId = pinnedNodeId ?? hoverNodeId;
   const activeNeighbours = activeId ? neighbours.get(activeId) ?? new Set<string>() : null;
@@ -839,117 +840,38 @@ function GraphView({
     [activeId, activeNeighbours],
   );
 
-  // ── Per-node radius (Obsidian: ~3 base, 1.5 boost per degree) ──
-  const nodeRadius = useCallback(
-    (node: GraphNodeRich) => {
-      const base = node.kind === "tag" ? 4.5 : 3;
-      const degBoost = Math.min(8, (node.degree ?? 0) * 0.7);
-      return (base + degBoost) * nodeSizeMul;
+  // ── Node visuals ───────────────────────────────────────────────
+  const nodeVal = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any) => {
+      const isActive = node.id === activeId;
+      const base = node.kind === "tag" ? 5.5 : 3.5;
+      const degBoost = Math.min(10, (node.degree ?? 0) * 0.9);
+      const focus = isActive ? 1.6 : 1;
+      return (base + degBoost) * focus * nodeSizeMul;
     },
-    [nodeSizeMul],
+    [activeId, nodeSizeMul],
   );
 
-  // ── Custom canvas painter — solid disc + (cheap) halo only on
-  //    the active/highlighted nodes. The original painter drew a
-  //    radial-gradient halo for every node every frame, which is the
-  //    #1 reason a 100+ node graph turns into a slideshow on a
-  //    laptop. With this version, idle frames are ~5x cheaper and
-  //    only the focused node + its neighbours pay the gradient cost.
-  const nodeCanvasObject = useCallback(
+  // In 3D, Three.js parses node colors into a Color object that
+  // discards alpha — so `rgba(...)` won't visually dim a node. We
+  // dim by switching to a solid slate-800 ghost color, which Three
+  // renders cleanly against the cosmic background.
+  const DIM_COLOR = "#1e293b";
+  const nodeColor = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-      // First-tick guard — d3-force populates x/y AFTER tick #1.
-      const x = Number(node.x);
-      const y = Number(node.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-
+    (node: any) => {
       const id = String(node.id);
-      const isActive = id === activeId;
-      const inHighlight = isInHighlight(id) && isMatched(id);
-      const baseAlpha = activeId
-        ? inHighlight
-          ? 1
-          : 0.16
-        : isMatched(id)
-          ? 1
-          : 0.1;
       const isTag = node.kind === "tag";
       const baseColor =
         (isTag ? TAG_COLOR : folderColor(node.folder ?? null)) || ROOT_COLOR;
-      const rRaw = nodeRadius(node as GraphNodeRich);
-      const r = Number.isFinite(rRaw) && rRaw > 0 ? rRaw : 3;
-
-      // Solid disc — every node, every frame (cheap arc + fill).
-      ctx.fillStyle = withAlpha(baseColor, baseAlpha);
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Halo + outline ONLY for active / highlighted nodes. This is
-      // the big perf win — `createRadialGradient` is expensive and
-      // running it for every node every frame is what was killing us.
-      if (isActive || (activeId && inHighlight)) {
-        const haloR = r * (isActive ? 4.5 : 2.6);
-        if (Number.isFinite(haloR) && haloR > 0) {
-          const grad = ctx.createRadialGradient(x, y, 0, x, y, haloR);
-          grad.addColorStop(0, withAlpha(baseColor, isActive ? 0.55 : 0.22));
-          grad.addColorStop(1, withAlpha(baseColor, 0));
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.arc(x, y, haloR, 0, 2 * Math.PI);
-          ctx.fill();
-        }
-
-        if (isActive) {
-          ctx.strokeStyle = withAlpha("#ffffff", 0.85);
-          ctx.lineWidth = 1.6 / Math.max(0.0001, globalScale);
-          ctx.beginPath();
-          ctx.arc(x, y, r, 0, 2 * Math.PI);
-          ctx.stroke();
-        }
-      }
-
-      // Label — visible past the zoom threshold OR for the focus set.
-      const showLabel = isActive
-        ? 1
-        : activeId
-          ? inHighlight
-            ? 1
-            : 0
-          : Math.min(1, Math.max(0, (globalScale - textFadeStart) * 1.6));
-      const labelAlpha = showLabel * baseAlpha;
-      if (labelAlpha > 0.08) {
-        const fontSize = Math.max(2.8, 11 / Math.max(0.0001, globalScale));
-        ctx.font = `${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", sans-serif`;
-        ctx.fillStyle = withAlpha("#ffffff", labelAlpha * 0.92);
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        const labelText = isTag ? `#${node.label}` : truncateLabel(node.label, 32);
-        ctx.fillText(labelText, x, y + r + 1.6 / Math.max(0.0001, globalScale));
-      }
+      if (!activeId && (!matchedIds || matchedIds.has(id))) return baseColor;
+      if (activeId && isInHighlight(id) && isMatched(id)) return baseColor;
+      return DIM_COLOR;
     },
-    [activeId, isInHighlight, isMatched, folderColor, nodeRadius, textFadeStart],
+    [activeId, folderColor, isInHighlight, isMatched, matchedIds],
   );
 
-  // Larger pointer area than the visual disc — so hover/click feels
-  // forgiving even on tiny nodes.
-  const nodePointerAreaPaint = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (node: any, color: string, ctx: CanvasRenderingContext2D) => {
-      const x = Number(node.x);
-      const y = Number(node.y);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-      const rRaw = nodeRadius(node as GraphNodeRich) * 1.6;
-      const r = Number.isFinite(rRaw) && rRaw > 0 ? rRaw : 4;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 2 * Math.PI);
-      ctx.fill();
-    },
-    [nodeRadius],
-  );
-
-  // ── Link styling ──────────────────────────────────────────────
   const linkColor = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (link: any) => {
@@ -961,8 +883,8 @@ function GraphView({
       const sMatched = !matchedIds || (matchedIds.has(sId) && matchedIds.has(tId));
       const dim = !sActive || !sMatched;
       if (link.kind === "tag")
-        return dim ? "rgba(245,158,11,0.06)" : "rgba(245,158,11,0.55)";
-      return dim ? "rgba(148,163,184,0.04)" : "rgba(148,163,184,0.32)";
+        return dim ? "rgba(245,158,11,0.05)" : "rgba(245,158,11,0.55)";
+      return dim ? "rgba(148,163,184,0.05)" : "rgba(148,163,184,0.4)";
     },
     [activeId, matchedIds],
   );
@@ -975,18 +897,14 @@ function GraphView({
       const tId =
         typeof link.target === "string" ? link.target : (link.target?.id ?? "");
       const isActive = activeId && (sId === activeId || tId === activeId);
-      const base = link.kind === "tag" ? 1.4 : 1.0;
-      return (isActive ? base * 2.1 : base) * linkThicknessMul;
+      const base = link.kind === "tag" ? 0.6 : 0.4;
+      return (isActive ? base * 2.5 : base) * linkThicknessMul;
     },
     [activeId, linkThicknessMul],
   );
 
-  // Particle flow on edges — strictly opt-in via the focus state.
-  // The previous version put 1 particle on every tag-edge by default,
-  // which on a graph with hundreds of tag connections was an absurd
-  // amount of state to update each frame. Now: zero particles by
-  // default, ~2 only on the active node's edges. Way cheaper, and
-  // arguably nicer UX (the "thinking" effect MEANS something).
+  // Particles only on the active node's edges. Same logic as 2D —
+  // zero particles by default keeps the GPU mostly idle.
   const linkDirectionalParticles = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (link: any) => {
@@ -997,8 +915,8 @@ function GraphView({
         typeof link.target === "string" ? link.target : (link.target?.id ?? "");
       return sId === activeId || tId === activeId
         ? link.kind === "tag"
-          ? 2
-          : 1
+          ? 3
+          : 2
         : 0;
     },
     [animateEdges, activeId],
@@ -1010,7 +928,7 @@ function GraphView({
     [],
   );
 
-  // ── Pointer / click handlers ───────────────────────────────────
+  // ── Pointer handlers ──────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeHover = useCallback((node: any | null) => {
     setHoverNodeId(node ? String(node.id) : null);
@@ -1018,8 +936,8 @@ function GraphView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeClick = useCallback((node: any) => {
     setPinnedNodeId(String(node.id));
+    setAutoRotate(false);
   }, []);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeRightClick = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (node: any) => {
@@ -1036,39 +954,52 @@ function GraphView({
     [nodes, pinnedNodeId, hoverNodeId],
   );
 
-  // Stable graphData object — without this memo, every React render
-  // hands the lib a new object literal `{ nodes, links }`, which the
-  // lib's diff logic interprets as "data changed" and re-runs heavy
-  // bookkeeping. Memoizing means the simulation stays warm and idle
-  // re-renders are basically free.
   const graphData = useMemo(() => ({ nodes, links }), [nodes, links]);
 
-  // ── Zoom controls ─────────────────────────────────────────────
+  // ── Zoom controls (3D camera dolly along its current axis) ────
   const handleZoomIn = useCallback(() => {
     const fg = fgRef.current;
-    if (!fg?.zoom) return;
-    fg.zoom(fg.zoom() * 1.4, 250);
+    if (!fg?.cameraPosition) return;
+    const cur = fg.cameraPosition();
+    fg.cameraPosition(
+      { x: cur.x * 0.7, y: cur.y * 0.7, z: cur.z * 0.7 },
+      cur.lookAt,
+      250,
+    );
   }, []);
   const handleZoomOut = useCallback(() => {
     const fg = fgRef.current;
-    if (!fg?.zoom) return;
-    fg.zoom(fg.zoom() * 0.7, 250);
+    if (!fg?.cameraPosition) return;
+    const cur = fg.cameraPosition();
+    fg.cameraPosition(
+      { x: cur.x * 1.4, y: cur.y * 1.4, z: cur.z * 1.4 },
+      cur.lookAt,
+      250,
+    );
   }, []);
   const handleZoomFit = useCallback(() => {
+    setAutoRotate(false);
     fgRef.current?.zoomToFit?.(400, 80);
   }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#070912]">
-      {/* Subtle ambient gradient overlay (NOT a noisy starfield —
-          Obsidian keeps the bg flat and lets the nodes breathe). */}
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden">
+      {/* Cosmic gradient background */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse at 50% 35%, rgba(124,58,237,0.06) 0%, transparent 55%)," +
-            "radial-gradient(ellipse at 80% 80%, rgba(34,211,238,0.04) 0%, transparent 50%)",
+            "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.95) 45%, rgba(2,6,23,1) 100%)",
+        }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at 80% 75%, rgba(34,211,238,0.07), transparent 50%)," +
+            "radial-gradient(circle at 18% 78%, rgba(245,158,11,0.05), transparent 45%)",
         }}
       />
 
@@ -1080,17 +1011,26 @@ function GraphView({
           width={size.w}
           height={size.h}
           backgroundColor="rgba(0,0,0,0)"
+          showNavInfo={false}
           graphData={graphData}
           nodeId="id"
           nodeRelSize={4}
+          // Sphere segments — defaults to 16 (×16 = 256 verts/sphere).
+          // Halving to 8 cuts vertex load 4x with imperceptible visual
+          // difference at the sizes we render.
+          nodeResolution={8}
+          nodeOpacity={0.95}
+          nodeVal={nodeVal}
+          nodeColor={nodeColor}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          nodeLabel={(n: any) => `${n.label}${n.folder ? ` · ${n.folder}` : ""}`}
-          nodeCanvasObject={nodeCanvasObject}
-          nodePointerAreaPaint={nodePointerAreaPaint}
+          nodeLabel={(n: any) =>
+            `<div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(2,6,23,0.94);border:1px solid rgba(167,139,250,0.4);border-radius:8px;padding:6px 8px;color:white;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px"><div style="font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${n.kind === "tag" ? TAG_COLOR : "#a78bfa"}">${n.kind}</div><div style="font-weight:500;margin-top:2px">${escapeHtml(truncateLabel(n.label, 40))}</div>${n.folder ? `<div style="opacity:0.5;font-size:10px;margin-top:2px">${escapeHtml(n.folder)}</div>` : ""}<div style="opacity:0.45;font-size:10px;margin-top:2px">degree ${n.degree}</div></div>`
+          }
           linkColor={linkColor}
           linkWidth={linkWidth}
+          linkOpacity={1}
           linkDirectionalParticles={linkDirectionalParticles}
-          linkDirectionalParticleWidth={1.6}
+          linkDirectionalParticleWidth={2}
           linkDirectionalParticleSpeed={0.005}
           linkDirectionalParticleColor={linkDirectionalParticleColor}
           onNodeHover={handleNodeHover}
@@ -1098,14 +1038,7 @@ function GraphView({
           onNodeRightClick={handleNodeRightClick}
           onBackgroundClick={handleBackgroundClick}
           enableNodeDrag={true}
-          enableZoomInteraction={true}
-          enablePanInteraction={true}
-          minZoom={0.15}
-          maxZoom={8}
-          // Shorter cooldown so the canvas goes idle faster after
-          // layout settles. After cooldown, no ticks happen unless
-          // the user interacts — which means zero CPU usage on an
-          // open-but-untouched modal.
+          enableNavigationControls={true}
           cooldownTicks={80}
           cooldownTime={6000}
           warmupTicks={30}
@@ -1114,24 +1047,23 @@ function GraphView({
         />
       ) : null}
 
-      {/* ── Floating zoom controls (bottom-left) ─────────────── */}
+      {/* Floating zoom controls (bottom-left) */}
       <div className="absolute bottom-4 left-4 flex flex-col gap-1 rounded-2xl border border-white/10 bg-[rgba(8,11,20,0.8)] p-1 shadow-[0_18px_40px_rgba(0,0,0,0.55)] backdrop-blur">
         <ZoomBtn icon={<ZoomIn className="h-3.5 w-3.5" />} title="Zoom in" onClick={handleZoomIn} />
         <ZoomBtn icon={<Focus className="h-3.5 w-3.5" />} title="Fit graph" onClick={handleZoomFit} />
         <ZoomBtn icon={<ZoomOut className="h-3.5 w-3.5" />} title="Zoom out" onClick={handleZoomOut} />
       </div>
 
-      {/* ── Hint pill (bottom-center) ───────────────────────── */}
+      {/* Hint pill */}
       <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-[rgba(8,11,20,0.7)] px-3 py-1 font-mono text-[10.5px] text-white/45 backdrop-blur">
-        scroll to zoom · drag canvas to pan · click node to focus · right-click to open
+        drag to orbit · scroll to zoom · click to focus · right-click to open
       </div>
 
-      {/* ── Settings panel (right) ──────────────────────────── */}
+      {/* Settings panel */}
       <aside
         className="pointer-events-auto absolute right-4 top-4 flex w-[280px] flex-col rounded-2xl border border-white/10 bg-[rgba(8,11,20,0.78)] shadow-[0_24px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
         style={{ maxHeight: "calc(100% - 32px)" }}
       >
-        {/* Search */}
         <div className="border-b border-white/8 p-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/40" />
@@ -1144,7 +1076,6 @@ function GraphView({
           </div>
         </div>
 
-        {/* Pinned node card */}
         <div className="px-3 pt-3">
           {pinnedNode ? (
             <div className="rounded-xl border border-violet-400/25 bg-violet-500/[0.07] p-3">
@@ -1184,15 +1115,14 @@ function GraphView({
                 Tip
               </div>
               <p className="mt-1 leading-snug">
-                Click any node to focus it. Right-click a note to open it in the editor.
+                Click a node to focus it (auto-rotate stops). Right-click a note
+                to open it in the editor.
               </p>
             </div>
           )}
         </div>
 
-        {/* Sections */}
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-2 [scrollbar-color:rgba(255,255,255,0.18)_transparent]">
-          {/* FILTERS */}
           <Section
             title="Filters"
             icon={<Settings2 className="h-3 w-3" />}
@@ -1203,7 +1133,6 @@ function GraphView({
             <ToggleRow label="Show orphans" value={showOrphans} onChange={setShowOrphans} />
           </Section>
 
-          {/* GROUPS */}
           <Section
             title="Groups"
             icon={<Folder className="h-3 w-3" />}
@@ -1265,7 +1194,6 @@ function GraphView({
             ) : null}
           </Section>
 
-          {/* DISPLAY */}
           <Section
             title="Display"
             icon={<Maximize2 className="h-3 w-3" />}
@@ -1288,23 +1216,37 @@ function GraphView({
               value={linkThicknessMul}
               onChange={setLinkThicknessMul}
             />
-            <SliderRow
-              label="Text fade"
-              min={0.6}
-              max={4}
-              step={0.05}
-              value={textFadeStart}
-              onChange={setTextFadeStart}
-              hint="Labels appear when zoom passes this value"
-            />
             <ToggleRow
               label="Animate edges"
               value={animateEdges}
               onChange={setAnimateEdges}
             />
+            <div className="flex items-center justify-between gap-2 py-0.5">
+              <span className="inline-flex items-center gap-1.5 text-[11.5px] text-white/70">
+                {autoRotate ? (
+                  <Pause className="h-3 w-3 text-violet-300" />
+                ) : (
+                  <Play className="h-3 w-3 text-white/45" />
+                )}
+                Auto-rotate
+              </span>
+              <button
+                type="button"
+                onClick={() => setAutoRotate((v) => !v)}
+                aria-pressed={autoRotate}
+                className={`relative h-4 w-7 rounded-full transition ${
+                  autoRotate ? "bg-violet-500/65" : "bg-white/15"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${
+                    autoRotate ? "left-3.5" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
           </Section>
 
-          {/* FORCES */}
           <Section
             title="Forces"
             icon={<Network className="h-3 w-3" />}
@@ -1348,6 +1290,15 @@ function GraphView({
       </aside>
     </div>
   );
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // ── Small UI primitives used inside GraphView ─────────────────────────
