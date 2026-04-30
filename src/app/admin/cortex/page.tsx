@@ -99,6 +99,7 @@ async function renderCortexPage() {
                             ? "needs refresh"
                             : "empty"
                       }
+                      href={`/admin/cortex/${c.companyId}`}
                     />
                   </div>
                 ),

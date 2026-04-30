@@ -40,6 +40,7 @@ import {
 } from "../../_components/AdminDetail";
 import { AdminDeleteButton } from "../../_components/AdminDeleteButton";
 import { safeAdminPage } from "../../_lib/safe-page";
+import { AdminChatMessage } from "./_components/AdminChatMessage";
 
 /**
  * v149 — Admin · Cron job detail.
@@ -525,11 +526,7 @@ function RunBubble({
             <p className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-violet-300/70">
               {agentName}
             </p>
-            {reply ? (
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border border-white/10 bg-black/30 p-4 text-[12.5px] leading-relaxed text-white/85">
-                {reply}
-              </pre>
-            ) : null}
+            {reply ? <AdminChatMessage content={reply} /> : null}
             {error ? (
               <pre className="max-h-44 overflow-auto whitespace-pre-wrap break-words rounded-2xl rounded-tl-sm border border-rose-400/30 bg-rose-500/[0.06] p-4 font-mono text-[11.5px] leading-relaxed text-rose-100/85">
                 {run.errorCategory ? `[${run.errorCategory}] ` : ""}

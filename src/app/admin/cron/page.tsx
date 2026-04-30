@@ -1,4 +1,5 @@
 import { Building2, Clock, Pause, Play, Timer, XCircle } from "lucide-react";
+import Link from "next/link";
 import { fetchAdminCronJobs, type AdminCronJobRow } from "@/lib/auth/api";
 import { requireAdminSession } from "../_lib/admin";
 import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
@@ -84,6 +85,7 @@ async function renderCronPage() {
             { key: "next", header: "Next in", className: "w-24" },
             { key: "runs", header: "Runs", className: "w-28" },
             { key: "status", header: "Status", className: "w-28" },
+            { key: "actions", header: "", className: "w-24 text-right" },
           ]}
           rows={jobs.map((j) => {
             const pill = statusToPill(j.status);
@@ -124,6 +126,14 @@ async function renderCronPage() {
                   </span>
                 ),
                 status: <StatusPill status={pill.status} label={pill.label} />,
+                actions: (
+                  <Link
+                    href={`/admin/cron/${j.id}`}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-100 transition hover:bg-amber-500/25"
+                  >
+                    Open →
+                  </Link>
+                ),
               },
             };
           })}

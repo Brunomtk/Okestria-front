@@ -87,6 +87,16 @@ async function render(params: Promise<{ agentId: string }>) {
     (f) => f.fileType || (f.content ?? "").trim() !== "",
   );
 
+  // The avatarNotes field can carry either a real human description
+  // ("looks like a closer in a leather jacket…") or, if the operator
+  // pasted the structured JSON in by accident, the raw avatar profile
+  // payload — that one shouldn't render as prose. Detect the
+  // JSON-shaped case and skip it.
+  const avatarNotesText = (profile?.avatarNotes ?? "").trim();
+  const avatarNotesIsStructured =
+    avatarNotesText.startsWith("{") || avatarNotesText.startsWith("[");
+  const showAvatarNotes = avatarNotesText.length > 0 && !avatarNotesIsStructured;
+
   return (
     <div className="space-y-8">
       <DetailHeader
@@ -179,13 +189,13 @@ async function render(params: Promise<{ agentId: string }>) {
               </div>
             </div>
 
-            {profile?.avatarNotes ? (
+            {showAvatarNotes ? (
               <div className="rounded-xl border border-white/10 bg-black/25 p-4">
                 <p className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-violet-300/70">
                   Avatar notes
                 </p>
-                <p className="mt-1.5 text-[13px] leading-relaxed text-white/75">
-                  {profile.avatarNotes}
+                <p className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-white/75">
+                  {avatarNotesText}
                 </p>
               </div>
             ) : null}

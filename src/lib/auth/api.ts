@@ -496,6 +496,66 @@ export async function fetchAdminCortexStats(token: string) {
   return requestJson<AdminCortexStats[]>('/api/AdminOverview/cortex/stats', undefined, token);
 }
 
+// v150 — admin-scoped per-tenant Cortex (proxies the CompanyNotes
+// service with an explicit companyId). Mirrors the shapes already
+// used by the office's Cortex modal.
+
+export type AdminCortexNote = {
+  path: string;
+  title: string;
+  folder: string;
+  sizeBytes: number;
+  lastModifiedUtc: string;
+  eTag?: string | null;
+};
+
+export type AdminCortexTree = {
+  companyId: number;
+  vaultName: string;
+  notes: AdminCortexNote[];
+  folders: string[];
+  totalCount: number;
+};
+
+export type AdminCortexGraphNode = {
+  id: string;
+  kind: 'note' | 'tag';
+  label: string;
+  folder?: string | null;
+  degree: number;
+};
+
+export type AdminCortexGraphLink = {
+  source: string;
+  target: string;
+  kind: 'wiki' | 'tag';
+};
+
+export type AdminCortexGraph = {
+  companyId: number;
+  vaultName: string;
+  nodes: AdminCortexGraphNode[];
+  links: AdminCortexGraphLink[];
+  tags: string[];
+  folders: string[];
+};
+
+export async function fetchAdminCortexTree(companyId: number, token: string) {
+  return requestJson<AdminCortexTree>(
+    `/api/AdminOverview/cortex/${companyId}/tree`,
+    undefined,
+    token,
+  );
+}
+
+export async function fetchAdminCortexGraph(companyId: number, token: string) {
+  return requestJson<AdminCortexGraph>(
+    `/api/AdminOverview/cortex/${companyId}/graph`,
+    undefined,
+    token,
+  );
+}
+
 export async function fetchAdminCronJobs(token: string) {
   return requestJson<AdminCronJobRow[]>('/api/AdminOverview/cron/all', undefined, token);
 }

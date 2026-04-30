@@ -61,21 +61,19 @@ export function AdminAgentAvatar({
       <Canvas
         key={profileKey}
         /*
-         * Admin framing notes:
-         *   • The figure spans y=-0.78 (feet) → y≈+0.9 (hair tip) → ~1.7 tall.
-         *   • Pulling the camera in to z=2.6 with fov=32 gives a half-height
-         *     of ~0.74 m at the figure plane — head + feet sit comfortably
-         *     INSIDE the view with breathing room top/bottom.
-         *   • lookAt y=0.05 puts the figure's chest at the viewport center,
-         *     so the empty space gets distributed evenly above/below the body
-         *     instead of pooling under it.
-         *   • A whisker-of-rotation off-axis (x=0.6) stops the figure from
-         *     looking like a flat cardboard cut-out.
+         * v150 framing — the figure's WORLD bounds are roughly
+         * y∈[-0.78, +0.90] (~1.7m tall). With z=5.2 + fov=28 the
+         * visible vertical at the figure plane is ~2.6m, so the body
+         * always fits with margin. Pointing the camera at y=0.45
+         * (above the figure's chest) pushes the body INTO the lower
+         * half of the viewport — that's the "move it down" the
+         * operator asked for. A small x=0.5 keeps the figure feeling
+         * three-dimensional rather than flat.
          */
-        camera={{ position: [0.6, 0.15, 2.6], fov: 32 }}
+        camera={{ position: [0.5, 0.35, 5.2], fov: 28 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.05, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.45, 0)}
         style={{ background: "transparent" }}
       >
         <ambientLight intensity={0.95} />
