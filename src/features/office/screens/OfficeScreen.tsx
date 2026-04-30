@@ -1122,7 +1122,9 @@ export function OfficeScreen({
   // a future caller (e.g. an empty-state nudge) jump straight to a
   // specific tab; defaults to "email".
   const [userToolsModalOpen, setUserToolsModalOpen] = useState(false);
-  const [userToolsInitialTab, setUserToolsInitialTab] = useState<"email" | "meta">("email");
+  // v137 — added "apify" so callers can deep-link straight to the
+  // Apify / Instagram scraper tab inside the unified Tools modal.
+  const [userToolsInitialTab, setUserToolsInitialTab] = useState<"email" | "meta" | "apify">("email");
   const leadOpsAutoOpenTimeoutRef = useRef<number | null>(null);
   const [danceUntilByAgentId, setDanceUntilByAgentId] = useState<Record<string, number>>({});
   const initJukeboxStore = useJukeboxStore((state) => state.init);

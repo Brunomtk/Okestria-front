@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * v118 — Unified Tools modal.
+ * v118 / v137 — Unified Tools modal.
  *
  * Replaces the two standalone modals from v115/v117 (UserEmailConfigModal,
  * UserMetaAccountModal). Same backing APIs, same payloads — just collapsed
@@ -12,6 +12,11 @@
  *   • Email   — IMAP/SMTP credentials for the operator's mailbox.
  *   • Meta    — Instagram + Facebook Pages + WhatsApp Business via one
  *               long-lived Meta access token + per-platform IDs.
+ *   • Apify   — v137. Per-COMPANY Apify token + scrape caps for the
+ *               apify/instagram-scraper actor. Lets agents read any
+ *               public Instagram (handle / hashtag / place) the Meta
+ *               Graph API can't reach. Token & caps are shared across
+ *               every operator in the same company.
  *
  * Each tab is fully self-contained: load → edit → test → save → delete.
  * The shared chrome (header, tab bar, footer with per-tab actions) keeps
@@ -21,6 +26,7 @@
  * Visual choices:
  *   • Email tab is cyan (matches v115).
  *   • Meta tab is fuchsia (matches v117).
+ *   • Apify tab is amber/orange (Apify brand colour, matches v137).
  *   • Active tab gets a colored underline + tinted background; inactive
  *     tabs are muted.
  *   • The header icon + accent color swap with the active tab so the
@@ -41,6 +47,7 @@ import {
   Mail,
   MessageCircle,
   Save,
+  Search,
   Send,
   Server,
   Trash2,
@@ -67,8 +74,19 @@ import {
   type UserSocialAccount,
   type UserSocialAccountTestResult,
 } from "@/lib/social/api";
+import {
+  deleteMyApifyConfig,
+  getMyApifyConfig,
+  runInstagramScrape,
+  testMyApifyConfig,
+  upsertMyApifyConfig,
+  type CompanyApifyConfig,
+  type CompanyApifyConfigTestResult,
+  type InstagramScrapeResponse,
+  type UpsertCompanyApifyConfigPayload,
+} from "@/lib/apify/api";
 
-type TabKey = "email" | "meta";
+type TabKey = "email" | "meta" | "apify";
 
 type Props = {
   open: boolean;
@@ -118,18 +136,32 @@ export function UserToolsModal({ open, onClose, initialTab = "email" }: Props) {
           headerIconBg: "bg-cyan-500/15 text-cyan-300 ring-cyan-500/30",
           eyebrow: "text-cyan-300/80",
         }
-      : {
-          ring: "border-fuchsia-400/35",
-          gradient:
-            "bg-[linear-gradient(160deg,rgba(40,18,46,0.94),rgba(8,7,16,0.96))]",
-          glow: "shadow-[0_30px_90px_rgba(232,121,249,0.18)]",
-          hairline: "via-fuchsia-300/55",
-          pillBorder: "border-fuchsia-400/35",
-          pillBg: "bg-fuchsia-500/12",
-          pillText: "text-fuchsia-100",
-          headerIconBg: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
-          eyebrow: "text-fuchsia-300/80",
-        };
+      : tab === "meta"
+        ? {
+            ring: "border-fuchsia-400/35",
+            gradient:
+              "bg-[linear-gradient(160deg,rgba(40,18,46,0.94),rgba(8,7,16,0.96))]",
+            glow: "shadow-[0_30px_90px_rgba(232,121,249,0.18)]",
+            hairline: "via-fuchsia-300/55",
+            pillBorder: "border-fuchsia-400/35",
+            pillBg: "bg-fuchsia-500/12",
+            pillText: "text-fuchsia-100",
+            headerIconBg: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
+            eyebrow: "text-fuchsia-300/80",
+          }
+        : {
+            // v137 — Apify (amber).
+            ring: "border-amber-400/35",
+            gradient:
+              "bg-[linear-gradient(160deg,rgba(46,30,8,0.94),rgba(14,8,3,0.96))]",
+            glow: "shadow-[0_30px_90px_rgba(245,158,11,0.18)]",
+            hairline: "via-amber-300/55",
+            pillBorder: "border-amber-400/35",
+            pillBg: "bg-amber-500/12",
+            pillText: "text-amber-100",
+            headerIconBg: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+            eyebrow: "text-amber-300/80",
+          };
 
   return (
     <div
@@ -207,13 +239,23 @@ export function UserToolsModal({ open, onClose, initialTab = "email" }: Props) {
             label="Instagram · Facebook · WhatsApp"
             icon={<Instagram className="h-3.5 w-3.5" />}
           />
+          {/* v137 — Apify Instagram scraper (per-company token). */}
+          <TabTrigger
+            active={tab === "apify"}
+            onClick={() => setTab("apify")}
+            color="amber"
+            label="Apify · IG scraper"
+            icon={<Search className="h-3.5 w-3.5" />}
+          />
         </nav>
 
         {/* ── Tab body ──────────────────────────────────────────── */}
         {tab === "email" ? (
           <EmailTab onClose={onClose} />
-        ) : (
+        ) : tab === "meta" ? (
           <MetaTab onClose={onClose} />
+        ) : (
+          <ApifyTab onClose={onClose} />
         )}
       </section>
     </div>
@@ -233,14 +275,16 @@ function TabTrigger({
 }: {
   active: boolean;
   onClick: () => void;
-  color: "cyan" | "fuchsia";
+  color: "cyan" | "fuchsia" | "amber";
   label: string;
   icon: React.ReactNode;
 }) {
   const activeStyles =
     color === "cyan"
       ? "border-cyan-400/45 bg-cyan-500/10 text-cyan-100"
-      : "border-fuchsia-400/45 bg-fuchsia-500/10 text-fuchsia-100";
+      : color === "fuchsia"
+        ? "border-fuchsia-400/45 bg-fuchsia-500/10 text-fuchsia-100"
+        : "border-amber-400/45 bg-amber-500/10 text-amber-100";
   const idleStyles =
     "border-transparent bg-transparent text-white/55 hover:bg-white/[0.04] hover:text-white";
   return (
@@ -1208,6 +1252,500 @@ function MetaTab({ onClose }: { onClose: () => void }) {
         </div>
       </footer>
     </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// APIFY TAB (v137)
+// ─────────────────────────────────────────────────────────────────────
+
+function ApifyTab({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [scraping, setScraping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [showToken, setShowToken] = useState(false);
+
+  const [existing, setExisting] = useState<CompanyApifyConfig | null>(null);
+  const [token, setToken] = useState("");
+  const [label, setLabel] = useState("");
+  const [dailyCap, setDailyCap] = useState(500);
+  const [perCallCap, setPerCallCap] = useState(50);
+  const [testResult, setTestResult] = useState<CompanyApifyConfigTestResult | null>(null);
+
+  // Inline "Try it" panel.
+  const [tryHandles, setTryHandles] = useState("");
+  const [tryHashtags, setTryHashtags] = useState("");
+  const [tryLimit, setTryLimit] = useState(6);
+  const [tryResultsType, setTryResultsType] = useState<"posts" | "details" | "comments" | "mentions" | "stories">(
+    "posts",
+  );
+  const [tryPersist, setTryPersist] = useState(true);
+  const [tryResult, setTryResult] = useState<InstagramScrapeResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    void getMyApifyConfig()
+      .then((row) => {
+        if (cancelled) return;
+        setExisting(row);
+        if (row) {
+          setLabel(row.label ?? "");
+          setDailyCap(row.dailyResultsCap);
+          setPerCallCap(row.perCallResultsCap);
+          setToken("");
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const canSave = useMemo(
+    () => (existing ? true : token.trim().length > 0) && dailyCap > 0 && perCallCap > 0,
+    [existing, token, dailyCap, perCallCap],
+  );
+  const canTry = useMemo(
+    () => existing != null && (tryHandles.trim().length > 0 || tryHashtags.trim().length > 0),
+    [existing, tryHandles, tryHashtags],
+  );
+
+  const handleSave = async () => {
+    if (!canSave) {
+      setError("Provide a token (first time) and positive caps.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const payload: UpsertCompanyApifyConfigPayload = {
+        apifyToken: token.trim() || undefined,
+        label: label.trim() || undefined,
+        dailyResultsCap: Math.max(1, Math.min(50000, Math.floor(dailyCap))),
+        perCallResultsCap: Math.max(1, Math.min(1000, Math.floor(perCallCap))),
+      };
+      const saved = await upsertMyApifyConfig(payload);
+      setExisting(saved);
+      setToken("");
+      setSuccess("Saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setTesting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await testMyApifyConfig();
+      setTestResult(result);
+      if (result.ok) setSuccess(`Apify reachable — ${result.username ?? "ok"} (${result.plan ?? "?"}).`);
+      else setError(result.error ?? "Test failed.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!existing) return;
+    if (!confirm("Delete the Apify config for this company? Agents will lose access to the scraper.")) return;
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deleteMyApifyConfig();
+      setExisting(null);
+      setToken("");
+      setLabel("");
+      setDailyCap(500);
+      setPerCallCap(50);
+      setTestResult(null);
+      setTryResult(null);
+      setSuccess("Deleted.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleTry = async () => {
+    if (!canTry) return;
+    setScraping(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const handles = tryHandles
+        .split(/[\s,]+/)
+        .map((h) => h.trim().replace(/^@/, ""))
+        .filter(Boolean);
+      const hashtags = tryHashtags
+        .split(/[\s,]+/)
+        .map((h) => h.trim().replace(/^#/, ""))
+        .filter(Boolean);
+      const result = await runInstagramScrape({
+        handles: handles.length ? handles : undefined,
+        hashtags: hashtags.length ? hashtags : undefined,
+        resultsType: tryResultsType,
+        limit: Math.max(1, Math.min(50, Math.floor(tryLimit))),
+        persistToVault: tryPersist,
+      });
+      setTryResult(result);
+      // Refresh config so the consumed counter shows the latest value.
+      const refreshed = await getMyApifyConfig();
+      setExisting(refreshed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto px-5 py-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-[13px] text-white/60">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Status row */}
+            {existing ? (
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-3 text-[12px] sm:grid-cols-4">
+                <StatCell label="Token" value={existing.maskedToken || "—"} mono />
+                <StatCell label="Today" value={`${existing.resultsConsumedToday} / ${existing.dailyResultsCap}`} />
+                <StatCell label="All time" value={existing.resultsConsumedTotal.toLocaleString()} />
+                <StatCell
+                  label="Last scrape"
+                  value={existing.lastScrapeAtUtc ? RELATIVE_TIME(existing.lastScrapeAtUtc) : "never"}
+                  hint={existing.lastScrapeTarget ?? undefined}
+                />
+              </div>
+            ) : (
+              <div className="rounded-xl border border-amber-400/20 bg-amber-500/[0.04] p-3 text-[12px] text-amber-100/80">
+                No Apify config yet for this company. Paste a token to wire up the
+                <span className="font-mono"> apify/instagram-scraper</span> actor for every operator + agent here.
+              </div>
+            )}
+
+            {/* Token */}
+            <Field label="Apify API token" hint="Bearer token from Apify Console → Settings → Integrations.">
+              <div className="relative">
+                <input
+                  type={showToken ? "text" : "password"}
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder={existing ? "Leave empty to keep the saved token" : "apify_api_…"}
+                  autoComplete="new-password"
+                  className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 pr-9 font-mono text-[12px] text-white placeholder-white/30 outline-none focus:border-amber-400/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowToken((v) => !v)}
+                  aria-label={showToken ? "Hide token" : "Show token"}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-white/45 hover:text-white"
+                >
+                  {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </Field>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field label="Label (optional)" hint="Human note — shown in audit only.">
+                <input
+                  type="text"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="PTX prod plan"
+                  className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white placeholder-white/30 outline-none focus:border-amber-400/50"
+                />
+              </Field>
+              <Field label="Daily results cap" hint="Hard ceiling per UTC day for this company.">
+                <input
+                  type="number"
+                  min={1}
+                  max={50000}
+                  value={dailyCap}
+                  onChange={(e) => setDailyCap(Number(e.target.value) || 0)}
+                  className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white outline-none focus:border-amber-400/50"
+                />
+              </Field>
+              <Field label="Per-call cap" hint="Max items returned in one scrape call.">
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  value={perCallCap}
+                  onChange={(e) => setPerCallCap(Number(e.target.value) || 0)}
+                  className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white outline-none focus:border-amber-400/50"
+                />
+              </Field>
+            </div>
+
+            {/* Test result */}
+            {testResult && (
+              <div
+                className={`rounded-xl border p-3 text-[12px] ${
+                  testResult.ok
+                    ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                    : "border-rose-400/30 bg-rose-500/10 text-rose-100"
+                }`}
+              >
+                <div className="flex items-center gap-2 font-semibold">
+                  {testResult.ok ? <Check className="h-3.5 w-3.5" /> : <XIcon className="h-3.5 w-3.5" />}
+                  Apify {testResult.ok ? "OK" : "failed"}
+                </div>
+                {testResult.ok ? (
+                  <div className="mt-1 text-white/70">
+                    Logged in as <span className="font-mono">{testResult.username ?? "?"}</span>
+                    {testResult.plan ? <> · plan <span className="font-mono">{testResult.plan}</span></> : null}
+                  </div>
+                ) : (
+                  <div className="mt-1 whitespace-pre-wrap text-white/70">{testResult.error}</div>
+                )}
+              </div>
+            )}
+
+            {/* Try it now */}
+            {existing && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3">
+                <div className="flex items-center gap-2 text-[12px] font-semibold text-amber-100">
+                  <Search className="h-3.5 w-3.5" /> Try a scrape
+                </div>
+                <p className="mt-1 text-[11.5px] text-white/55">
+                  Drives the actor live so you can verify cost / output shape before letting agents loose.
+                </p>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <Field label="Handles (comma-separated)">
+                    <input
+                      type="text"
+                      value={tryHandles}
+                      onChange={(e) => setTryHandles(e.target.value)}
+                      placeholder="brazilianreport, seattleprabrasileiros"
+                      className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white placeholder-white/30 outline-none focus:border-amber-400/50"
+                    />
+                  </Field>
+                  <Field label="Hashtags (comma-separated)">
+                    <input
+                      type="text"
+                      value={tryHashtags}
+                      onChange={(e) => setTryHashtags(e.target.value)}
+                      placeholder="seattlebrazil, br_in_us"
+                      className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white placeholder-white/30 outline-none focus:border-amber-400/50"
+                    />
+                  </Field>
+                  <Field label="Type">
+                    <select
+                      value={tryResultsType}
+                      onChange={(e) =>
+                        setTryResultsType(e.target.value as typeof tryResultsType)
+                      }
+                      className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white outline-none focus:border-amber-400/50"
+                    >
+                      <option value="posts">posts</option>
+                      <option value="details">details</option>
+                      <option value="comments">comments</option>
+                      <option value="mentions">mentions</option>
+                      <option value="stories">stories</option>
+                    </select>
+                  </Field>
+                  <Field label="Limit per input">
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={tryLimit}
+                      onChange={(e) => setTryLimit(Number(e.target.value) || 0)}
+                      className="w-full rounded-md border border-white/12 bg-black/40 px-3 py-2 text-[12px] text-white outline-none focus:border-amber-400/50"
+                    />
+                  </Field>
+                </div>
+                <label className="mt-2 inline-flex items-center gap-2 text-[11.5px] text-white/65">
+                  <input
+                    type="checkbox"
+                    checked={tryPersist}
+                    onChange={(e) => setTryPersist(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-amber-400"
+                  />
+                  Persist result as a markdown note in the company vault
+                </label>
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTry}
+                    disabled={!canTry || scraping}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-500/15 px-3 py-1.5 text-[11.5px] font-semibold text-amber-100 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {scraping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    Run scrape
+                  </button>
+                  {tryResult && (
+                    <span className="text-[11px] text-white/55">
+                      {tryResult.resultsReturned} item{tryResult.resultsReturned === 1 ? "" : "s"} ·
+                      budget left: {tryResult.dailyBudgetRemaining}
+                      {tryResult.vaultNotePath ? <> · note <span className="font-mono">{tryResult.vaultNotePath}</span></> : null}
+                    </span>
+                  )}
+                </div>
+                {tryResult && tryResult.items && tryResult.items.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {tryResult.items.slice(0, 5).map((it, idx) => (
+                      <div
+                        key={(it.id as string | undefined) ?? idx}
+                        className="rounded-md border border-white/10 bg-black/40 p-2 text-[11.5px] text-white/75"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-amber-100">
+                            {it.ownerUsername ? "@" + it.ownerUsername : "post"}
+                          </span>
+                          <span className="text-white/50">
+                            ❤ {(it.likesCount as number | null) ?? 0} · 💬 {(it.commentsCount as number | null) ?? 0}
+                          </span>
+                        </div>
+                        {it.caption && (
+                          <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-white/65">
+                            {String(it.caption)}
+                          </p>
+                        )}
+                        {it.url && (
+                          <a
+                            href={String(it.url)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 block truncate font-mono text-[10.5px] text-amber-200 hover:underline"
+                          >
+                            {String(it.url)}
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                    {tryResult.items.length > 5 && (
+                      <div className="text-[11px] text-white/45">
+                        + {tryResult.items.length - 5} more (visible to the agent in the JSON response).
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bridge / Footer messages */}
+            {error && (
+              <div className="rounded-xl border border-rose-400/30 bg-rose-500/10 p-3 text-[12px] text-rose-100">
+                {error}
+              </div>
+            )}
+            {success && !error && (
+              <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-3 text-[12px] text-emerald-100">
+                {success}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 bg-white/[0.02] px-5 py-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-white/12 bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/75 hover:bg-white/10"
+          >
+            Close
+          </button>
+          {existing && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="inline-flex items-center gap-1.5 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-[12px] text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={!existing || testing}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/12 bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/85 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+            Test token
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave || saving}
+            className="inline-flex items-center gap-1.5 rounded-md border border-amber-400/45 bg-amber-500/15 px-3 py-1.5 text-[12px] font-semibold text-amber-100 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {existing ? "Update Apify config" : "Save Apify config"}
+          </button>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+// ── Small layout primitives reused inside ApifyTab ────────────────────
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block text-[11.5px] text-white/65">
+      <span className="font-medium text-white/80">{label}</span>
+      {hint && <span className="ml-2 text-[10.5px] text-white/45">{hint}</span>}
+      <div className="mt-1">{children}</div>
+    </label>
+  );
+}
+
+function StatCell({
+  label,
+  value,
+  hint,
+  mono,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10.5px] uppercase tracking-[0.18em] text-amber-300/65">{label}</div>
+      <div className={`truncate text-[12.5px] text-white/90 ${mono ? "font-mono" : ""}`}>{value}</div>
+      {hint && <div className="truncate text-[10.5px] text-white/45">{hint}</div>}
+    </div>
   );
 }
 
