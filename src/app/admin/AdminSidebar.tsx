@@ -39,6 +39,7 @@ import {
   Timer,
   Users,
   UsersRound,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,7 @@ const NAV: NavGroup[] = [
       { href: "/admin/tasks", label: "Tasks", icon: ListTodo, accent: "text-cyan-300" },
       { href: "/admin/cron", label: "Cron jobs", icon: Timer, accent: "text-amber-300" },
       { href: "/admin/cortex", label: "Cortex", icon: Brain, accent: "text-cyan-300" },
+      { href: "/admin/sync-tools", label: "Sync TOOLS", icon: Wrench, accent: "text-emerald-300" },
     ],
   },
   {
