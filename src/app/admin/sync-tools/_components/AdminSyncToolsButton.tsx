@@ -37,25 +37,27 @@ type AgentReport = {
   toolsChars?: number;
 };
 
-type Result =
-  | {
-      ok: boolean;
-      summary: {
-        companies: number;
-        agents: number;
-        pushed: number;
-        failed: number;
-        skipped: number;
-      };
-      agents: AgentReport[];
-      finishedAt: string;
-    }
-  | {
-      ok: false;
-      stage: string;
-      error: string;
-      gatewayUrl?: string;
-    };
+type SuccessResult = {
+  ok: boolean;
+  summary: {
+    companies: number;
+    agents: number;
+    pushed: number;
+    failed: number;
+    skipped: number;
+  };
+  agents: AgentReport[];
+  finishedAt: string;
+};
+
+type ErrorResult = {
+  ok: false;
+  stage: string;
+  error: string;
+  gatewayUrl?: string;
+};
+
+type Result = SuccessResult | ErrorResult;
 
 export function AdminSyncToolsButton() {
   const [busy, setBusy] = useState(false);
@@ -137,7 +139,7 @@ function ResultPanel({
   onRerun: () => void;
   busy: boolean;
 }) {
-  if ("stage" in result && !("summary" in result)) {
+  if ("stage" in result) {
     return (
       <div className="rounded-2xl border border-rose-400/30 bg-rose-500/[0.06] p-5">
         <div className="flex items-center gap-2">
