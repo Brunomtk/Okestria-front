@@ -4,7 +4,6 @@ import {
   Clock,
   Pause,
   Play,
-  Sparkles,
   Target,
 } from "lucide-react";
 import Link from "next/link";
@@ -193,8 +192,6 @@ export default async function AdminMissionsPage() {
         <Clock className="mr-1 inline h-3 w-3" />
         squad runtime endpoint coming · this view auto-upgrades when it lands
       </p>
-
-      <span className="hidden">{Sparkles ? null : null}</span>
     </div>
   );
 }

@@ -3,7 +3,6 @@ import {
   Building2,
   CheckCircle2,
   Clock,
-  ListTodo,
   PauseCircle,
   PlayCircle,
 } from "lucide-react";
@@ -182,8 +181,6 @@ export default async function AdminTasksPage() {
         <Bot className="mr-1 inline h-3 w-3" />
         Aggregating · {totalSquads} squads available · live task feed coming
       </p>
-
-      <span className="hidden">{ListTodo ? null : null}</span>
     </div>
   );
 }
