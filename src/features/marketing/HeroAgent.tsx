@@ -222,7 +222,24 @@ function AnimatedHeroFigure({
 // Stage — soft podium + glow rings under the figure
 // ─────────────────────────────────────────────────────────────────────
 
+// v142.4 — HeroStage downgraded to a near-invisible halo. At the new
+// tight zoom the old prominent disc + 2 glow rings would crop awkwardly
+// against the figure's feet; the figure looks better floating against
+// the gradient background with just a soft purple smear underneath.
 function HeroStage() {
+  return (
+    <group position={[0, -0.8, 0]}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
+        <circleGeometry args={[0.85, 48]} />
+        <meshBasicMaterial color="#a78bfa" transparent opacity={0.18} />
+      </mesh>
+    </group>
+  );
+}
+
+// Old multi-ring stage retained for reference but unused.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function HeroStageLegacy() {
   return (
     <group position={[0, -0.8, 0]}>
       {/* Floor disc */}
@@ -283,17 +300,17 @@ export function HeroAgent({
       ) : null}
 
       <Canvas
-        // v142.3 — final framing math. The OfficeFigure rig has its
-        // feet at y ≈ -0.78 and head tip at y ≈ 1.82, so the figure
-        // is ~2.6 world units tall. With fov 38 at z=3.8 the
-        // vertical visible plane is 2 · 3.8 · tan(19°) ≈ 2.62 units,
-        // which means the figure fills the canvas top-to-bottom with
-        // a hair of margin — head visible, feet visible, NO cropping.
-        // lookAt y=0.55 centers the body in the frame.
-        camera={{ position: [0, 0.55, 3.8], fov: 38 }}
+        // v142.4 — pulled the camera in dramatically closer. The
+        // figure renders ~2.0 world units tall (geometry × scale.y
+        // 2.86, offset y=-0.78). With fov 42 at z=2.5 the vertical
+        // visible plane is 2 · 2.5 · tan(21°) ≈ 1.92 units — the
+        // figure now fills the canvas head-to-toe at ~95% with a
+        // tight margin. lookAt y=0.22 centers on the chest, which
+        // is the natural focal point of a portrait composition.
+        camera={{ position: [0, 0.22, 2.5], fov: 42 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.55, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.22, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Lighting matches the office scene defaults so the agent

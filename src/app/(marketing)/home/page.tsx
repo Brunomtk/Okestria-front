@@ -1225,7 +1225,7 @@ export default function LandingPage() {
                 }}
               />
               <div
-                className="relative flex h-[560px] flex-col overflow-hidden rounded-[28px] border border-white/10 backdrop-blur-md md:h-[620px]"
+                className="relative flex h-[640px] flex-col overflow-hidden rounded-[28px] border border-white/10 backdrop-blur-md md:h-[700px]"
                 style={{
                   background:
                     "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.86) 50%, rgba(6,8,15,0.96) 100%)",
@@ -1262,19 +1262,19 @@ export default function LandingPage() {
                     canvas + a live activity feed that fills the
                     remaining space, so every pixel of the card has
                     purpose. */}
-                <div className="relative h-[340px] shrink-0">
-                  {/* v142.3 — phase label hidden. Per operator
-                      feedback the "WALKING THE FLOOR / IDLE / etc."
-                      badge was visual noise on top of the agent;
-                      the figure speaks for itself. */}
+                <div className="relative h-[380px] shrink-0">
+                  {/* v142.4 — taller canvas + hidden phase label.
+                      Combined with the close-in camera in HeroAgent,
+                      the figure now fills the frame top-to-bottom
+                      with a focused portrait composition. */}
                   <HeroAgent className="absolute inset-0" showPhaseLabel={false} />
                   {/* Soft fade into the activity feed below */}
                   <div
                     aria-hidden
-                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-10"
                     style={{
                       background:
-                        "linear-gradient(to bottom, transparent, rgba(6,8,15,0.85))",
+                        "linear-gradient(to bottom, transparent, rgba(6,8,15,0.92))",
                     }}
                   />
                 </div>
