@@ -57,7 +57,7 @@ export default async function AdminAgentsPage({ searchParams }: PageProps) {
   const filtered = filterAgents(all, query);
   const pagination = paginate(filtered, page, 12);
   const active = filtered.filter((a) => a.status !== false);
-  const featured = filtered.filter((a) => a.featured);
+  const featured = filtered.filter((a) => a.isDefault);
 
   return (
     <div className="space-y-8">
@@ -78,7 +78,7 @@ export default async function AdminAgentsPage({ searchParams }: PageProps) {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Total" value={filtered.length} icon={Bot} accent="violet" hint="filtered" />
         <StatCard label="Active" value={active.length} icon={Sparkles} accent="emerald" />
-        <StatCard label="Featured" value={featured.length} icon={Star} accent="amber" hint="marketplace" />
+        <StatCard label="Default" value={featured.length} icon={Star} accent="amber" hint="auto-attach" />
         <StatCard label="Tenants" value={new Set(filtered.map((a) => a.companyName)).size} icon={Building2} accent="cyan" />
       </div>
 
@@ -122,9 +122,9 @@ export default async function AdminAgentsPage({ searchParams }: PageProps) {
               ),
               flags: (
                 <div className="flex flex-wrap gap-1">
-                  {agent.featured ? (
+                  {agent.isDefault ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/[0.08] px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.18em] text-amber-200">
-                      <Star className="h-2.5 w-2.5" /> featured
+                      <Star className="h-2.5 w-2.5" /> default
                     </span>
                   ) : null}
                 </div>
