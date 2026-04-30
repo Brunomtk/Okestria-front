@@ -5,8 +5,26 @@ import { cookies } from "next/headers";
 
 const ACCESS_COOKIE = "okestria_access_token";
 
+/**
+ * v154 — match the same fallback chain `lib/auth/api.ts` uses, so
+ * deployments that only set the SERVER-side `OKESTRIA_API_URL`
+ * (without a `NEXT_PUBLIC_` mirror) still find the back. Before
+ * this fix the WS route fell back to `https://localhost:44394`
+ * in production, which is unreachable from Vercel — chat dispatched
+ * fine via REST but the WS handshake silently failed and replies
+ * never came back. Symptom: "I sent a message and the agent didn't
+ * answer."
+ */
+function resolveBackendBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_OKESTRIA_API_URL ||
+    process.env.OKESTRIA_API_URL ||
+    "http://localhost:5227"
+  ).replace(/\/$/, "");
+}
+
 async function getGatewaySettings(token: string) {
-  const apiUrl = process.env.NEXT_PUBLIC_OKESTRIA_API_URL || "https://localhost:44394";
+  const apiUrl = resolveBackendBaseUrl();
   const response = await fetch(`${apiUrl}/api/Runtime/gateway-settings`, {
     headers: {
       "Authorization": `Bearer ${token}`,

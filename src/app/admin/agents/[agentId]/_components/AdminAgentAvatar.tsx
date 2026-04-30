@@ -1,26 +1,55 @@
 "use client";
 
 /**
- * v149 — Admin · Agent avatar viewer (full-figure framing).
+ * v153 — Admin · Agent avatar viewer.
  *
- * The shared `AgentAvatarPreview3D` is tuned for the editor (square-ish
- * viewport, gentle pull-back). When that component is dropped into the
- * admin's wide rectangular card the figure ends up as a small dot at
- * the top with empty floor below. So the admin gets its own thin
- * client island that mounts the SAME `OfficeFigure` but with a camera
- * tuned for the wide context: closer in, framed at chest height, no
- * orbit drift (the admin viewer is for inspection — the editor still
- * keeps free-look).
+ * Lifted directly from `HeroAgentDashboard.PortraitFigure` (the
+ * dashboard's tiny 3D portrait). That setup is the proven
+ * "fills-the-card" framing — same camera + lookAt as the agent
+ * editor, just with an internal sway via useFrame so the figure
+ * doesn't sit dead-still.
+ *
+ * Camera: position [0.45, 0.2, 4.2], fov 24, lookAt (0, 0, 0).
+ * The card itself is sized aspect-square so the half-height of the
+ * camera (≈0.89m) covers the figure (1.7m total) with a small
+ * margin top/bottom.
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Environment } from "@react-three/drei";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import { OfficeFigure } from "@/features/agents/components/AgentOfficeFigure3D";
 import {
   normalizeAgentAvatarProfile,
   type AgentAvatarProfile,
 } from "@/lib/avatars/profile";
+
+function PortraitFigure({
+  profile,
+  onReady,
+}: {
+  profile: AgentAvatarProfile;
+  onReady?: () => void;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  // Same idle sway numbers as the dashboard's PortraitFigure.
+  useFrame((state) => {
+    const group = groupRef.current;
+    if (!group) return;
+    const t = state.clock.elapsedTime;
+    group.rotation.y = Math.sin(t * 0.55) * 0.45 + 0.15;
+    group.position.y = Math.sin(t * 0.9) * 0.005;
+  });
+  return (
+    <group ref={groupRef}>
+      {/* `externalAnimation` so OUR sway is the only animation in
+          play — without it OfficeFigure adds its own and they
+          fight each other. */}
+      <OfficeFigure profile={profile} externalAnimation onReady={onReady} />
+    </group>
+  );
+}
 
 export function AdminAgentAvatar({
   avatarProfileJson,
@@ -44,42 +73,23 @@ export function AdminAgentAvatar({
   }, [avatarProfileJson, fallbackSeed]);
 
   const profileKey = useMemo(() => JSON.stringify(profile), [profile]);
-  const [readyKey, setReadyKey] = useState<string | null>(null);
-  const isReady = readyKey === profileKey;
+  const [ready, setReady] = useState(false);
 
   return (
     <div className={`relative ${className}`}>
-      {!isReady ? (
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-transparent text-white/55">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-cyan-300" />
-          <div className="font-mono text-[10.5px] uppercase tracking-[0.18em]">
-            Loading avatar…
-          </div>
+      {!ready ? (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-white/15 border-t-violet-300" />
         </div>
       ) : null}
-
       <Canvas
         key={profileKey}
-        /*
-         * v152.1 framing — fill-the-card edition.
-         *
-         * The figure spans y∈[-0.78, +0.9] (~1.7m). With z=3.7 +
-         * fov=28 the visible vertical at the figure plane is about
-         * 1.84m — so the body ends up filling ~94% of the viewport
-         * height with a small breathing margin top + bottom.
-         * lookAt y=0.10 keeps the chest near viewport center while
-         * leaving slightly more room ABOVE the head than below the
-         * feet (so the small "LIVE PREVIEW" label down at the
-         * bottom doesn't fight the boots).
-         *
-         * x=0.40 + camera y=0.10 give a gentle three-quarter view
-         * so the figure doesn't read as a flat cardboard cut-out.
-         */
-        camera={{ position: [0.4, 0.1, 3.7], fov: 28 }}
+        // Same proven framing as HeroAgentDashboard's PortraitFigure.
+        camera={{ position: [0.45, 0.2, 4.2], fov: 24 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.1, 0)}
-        style={{ background: "transparent" }}
+        onCreated={({ camera }) => camera.lookAt(0, 0.0, 0)}
+        style={{ width: "100%", height: "100%" }}
       >
         <ambientLight intensity={0.95} />
         <directionalLight position={[3, 4, 5]} intensity={2.0} />
@@ -90,14 +100,11 @@ export function AdminAgentAvatar({
         />
         <directionalLight
           position={[0, 4, -5]}
-          intensity={1.2}
+          intensity={1.25}
           color="#f0d9b5"
         />
-        <OfficeFigure
-          profile={profile}
-          onReady={() => setReadyKey(profileKey)}
-        />
         <Environment preset="city" />
+        <PortraitFigure profile={profile} onReady={() => setReady(true)} />
       </Canvas>
     </div>
   );

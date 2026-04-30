@@ -1,36 +1,82 @@
 /**
- * v145.1 — Admin diagnose page.
+ * v154 — Admin diagnose page (extended).
  *
- * Pure server component with ZERO data fetching, ZERO shared
- * admin imports beyond requireAdminSession (so the layout's
- * sidebar still renders). If this page 500s while other admin
- * pages also 500 with the same digest, the problem is in the
- * shared admin layout chain. If this page renders cleanly while
- * others don't, the problem is in the per-page shared primitives.
+ * Pure server component with no admin shared imports beyond
+ * `requireAdminSession`. Now also pings:
+ *   • /api/Runtime/gateway-settings (the same endpoint the
+ *     office's WS proxy hits at request time)
+ *   • The internal /api/gateway/ws debug endpoint, exactly the
+ *     way the office's GatewayClient does on connect
  *
- * Visit: /admin/diagnose
+ * If the office chat stops receiving messages, this page tells you
+ * WHY in seconds — was the gateway URL set, did the upstream token
+ * make it through, did the WS proxy resolve the right backend URL.
  */
 
 import { requireAdminSession } from "../_lib/admin";
+import { fetchGatewaySettings } from "@/lib/auth/api";
+
+function resolveBackendBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_OKESTRIA_API_URL ||
+    process.env.OKESTRIA_API_URL ||
+    "http://localhost:5227"
+  ).replace(/\/$/, "");
+}
+
+function maskToken(t?: string | null): string {
+  if (!t) return "(none)";
+  if (t.length <= 10) return t;
+  return `${t.slice(0, 6)}…${t.slice(-4)} (${t.length} chars)`;
+}
 
 export default async function AdminDiagnosePage() {
-  // requireAdminSession only redirects on no-token / non-admin.
-  // We capture the result and dump a tiny report.
   let info: Record<string, unknown> = {};
   try {
     const session = await requireAdminSession();
+
+    // 1. Resolved backend URL (matches lib/auth/api + the v154 fix
+    //    in app/api/gateway/ws/route.ts).
+    const backendBaseUrl = resolveBackendBaseUrl();
+
+    // 2. Hit /api/Runtime/gateway-settings the same way the WS
+    //    proxy does on each chat connect.
+    let gatewaySettings: unknown = null;
+    let gatewayError: string | null = null;
+    try {
+      const gw = await fetchGatewaySettings(session.token!);
+      gatewaySettings = {
+        configured: gw.configured,
+        baseUrl: gw.baseUrl,
+        hasUpstreamToken: gw.hasUpstreamToken,
+        upstreamTokenPreview: maskToken(gw.upstreamToken),
+      };
+    } catch (err) {
+      gatewayError = err instanceof Error ? err.message : String(err);
+    }
+
     info = {
       ok: true,
-      hasToken: Boolean(session.token),
-      userId: session.userId ?? null,
-      role: session.role ?? null,
-      roleType: session.roleType ?? null,
-      fullName: session.fullName ?? null,
-      email: session.email ?? null,
-      apiBaseUrl:
-        process.env.NEXT_PUBLIC_OKESTRIA_API_URL ||
-        process.env.OKESTRIA_API_URL ||
-        "(default localhost:5227)",
+      session: {
+        hasToken: Boolean(session.token),
+        userId: session.userId ?? null,
+        role: session.role ?? null,
+        roleType: session.roleType ?? null,
+        fullName: session.fullName ?? null,
+        email: session.email ?? null,
+      },
+      backend: {
+        resolvedBaseUrl: backendBaseUrl,
+        env: {
+          NEXT_PUBLIC_OKESTRIA_API_URL:
+            process.env.NEXT_PUBLIC_OKESTRIA_API_URL ?? "(unset)",
+          OKESTRIA_API_URL: process.env.OKESTRIA_API_URL
+            ? "(set, length " + process.env.OKESTRIA_API_URL.length + ")"
+            : "(unset)",
+        },
+      },
+      gateway: gatewaySettings ?? { error: gatewayError },
+      timestamp: new Date().toISOString(),
     };
   } catch (err) {
     info = {
@@ -49,8 +95,15 @@ export default async function AdminDiagnosePage() {
           Render diagnostic
         </h1>
         <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-white/55">
-          If you can read this, the admin layout + session guard are
-          working. The numbers below come from this exact request.
+          Live snapshot of the admin session, the backend URL the
+          server resolved for this request, and the gateway settings
+          the office&apos;s WS proxy will see when chat connects. If
+          chat is silent, scan the&nbsp;
+          <code className="rounded bg-white/10 px-1 font-mono text-[11px] text-cyan-200">
+            gateway
+          </code>{" "}
+          block — it should show <code>configured: true</code> with a
+          real <code>baseUrl</code> and a non-empty token preview.
         </p>
       </header>
 

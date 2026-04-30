@@ -102,8 +102,12 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
 
   // CortexForceGraph wrapper accepts `any` props, so we hand it the
   // exact bag of options the modal feeds its own ForceGraph.
+  // NOTE: `ref` is passed as a TOP-LEVEL prop on <ForceGraph ref={…}/>,
+  // never spread — React strips `ref` out of spread props, which is
+  // why the simulation never resolved before (fgRef.current stayed
+  // null forever, d3Force tweaks never landed, all 186 nodes
+  // remained stacked at world origin).
   const graphProps = {
-    ref: fgRef,
     width: size.w,
     height: size.h,
     backgroundColor: "rgba(0,0,0,0)",
@@ -177,7 +181,7 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
           </p>
         </div>
       ) : (
-        <ForceGraph {...graphProps} />
+        <ForceGraph ref={fgRef} {...graphProps} />
       )}
 
       {!isEmpty ? (
