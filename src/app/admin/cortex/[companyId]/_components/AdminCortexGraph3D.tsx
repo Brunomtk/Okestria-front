@@ -1,41 +1,52 @@
 "use client";
 
 /**
- * v150 — Admin · Cortex 3D graph viewer.
+ * v152 — Admin · Cortex 3D graph viewer.
  *
- * Reuses the same `CortexForceGraph` wrapper the office uses (which
- * itself wraps `react-force-graph-3d`). Imported via `next/dynamic`
- * with `ssr: false` because the underlying lib touches `window` at
- * module load — same pattern as `CortexModal`.
- *
- * The wrapper accepts `any` props (see `CortexForceGraph`), so we
- * pass the graph data + visual config as a plain object and skip
- * TypeScript's strict prop typing on the lib.
+ * Mirrors the office's CortexModal force-graph setup as closely as
+ * possible: same `CortexForceGraph` wrapper, same `nodeId="id"`,
+ * same `nodeRelSize`, same warmup/cooldown ticks, same d3 decays,
+ * same hover-tooltip HTML, plus a post-mount `zoomToFit` so the
+ * 186-node payload doesn't end up showing as one stuck dot in the
+ * middle (which is what was happening before — no warmup ticks,
+ * no zoomToFit, so the simulation barely budged before the camera
+ * locked on).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type { AdminCortexGraph } from "@/lib/auth/api";
 
-// `CortexForceGraph` is the office's wrapper — already "use client" and
-// already typed `any` so it accepts the visual config we pass below.
 const ForceGraph = dynamic(
   () => import("@/features/office/components/CortexForceGraph"),
   { ssr: false },
 );
 
-const NODE_COLOR_FOR_KIND: Record<string, string> = {
-  note: "#a78bfa",
-  tag: "#22d3ee",
+const NOTE_COLOR = "#a78bfa";
+const TAG_COLOR = "#22d3ee";
+
+const LINK_COLOR_BY_KIND: Record<string, string> = {
+  wiki: "rgba(167,139,250,0.55)",
+  tag: "rgba(34,211,238,0.55)",
 };
 
-const LINK_COLOR_FOR_KIND: Record<string, string> = {
-  wiki: "rgba(167,139,250,0.45)",
-  tag: "rgba(34,211,238,0.45)",
-};
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function truncate(s: string, n = 40): string {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
 
 export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fgRef = useRef<any>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 600, h: 460 });
 
   useEffect(() => {
@@ -54,6 +65,9 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
     return () => ro.disconnect();
   }, []);
 
+  // Clone every render so react-force-graph doesn't reuse the same
+  // node objects across re-renders (it mutates them in place to
+  // store x/y/z and would otherwise pin them to old positions).
   const data = useMemo(
     () => ({
       nodes: graph.nodes.map((n) => ({ ...n })),
@@ -64,30 +78,90 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
 
   const isEmpty = data.nodes.length === 0;
 
-  // Visual config bag — passed through to the underlying ForceGraph3D
-  // via the wrapper. Typed via the wrapper's `any` so we don't have to
-  // wrestle the lib's strict generics here.
+  // After the simulation cools, fit everything into view. Same trick
+  // CortexModal uses on its zoom-fit button.
+  useEffect(() => {
+    if (isEmpty) return;
+    const timer = window.setTimeout(() => {
+      try {
+        fgRef.current?.zoomToFit?.(600, 80);
+      } catch {
+        /* swallow */
+      }
+    }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [isEmpty, data]);
+
+  // Force-tuning the same way the office does (called once the lib
+  // mounts and exposes d3Force).
+  useEffect(() => {
+    if (isEmpty) return;
+    const id = window.setTimeout(() => {
+      const fg = fgRef.current;
+      if (!fg?.d3Force) return;
+      try {
+        fg.d3Force("charge")?.strength(-90);
+        fg.d3Force("link")?.distance(60).strength(0.7);
+        fg.d3Force("center")?.strength(0.06);
+        fg.d3ReheatSimulation?.();
+      } catch {
+        /* swallow */
+      }
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [isEmpty, data]);
+
   const graphProps = {
+    ref: fgRef,
     width: size.w,
     height: size.h,
-    graphData: data,
     backgroundColor: "rgba(0,0,0,0)",
-    nodeRelSize: 5,
+    showNavInfo: false,
+    graphData: data,
+    nodeId: "id",
+    nodeRelSize: 4.5,
+    nodeResolution: 12,
+    nodeOpacity: 0.92,
     nodeVal: (n: { degree?: number }) => 0.6 + (n.degree ?? 0) * 0.6,
     nodeColor: (n: { kind?: string }) =>
-      NODE_COLOR_FOR_KIND[n.kind ?? ""] ?? "#94a3b8",
-    nodeLabel: (n: { kind?: string; label?: string }) =>
-      n.kind === "tag" ? `#${n.label ?? ""}` : `${n.label ?? ""}`,
+      n.kind === "tag" ? TAG_COLOR : NOTE_COLOR,
+    nodeLabel: (n: {
+      kind?: string;
+      label?: string;
+      folder?: string | null;
+      degree?: number;
+    }) => {
+      const tagAccent = n.kind === "tag" ? TAG_COLOR : NOTE_COLOR;
+      const folder = n.folder
+        ? `<div style="opacity:0.5;font-size:10px;margin-top:2px">${escapeHtml(
+            n.folder,
+          )}</div>`
+        : "";
+      return `<div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(2,6,23,0.94);border:1px solid rgba(167,139,250,0.4);border-radius:8px;padding:6px 8px;color:white;box-shadow:0 8px 24px rgba(0,0,0,0.4);max-width:320px"><div style="font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${tagAccent}">${escapeHtml(
+        n.kind ?? "",
+      )}</div><div style="font-weight:500;margin-top:2px">${escapeHtml(
+        truncate(n.label ?? "", 40),
+      )}</div>${folder}<div style="opacity:0.45;font-size:10px;margin-top:2px">degree ${
+        n.degree ?? 0
+      }</div></div>`;
+    },
     linkColor: (l: { kind?: string }) =>
-      LINK_COLOR_FOR_KIND[l.kind ?? ""] ?? "rgba(255,255,255,0.25)",
-    linkOpacity: 0.65,
-    linkWidth: 0.75,
+      LINK_COLOR_BY_KIND[l.kind ?? ""] ?? "rgba(255,255,255,0.30)",
+    linkOpacity: 1,
+    linkWidth: 0.9,
     linkDirectionalParticles: (l: { kind?: string }) =>
       l.kind === "wiki" ? 1 : 0,
-    linkDirectionalParticleSpeed: 0.006,
-    linkDirectionalParticleWidth: 1.2,
+    linkDirectionalParticleSpeed: 0.005,
+    linkDirectionalParticleWidth: 2,
+    linkDirectionalParticleColor: (l: { kind?: string }) =>
+      l.kind === "wiki" ? NOTE_COLOR : TAG_COLOR,
     enableNodeDrag: true,
-    showNavInfo: false,
+    enableNavigationControls: true,
+    cooldownTicks: 80,
+    cooldownTime: 6000,
+    warmupTicks: 30,
+    d3AlphaDecay: 0.04,
+    d3VelocityDecay: 0.35,
   };
 
   return (
@@ -114,14 +188,14 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
             <span className="inline-flex items-center gap-1.5">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ background: "#a78bfa" }}
+                style={{ background: NOTE_COLOR }}
               />
               note
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span
                 className="h-2 w-2 rounded-full"
-                style={{ background: "#22d3ee" }}
+                style={{ background: TAG_COLOR }}
               />
               tag
             </span>

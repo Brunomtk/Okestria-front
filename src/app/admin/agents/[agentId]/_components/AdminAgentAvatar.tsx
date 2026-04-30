@@ -61,19 +61,21 @@ export function AdminAgentAvatar({
       <Canvas
         key={profileKey}
         /*
-         * v150 framing — the figure's WORLD bounds are roughly
-         * y∈[-0.78, +0.90] (~1.7m tall). With z=5.2 + fov=28 the
-         * visible vertical at the figure plane is ~2.6m, so the body
-         * always fits with margin. Pointing the camera at y=0.45
-         * (above the figure's chest) pushes the body INTO the lower
-         * half of the viewport — that's the "move it down" the
-         * operator asked for. A small x=0.5 keeps the figure feeling
-         * three-dimensional rather than flat.
+         * v152 framing.
+         *
+         * Use the editor's known-good camera (z=5.2, fov=24, lookAt
+         * at world origin) so the figure renders at full resolution
+         * and the engine's internal layout is happy. To "push the
+         * figure down" inside our portrait card we don't move the
+         * camera — we wrap OfficeFigure in a group offset of y=-0.55.
+         * That shifts the body a little over half a meter down in
+         * WORLD space, which lands its chest in the lower-third of
+         * the viewport instead of the top.
          */
-        camera={{ position: [0.5, 0.35, 5.2], fov: 28 }}
+        camera={{ position: [0.45, 0.2, 5.2], fov: 24 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.45, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.0, 0)}
         style={{ background: "transparent" }}
       >
         <ambientLight intensity={0.95} />
@@ -88,10 +90,12 @@ export function AdminAgentAvatar({
           intensity={1.2}
           color="#f0d9b5"
         />
-        <OfficeFigure
-          profile={profile}
-          onReady={() => setReadyKey(profileKey)}
-        />
+        <group position={[0, -0.55, 0]}>
+          <OfficeFigure
+            profile={profile}
+            onReady={() => setReadyKey(profileKey)}
+          />
+        </group>
         <Environment preset="city" />
       </Canvas>
     </div>

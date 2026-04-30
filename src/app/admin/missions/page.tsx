@@ -58,9 +58,18 @@ export default async function AdminMissionsPage() {
 
 async function renderMissionsPage() {
   const session = await requireAdminSession();
-  const missions: AdminMissionRow[] = await fetchAdminMissions(
-    session.token!,
-  ).catch(() => []);
+  const missionsResult = await fetchAdminMissions(session.token!).then(
+    (m) => ({ ok: true as const, value: m }),
+    (err) => ({
+      ok: false as const,
+      error: err instanceof Error ? err.message : String(err),
+    }),
+  );
+  const missions: AdminMissionRow[] = missionsResult.ok
+    ? missionsResult.value
+    : [];
+  const fetchError = missionsResult.ok ? null : missionsResult.error;
+  if (fetchError) console.error("[admin/missions] fetch failed:", fetchError);
 
   const running = missions.filter((m) => m.status.toLowerCase() === "running").length;
   const paused = missions.filter((m) => m.status.toLowerCase() === "paused").length;
@@ -92,6 +101,27 @@ async function renderMissionsPage() {
           </Link>
         }
       />
+
+      {fetchError ? (
+        <div className="rounded-xl border border-rose-400/30 bg-rose-500/[0.06] p-4">
+          <p className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-rose-300/80">
+            Missions fetch failed
+          </p>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-white/65">
+            <code className="rounded bg-white/10 px-1 font-mono text-[11px] text-cyan-200">
+              GET /api/AdminOverview/missions/all
+            </code>{" "}
+            returned an error: <span className="text-rose-200/85">{fetchError}</span>
+          </p>
+          <p className="mt-2 font-mono text-[10px] text-white/40">
+            Most common causes: the back is older than v81 (deploy{" "}
+            <code className="rounded bg-white/10 px-1 text-cyan-200">
+              ok_back_v82_admin_overview_full
+            </code>{" "}
+            or newer), or the admin user&apos;s session has no valid token.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Total missions" value={missions.length} icon={Sparkles} accent="emerald" hint={`${byCompany.size} tenants`} />
