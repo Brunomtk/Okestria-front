@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * v152 — Admin · Cortex 3D graph viewer.
+ * v152.1 — Admin · Cortex 3D graph viewer.
  *
- * Mirrors the office's CortexModal force-graph setup as closely as
- * possible: same `CortexForceGraph` wrapper, same `nodeId="id"`,
- * same `nodeRelSize`, same warmup/cooldown ticks, same d3 decays,
- * same hover-tooltip HTML, plus a post-mount `zoomToFit` so the
- * 186-node payload doesn't end up showing as one stuck dot in the
- * middle (which is what was happening before — no warmup ticks,
- * no zoomToFit, so the simulation barely budged before the camera
- * locked on).
+ * Now configured exactly like the office's CortexModal:
+ *   • Same default forces (charge = -180, link distance = 60,
+ *     link strength = 0.55, center = 0.18). 186 nodes were stuck
+ *     in a clump because we'd been running with a much weaker
+ *     charge (-90) — the repulsion couldn't push them apart.
+ *   • d3 forces re-applied + simulation reheated whenever node /
+ *     link counts change (mirrors CortexModal's effect).
+ *   • zoomToFit triggered by the lib's `onEngineStop` callback,
+ *     not a fragile setTimeout — that's the only reliable signal
+ *     that "the simulation has settled, we know where everything
+ *     is, frame it now".
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -78,39 +81,27 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
 
   const isEmpty = data.nodes.length === 0;
 
-  // After the simulation cools, fit everything into view. Same trick
-  // CortexModal uses on its zoom-fit button.
-  useEffect(() => {
-    if (isEmpty) return;
-    const timer = window.setTimeout(() => {
-      try {
-        fgRef.current?.zoomToFit?.(600, 80);
-      } catch {
-        /* swallow */
-      }
-    }, 1500);
-    return () => window.clearTimeout(timer);
-  }, [isEmpty, data]);
-
-  // Force-tuning the same way the office does (called once the lib
-  // mounts and exposes d3Force).
+  // Apply the SAME forces CortexModal uses, then reheat. Re-fires
+  // when node/link counts change so a different vault snap-fits.
   useEffect(() => {
     if (isEmpty) return;
     const id = window.setTimeout(() => {
       const fg = fgRef.current;
       if (!fg?.d3Force) return;
       try {
-        fg.d3Force("charge")?.strength(-90);
-        fg.d3Force("link")?.distance(60).strength(0.7);
-        fg.d3Force("center")?.strength(0.06);
+        fg.d3Force("charge")?.strength(-180);
+        fg.d3Force("link")?.distance(60).strength(0.55);
+        fg.d3Force("center")?.strength(0.18);
         fg.d3ReheatSimulation?.();
       } catch {
         /* swallow */
       }
-    }, 200);
+    }, 250);
     return () => window.clearTimeout(id);
-  }, [isEmpty, data]);
+  }, [isEmpty, data.nodes.length, data.links.length]);
 
+  // CortexForceGraph wrapper accepts `any` props, so we hand it the
+  // exact bag of options the modal feeds its own ForceGraph.
   const graphProps = {
     ref: fgRef,
     width: size.w,
@@ -162,6 +153,13 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
     warmupTicks: 30,
     d3AlphaDecay: 0.04,
     d3VelocityDecay: 0.35,
+    onEngineStop: () => {
+      try {
+        fgRef.current?.zoomToFit?.(600, 80);
+      } catch {
+        /* swallow */
+      }
+    },
   };
 
   return (

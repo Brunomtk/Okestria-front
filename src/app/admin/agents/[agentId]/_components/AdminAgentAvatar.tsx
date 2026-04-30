@@ -61,21 +61,24 @@ export function AdminAgentAvatar({
       <Canvas
         key={profileKey}
         /*
-         * v152 framing.
+         * v152.1 framing — fill-the-card edition.
          *
-         * Use the editor's known-good camera (z=5.2, fov=24, lookAt
-         * at world origin) so the figure renders at full resolution
-         * and the engine's internal layout is happy. To "push the
-         * figure down" inside our portrait card we don't move the
-         * camera — we wrap OfficeFigure in a group offset of y=-0.55.
-         * That shifts the body a little over half a meter down in
-         * WORLD space, which lands its chest in the lower-third of
-         * the viewport instead of the top.
+         * The figure spans y∈[-0.78, +0.9] (~1.7m). With z=3.7 +
+         * fov=28 the visible vertical at the figure plane is about
+         * 1.84m — so the body ends up filling ~94% of the viewport
+         * height with a small breathing margin top + bottom.
+         * lookAt y=0.10 keeps the chest near viewport center while
+         * leaving slightly more room ABOVE the head than below the
+         * feet (so the small "LIVE PREVIEW" label down at the
+         * bottom doesn't fight the boots).
+         *
+         * x=0.40 + camera y=0.10 give a gentle three-quarter view
+         * so the figure doesn't read as a flat cardboard cut-out.
          */
-        camera={{ position: [0.45, 0.2, 5.2], fov: 24 }}
+        camera={{ position: [0.4, 0.1, 3.7], fov: 28 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.0, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.1, 0)}
         style={{ background: "transparent" }}
       >
         <ambientLight intensity={0.95} />
@@ -90,12 +93,10 @@ export function AdminAgentAvatar({
           intensity={1.2}
           color="#f0d9b5"
         />
-        <group position={[0, -0.55, 0]}>
-          <OfficeFigure
-            profile={profile}
-            onReady={() => setReadyKey(profileKey)}
-          />
-        </group>
+        <OfficeFigure
+          profile={profile}
+          onReady={() => setReadyKey(profileKey)}
+        />
         <Environment preset="city" />
       </Canvas>
     </div>
