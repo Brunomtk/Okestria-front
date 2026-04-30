@@ -1,7 +1,12 @@
-"use client";
-
 /**
- * v145 — Admin form primitives, cosmic style.
+ * v145.2 — Admin form primitives, cosmic style.
+ *
+ * Server components (no "use client"): these are pure JSX
+ * primitives. Form submission is handled by Next.js server
+ * actions on the parent <form action={...}>; the inputs use
+ * native browser behavior so no client JS is needed here. Keeping
+ * this file server-rendered avoids the RSC serialization boundary
+ * for any prop the consumer passes in.
  *
  *   <FormShell>     full-page wrapper with back-link + eyebrow + title
  *   <FormSection>   grouped fields card (uses AdminUI Section)
@@ -354,31 +359,6 @@ export function FormActions({
 }
 
 /* ------------------------------------------------------------------ */
-/* Destructive action (e.g. delete) — renders as a tiny pill          */
+/* DeleteAction removed in v145.2 — destructive actions now use the   */
+/* client-only AdminDeleteButton from _components/AdminDeleteButton.  */
 /* ------------------------------------------------------------------ */
-
-export function DeleteAction({
-  formAction,
-  confirmText = "Delete this record? This cannot be undone.",
-  label = "Delete",
-}: {
-  /** Server action to call when confirmed. */
-  formAction?: (fd: FormData) => void | Promise<void>;
-  confirmText?: string;
-  label?: string;
-}) {
-  return (
-    <button
-      type="submit"
-      formAction={formAction}
-      onClick={(event) => {
-        if (typeof window !== "undefined" && !window.confirm(confirmText)) {
-          event.preventDefault();
-        }
-      }}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-[11.5px] font-semibold text-rose-200 transition hover:bg-rose-500/20"
-    >
-      {label}
-    </button>
-  );
-}

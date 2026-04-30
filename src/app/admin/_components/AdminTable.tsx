@@ -1,7 +1,10 @@
-"use client";
-
 /**
- * v144 — Cosmic admin table primitive.
+ * v145.2 — Cosmic admin table primitive.
+ *
+ * Server component (no "use client"): pure JSX, no hooks, no
+ * handlers. Server-rendered so callers can safely pass through
+ * server-only props (lucide icons, server-resolved data, etc.)
+ * without hitting RSC serialization.
  *
  * Replaces the shadcn `<Table>` family in admin lists so the
  * surfaces match the rest of the brand (dark glass, gradient

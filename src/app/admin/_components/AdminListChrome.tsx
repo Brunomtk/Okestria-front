@@ -1,9 +1,11 @@
-"use client";
-
 /**
- * v144 — Reusable list-page chrome (search bar + pagination footer)
- * shared by all admin list views. Same dark cosmic styling as the
- * rest of the redesign.
+ * v145.2 — Reusable list-page chrome (search bar + pagination
+ * footer) shared by all admin list views.
+ *
+ * Server component (no "use client"): the search form uses native
+ * browser submission (no JS), and pagination is just <Link>s.
+ * Keeping this as a server component avoids RSC boundary
+ * serialization for any data the consumer passes in.
  */
 
 import Link from "next/link";

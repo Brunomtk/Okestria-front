@@ -1,9 +1,16 @@
-"use client";
-
 /**
- * v143 — Reusable admin building blocks. Every admin page should
- * compose these primitives so the surfaces stay visually unified
- * and we don't drift into one-off styling per route.
+ * v145.2 — Reusable admin building blocks.
+ *
+ * IMPORTANT: this file is a SERVER component (no "use client"). The
+ * primitives below have no hooks and no event handlers, so they can
+ * render on the server. That matters because admin pages pass
+ * lucide-react icon FUNCTIONS as props (`icon={Building2}`) and
+ * passing component references across a server→client boundary
+ * fails serialization in Next 16's strict prod build, throwing
+ * "An error occurred in the Server Components render".
+ *
+ * If you ever need state/handlers here, move only THAT component
+ * into its own client file — don't blanket-flip this file.
  *
  *   <PageHeader>            page title + subtitle + right slot
  *   <Section>               labeled card (header + body)
