@@ -41,21 +41,25 @@ import {
 } from "react";
 import {
   Brain,
+  ChevronDown,
   ChevronLeft,
+  ChevronUp,
   FileText,
+  Focus,
   Folder,
-  GitBranch,
   Hash,
   Loader2,
+  Maximize2,
   Network,
-  Pause,
-  Play,
   Plus,
   RefreshCcw,
   Save,
   Search,
+  Settings2,
   Trash2,
   X as XIcon,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   deleteNote,
@@ -71,14 +75,14 @@ import {
 } from "@/lib/notes/api";
 
 // ─────────────────────────────────────────────────────────────────────
-// react-force-graph-3d is a Three.js module — must be SSR-disabled
-// (window/document references). We dynamic-import a tiny ref-
-// forwarding wrapper (CortexForceGraph3D) instead of the lib directly
-// so the imperative methods (notably `cameraPosition` used for the
-// auto-rotate animation) survive the next/dynamic boundary.
+// react-force-graph-2d uses `window` at import time, so we dynamic-
+// import a tiny ref-forwarding wrapper instead of the lib directly.
+// The wrapper preserves the imperative methods we need (`zoom`,
+// `centerAt`, `zoomToFit`, `d3Force`) across the next/dynamic
+// boundary.
 // ─────────────────────────────────────────────────────────────────────
-const ForceGraph3D = dynamic(
-  () => import("./CortexForceGraph3D"),
+const ForceGraph = dynamic(
+  () => import("./CortexForceGraph"),
   { ssr: false },
 );
 
@@ -618,8 +622,34 @@ function ModeTab({
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// GRAPH VIEW — 3D force-directed brain
+// GRAPH VIEW — 2D Obsidian-style knowledge graph
+//
+// Why 2D and not 3D: Obsidian's graph is the platonic ideal for a
+// "knowledge brain" — 2D plane, smooth wheel-zoom, drag-to-pan, drag-
+// nodes-to-rearrange, halos with additive blend, labels that fade in
+// at higher zooms. 3D looked cool for ~5 seconds and then made every
+// task harder ("which way am I rotating? where's my note?"). 2D wins
+// on usability and animation feel.
 // ─────────────────────────────────────────────────────────────────────
+
+// ── Canvas helpers ─────────────────────────────────────────────────
+
+const HEX_RE = /^#([0-9a-f]{6})$/i;
+
+function withAlpha(hex: string, alpha: number): string {
+  const m = HEX_RE.exec(hex);
+  if (!m) return hex;
+  const v = m[1]!;
+  const r = parseInt(v.slice(0, 2), 16);
+  const g = parseInt(v.slice(2, 4), 16);
+  const b = parseInt(v.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function truncateLabel(s: string, n: number): string {
+  return s.length <= n ? s : s.slice(0, n - 1) + "…";
+}
+
 
 function GraphView({
   graph,
@@ -633,330 +663,466 @@ function GraphView({
   onOpenSelected: (path: string) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const fgRef = useRef<unknown>(null);
+  // The lib instance — typed as `any` because the imperative API isn't
+  // exported as a clean TypeScript surface and we only call a handful
+  // of methods (zoom, centerAt, zoomToFit, d3Force, d3ReheatSimulation).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fgRef = useRef<any>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 800, h: 600 });
+
+  // ── Selection state ─────────────────────────────────────────────
   const [hoverNodeId, setHoverNodeId] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [autoRotate, setAutoRotate] = useState(true);
   const [pinnedNodeId, setPinnedNodeId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  // ── Filters (Obsidian sections) ────────────────────────────────
+  const [showTags, setShowTags] = useState(true);
+  const [showOrphans, setShowOrphans] = useState(true);
+
+  // ── Display sliders ────────────────────────────────────────────
+  const [nodeSizeMul, setNodeSizeMul] = useState(1.0);
+  const [linkThicknessMul, setLinkThicknessMul] = useState(1.0);
+  const [textFadeStart, setTextFadeStart] = useState(1.4);
+  const [animateEdges, setAnimateEdges] = useState(true);
+
+  // ── Force sliders (rewires d3 in real time) ────────────────────
+  const [centerForce, setCenterForce] = useState(0.18);
+  const [repelForce, setRepelForce] = useState(180);
+  const [linkDistance, setLinkDistance] = useState(60);
+  const [linkStrength, setLinkStrength] = useState(0.55);
+
+  // ── Settings panel section open/close ──────────────────────────
+  const [section, setSection] = useState({
+    filters: true,
+    groups: true,
+    display: false,
+    forces: false,
+  });
+  const toggleSection = (k: keyof typeof section) =>
+    setSection((s) => ({ ...s, [k]: !s[k] }));
 
   const folderColor = useMemo(
     () => folderColorFor(graph?.folders ?? []),
     [graph],
   );
 
+  // ── Graph data: filter by tags/orphans, build neighbour map ────
   const { nodes, links, neighbours, topTags, folderCounts } = useMemo(() => {
-    const safeNodes: GraphNodeRich[] = (graph?.nodes ?? []).map((n) => ({
-      ...n,
-      __color: n.kind === "tag" ? TAG_COLOR : folderColor(n.folder),
-    }));
-    const safeLinks: GraphLinkRich[] = (graph?.links ?? []).map((l) => ({
-      ...l,
-      __srcId: l.source,
-      __tgtId: l.target,
-    }));
+    if (!graph) {
+      return {
+        nodes: [] as GraphNodeRich[],
+        links: [] as GraphLinkRich[],
+        neighbours: new Map<string, Set<string>>(),
+        topTags: [] as Array<[string, number]>,
+        folderCounts: new Map<string, number>(),
+      };
+    }
+    let n: GraphNodeRich[] = graph.nodes.map((node) => ({ ...node }));
+    if (!showTags) n = n.filter((node) => node.kind !== "tag");
 
-    // neighbour map for hover highlighting.
+    // Adjacency on the FULL link list so orphan detection is correct
+    // even when tags are hidden.
+    const adj = new Map<string, number>();
+    for (const l of graph.links) {
+      adj.set(l.source, (adj.get(l.source) ?? 0) + 1);
+      adj.set(l.target, (adj.get(l.target) ?? 0) + 1);
+    }
+    if (!showOrphans) {
+      n = n.filter((node) => (adj.get(node.id) ?? 0) > 0);
+    }
+
+    const validIds = new Set(n.map((node) => node.id));
+    const l: GraphLinkRich[] = graph.links
+      .filter((link) => validIds.has(link.source) && validIds.has(link.target))
+      .map((link) => ({ ...link }));
+
     const nb = new Map<string, Set<string>>();
-    for (const l of safeLinks) {
-      if (!nb.has(l.source)) nb.set(l.source, new Set());
-      if (!nb.has(l.target)) nb.set(l.target, new Set());
-      nb.get(l.source)!.add(l.target);
-      nb.get(l.target)!.add(l.source);
+    for (const link of l) {
+      if (!nb.has(link.source)) nb.set(link.source, new Set());
+      if (!nb.has(link.target)) nb.set(link.target, new Set());
+      nb.get(link.source)!.add(link.target);
+      nb.get(link.target)!.add(link.source);
     }
 
-    // tag node degree → top tags.
-    const tagDeg = new Map<string, number>();
-    for (const n of safeNodes) {
-      if (n.kind === "tag") tagDeg.set(n.label, n.degree);
+    const tagCount = new Map<string, number>();
+    for (const node of n) {
+      if (node.kind === "tag") tagCount.set(node.label, node.degree);
     }
-    const top = [...tagDeg.entries()]
+    const top = [...tagCount.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12);
 
-    // folder counts.
     const fc = new Map<string, number>();
-    for (const n of safeNodes) {
-      if (n.kind === "note") {
-        const k = n.folder || "(root)";
+    for (const node of n) {
+      if (node.kind === "note") {
+        const k = node.folder || "(root)";
         fc.set(k, (fc.get(k) ?? 0) + 1);
       }
     }
 
-    return {
-      nodes: safeNodes,
-      links: safeLinks,
-      neighbours: nb,
-      topTags: top,
-      folderCounts: fc,
-    };
-  }, [graph, folderColor]);
+    return { nodes: n, links: l, neighbours: nb, topTags: top, folderCounts: fc };
+  }, [graph, showTags, showOrphans]);
 
-  // Search filter: returns the set of node ids that "match" the search.
-  // Empty term = all match (no dim).
+  // ── Search highlight ───────────────────────────────────────────
   const matchedIds = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) return null;
     const m = new Set<string>();
-    for (const n of nodes) {
-      const hay = `${n.label} ${n.id} ${n.folder ?? ""}`.toLowerCase();
-      if (hay.includes(term)) m.add(n.id);
+    for (const node of nodes) {
+      const hay = `${node.label} ${node.id} ${node.folder ?? ""}`.toLowerCase();
+      if (hay.includes(term)) m.add(node.id);
     }
     return m;
   }, [searchTerm, nodes]);
 
-  // Resize observer keeps the canvas crisp on window changes.
+  // ── Resize observer keeps the canvas crisp on window changes ───
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect();
-      setSize({ w: Math.max(320, Math.floor(r.width)), h: Math.max(320, Math.floor(r.height)) });
+      setSize({
+        w: Math.max(320, Math.floor(r.width)),
+        h: Math.max(320, Math.floor(r.height)),
+      });
     });
     ro.observe(el);
     const r0 = el.getBoundingClientRect();
-    setSize({ w: Math.max(320, Math.floor(r0.width)), h: Math.max(320, Math.floor(r0.height)) });
+    setSize({
+      w: Math.max(320, Math.floor(r0.width)),
+      h: Math.max(320, Math.floor(r0.height)),
+    });
     return () => ro.disconnect();
   }, []);
 
-  // Auto-rotate the camera around the scene origin.
+  // ── Plumb force sliders into d3-force in real time ─────────────
   useEffect(() => {
-    if (!autoRotate) return;
-    const fg = fgRef.current as
-      | { cameraPosition?: (p: { x: number; y: number; z: number }) => void }
-      | null;
-    if (!fg) return;
-    let t = 0;
-    let raf = 0;
-    const distance = 380;
-    const step = () => {
-      t += 0.0009;
-      const x = distance * Math.sin(t);
-      const z = distance * Math.cos(t);
-      fg.cameraPosition?.({ x, y: 60, z });
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [autoRotate, nodes.length]);
+    const fg = fgRef.current;
+    if (!fg?.d3Force) return;
+    fg.d3Force("charge")?.strength(-repelForce);
+    fg.d3Force("link")?.distance(linkDistance);
+    fg.d3Force("link")?.strength(linkStrength);
+    fg.d3Force("center")?.strength(centerForce);
+    fg.d3ReheatSimulation?.();
+  }, [repelForce, linkDistance, linkStrength, centerForce, nodes.length, links.length]);
 
-  // Build the active set for highlight (hover or pinned).
-  const activeId = hoverNodeId ?? pinnedNodeId;
+  // ── Active node = pinned > hovered ─────────────────────────────
+  const activeId = pinnedNodeId ?? hoverNodeId;
   const activeNeighbours = activeId ? neighbours.get(activeId) ?? new Set<string>() : null;
-
-  const isHighlighted = useCallback(
-    (id: string) => {
-      if (!activeId) return true;
-      if (id === activeId) return true;
-      return activeNeighbours?.has(id) ?? false;
-    },
-    [activeId, activeNeighbours],
-  );
-
   const isMatched = useCallback(
     (id: string) => matchedIds == null || matchedIds.has(id),
     [matchedIds],
   );
-
-  // Per-node visual props for force-graph.
-  const nodeColor = useCallback(
-    (n: GraphNodeRich) => {
-      const dim = !isHighlighted(n.id) || !isMatched(n.id);
-      const base = n.__color ?? ROOT_COLOR;
-      if (dim) return base + "26"; // alpha 15% (#RRGGBBAA)
-      return base;
+  const isInHighlight = useCallback(
+    (id: string) => {
+      if (!activeId) return true;
+      return id === activeId || (activeNeighbours?.has(id) ?? false);
     },
-    [isHighlighted, isMatched],
+    [activeId, activeNeighbours],
   );
 
-  const nodeVal = useCallback(
-    (n: GraphNodeRich) => {
-      // Larger spheres for tag nodes + nodes with more connections.
-      const base = n.kind === "tag" ? 8 : 4;
-      return base + Math.min(20, n.degree * 1.4);
+  // ── Per-node radius (Obsidian: ~3 base, 1.5 boost per degree) ──
+  const nodeRadius = useCallback(
+    (node: GraphNodeRich) => {
+      const base = node.kind === "tag" ? 4.5 : 3;
+      const degBoost = Math.min(8, (node.degree ?? 0) * 0.7);
+      return (base + degBoost) * nodeSizeMul;
     },
-    [],
+    [nodeSizeMul],
   );
 
+  // ── Custom canvas painter — halo + solid + label ───────────────
+  const nodeCanvasObject = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      const id = String(node.id);
+      const isActive = id === activeId;
+      const inHighlight = isInHighlight(id) && isMatched(id);
+      const baseAlpha = activeId
+        ? inHighlight
+          ? 1
+          : 0.18
+        : isMatched(id)
+          ? 1
+          : 0.12;
+      const isTag = node.kind === "tag";
+      const baseColor =
+        (isTag ? TAG_COLOR : folderColor(node.folder ?? null)) || ROOT_COLOR;
+      const r = nodeRadius(node as GraphNodeRich);
+
+      // Outer halo (additive feel via radial gradient)
+      if (baseAlpha > 0.4) {
+        const haloR = r * (isActive ? 5.2 : 3.2);
+        const grad = ctx.createRadialGradient(
+          node.x,
+          node.y,
+          0,
+          node.x,
+          node.y,
+          haloR,
+        );
+        grad.addColorStop(0, withAlpha(baseColor, baseAlpha * (isActive ? 0.6 : 0.32)));
+        grad.addColorStop(0.5, withAlpha(baseColor, baseAlpha * 0.1));
+        grad.addColorStop(1, withAlpha(baseColor, 0));
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, haloR, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+
+      // Solid disc
+      ctx.fillStyle = withAlpha(baseColor, baseAlpha);
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Active outline
+      if (isActive) {
+        ctx.strokeStyle = withAlpha("#ffffff", 0.9);
+        ctx.lineWidth = 1.6 / globalScale;
+        ctx.stroke();
+      }
+
+      // Label — fades in past the textFadeStart threshold; always
+      // visible for the active node and its neighbours.
+      const showLabel = isActive
+        ? 1
+        : activeId
+          ? inHighlight
+            ? 1
+            : 0
+          : Math.min(1, Math.max(0, (globalScale - textFadeStart) * 1.6));
+      const labelAlpha = showLabel * baseAlpha;
+      if (labelAlpha > 0.05) {
+        const fontSize = Math.max(2.8, 11 / globalScale);
+        ctx.font = `${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", sans-serif`;
+        ctx.fillStyle = withAlpha("#ffffff", labelAlpha * 0.92);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        const labelText = isTag ? `#${node.label}` : truncateLabel(node.label, 32);
+        ctx.fillText(labelText, node.x, node.y + r + 1.6 / globalScale);
+      }
+    },
+    [activeId, isInHighlight, isMatched, folderColor, nodeRadius, textFadeStart],
+  );
+
+  // Larger pointer area than the visual disc — so hover/click feels
+  // forgiving even on tiny nodes.
+  const nodePointerAreaPaint = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any, color: string, ctx: CanvasRenderingContext2D) => {
+      const r = nodeRadius(node as GraphNodeRich) * 1.6;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.fill();
+    },
+    [nodeRadius],
+  );
+
+  // ── Link styling ──────────────────────────────────────────────
   const linkColor = useCallback(
-    (l: GraphLinkRich) => {
-      const sId = typeof l.source === "string" ? l.source : (l.source as { id: string })?.id;
-      const tId = typeof l.target === "string" ? l.target : (l.target as { id: string })?.id;
-      const inActive =
-        !activeId ||
-        sId === activeId ||
-        tId === activeId ||
-        (activeNeighbours?.has(sId) ?? false) ||
-        (activeNeighbours?.has(tId) ?? false);
-      const inMatch = !matchedIds || (matchedIds.has(sId) && matchedIds.has(tId));
-      const dim = !inActive || !inMatch;
-      if (l.kind === "tag") return dim ? "rgba(245,158,11,0.10)" : "rgba(245,158,11,0.55)";
-      return dim ? "rgba(148,163,184,0.06)" : "rgba(148,163,184,0.42)";
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (link: any) => {
+      const sId =
+        typeof link.source === "string" ? link.source : (link.source?.id ?? "");
+      const tId =
+        typeof link.target === "string" ? link.target : (link.target?.id ?? "");
+      const sActive = !activeId || sId === activeId || tId === activeId;
+      const sMatched = !matchedIds || (matchedIds.has(sId) && matchedIds.has(tId));
+      const dim = !sActive || !sMatched;
+      if (link.kind === "tag")
+        return dim ? "rgba(245,158,11,0.06)" : "rgba(245,158,11,0.55)";
+      return dim ? "rgba(148,163,184,0.04)" : "rgba(148,163,184,0.32)";
     },
-    [activeId, activeNeighbours, matchedIds],
+    [activeId, matchedIds],
   );
 
   const linkWidth = useCallback(
-    (l: GraphLinkRich) => (l.kind === "tag" ? 1.4 : 1.0),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (link: any) => {
+      const sId =
+        typeof link.source === "string" ? link.source : (link.source?.id ?? "");
+      const tId =
+        typeof link.target === "string" ? link.target : (link.target?.id ?? "");
+      const isActive = activeId && (sId === activeId || tId === activeId);
+      const base = link.kind === "tag" ? 1.4 : 1.0;
+      return (isActive ? base * 2.1 : base) * linkThicknessMul;
+    },
+    [activeId, linkThicknessMul],
+  );
+
+  // Particle flow on edges — clean by default, "thinking" on focus.
+  const linkDirectionalParticles = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (link: any) => {
+      if (!animateEdges) return 0;
+      const sId =
+        typeof link.source === "string" ? link.source : (link.source?.id ?? "");
+      const tId =
+        typeof link.target === "string" ? link.target : (link.target?.id ?? "");
+      const isActive = activeId && (sId === activeId || tId === activeId);
+      if (isActive) return link.kind === "tag" ? 3 : 2;
+      return link.kind === "tag" ? 1 : 0;
+    },
+    [animateEdges, activeId],
+  );
+  const linkDirectionalParticleColor = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (link: any) =>
+      link.kind === "tag" ? "rgba(252,211,77,0.85)" : "rgba(186,230,253,0.7)",
     [],
   );
 
-  const handleHoverInternal = useCallback(
-    (n: GraphNodeRich | null) => {
-      setHoverNodeId(n ? n.id : null);
-      setAutoRotate(n == null && !pinnedNodeId);
+  // ── Pointer / click handlers ───────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleNodeHover = useCallback((node: any | null) => {
+    setHoverNodeId(node ? String(node.id) : null);
+  }, []);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleNodeClick = useCallback((node: any) => {
+    setPinnedNodeId(String(node.id));
+  }, []);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleNodeRightClick = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (node: any) => {
+      if (node?.kind === "note") onNodeClick(node as GraphNodeRich);
     },
-    [pinnedNodeId],
+    [onNodeClick],
   );
+  const handleBackgroundClick = useCallback(() => {
+    setPinnedNodeId(null);
+  }, []);
 
-  const handleNodeClickInternal = useCallback(
-    (n: GraphNodeRich) => {
-      // single-click: pin (so the operator can read the side panel
-      // about this node without losing it on mouse-out).
-      // double-click handler is wired on the side-panel "Open" button.
-      setPinnedNodeId(n.id);
-      setAutoRotate(false);
-    },
-    [],
-  );
-
-  const pinned = useMemo(
+  const pinnedNode = useMemo(
     () => nodes.find((n) => n.id === (pinnedNodeId ?? hoverNodeId)) ?? null,
     [nodes, pinnedNodeId, hoverNodeId],
   );
 
-  // Total "thinking" feel — particles flow on every link.
-  const linkParticles = useCallback(
-    (l: GraphLinkRich) => (l.kind === "tag" ? 2 : 1),
-    [],
-  );
+  // ── Zoom controls ─────────────────────────────────────────────
+  const handleZoomIn = useCallback(() => {
+    const fg = fgRef.current;
+    if (!fg?.zoom) return;
+    fg.zoom(fg.zoom() * 1.4, 250);
+  }, []);
+  const handleZoomOut = useCallback(() => {
+    const fg = fgRef.current;
+    if (!fg?.zoom) return;
+    fg.zoom(fg.zoom() * 0.7, 250);
+  }, []);
+  const handleZoomFit = useCallback(() => {
+    fgRef.current?.zoomToFit?.(400, 80);
+  }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full">
-      {/* Ambient background star/grid overlay */}
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-[#070912]">
+      {/* Subtle ambient gradient overlay (NOT a noisy starfield —
+          Obsidian keeps the bg flat and lets the nodes breathe). */}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(circle at 50% 60%, rgba(124,58,237,0.10), transparent 60%)," +
-            "radial-gradient(circle at 80% 20%, rgba(34,211,238,0.07), transparent 55%)," +
-            "radial-gradient(circle at 12% 80%, rgba(245,158,11,0.06), transparent 55%)",
+            "radial-gradient(ellipse at 50% 35%, rgba(124,58,237,0.06) 0%, transparent 55%)," +
+            "radial-gradient(ellipse at 80% 80%, rgba(34,211,238,0.04) 0%, transparent 50%)",
         }}
       />
 
       {graphLoadingOverlay(loading, !graph || nodes.length === 0)}
 
-      {/* The force graph itself */}
       {graph && nodes.length > 0 ? (
-        <ForceGraph3D
-          ref={fgRef as unknown as React.RefObject<unknown>}
+        <ForceGraph
+          ref={fgRef}
           width={size.w}
           height={size.h}
           backgroundColor="rgba(0,0,0,0)"
-          showNavInfo={false}
-          enableNodeDrag={true}
-          enableNavigationControls={true}
           graphData={{ nodes, links }}
           nodeId="id"
-          nodeLabel={(n: GraphNodeRich) =>
-            `<div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(2,6,23,0.92);border:1px solid rgba(167,139,250,0.35);border-radius:8px;padding:6px 8px;color:white;box-shadow:0 8px 24px rgba(0,0,0,0.4)">
-              <div style="font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:${n.kind === "tag" ? TAG_COLOR : "#a78bfa"}">${n.kind === "tag" ? "tag" : "note"}</div>
-              <div style="font-weight:500;margin-top:2px">${escapeForLabel(n.label)}</div>
-              ${n.folder ? `<div style="opacity:0.5;font-size:10px;margin-top:2px">${escapeForLabel(n.folder)}</div>` : ""}
-              <div style="opacity:0.45;font-size:10px;margin-top:2px">degree ${n.degree}</div>
-            </div>`
-          }
-          nodeVal={nodeVal}
-          nodeColor={nodeColor}
-          nodeOpacity={0.95}
-          nodeResolution={28}
+          nodeRelSize={4}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          nodeLabel={(n: any) => `${n.label}${n.folder ? ` · ${n.folder}` : ""}`}
+          nodeCanvasObject={nodeCanvasObject}
+          nodePointerAreaPaint={nodePointerAreaPaint}
           linkColor={linkColor}
           linkWidth={linkWidth}
-          linkOpacity={1}
-          linkDirectionalParticles={linkParticles}
-          linkDirectionalParticleWidth={2}
+          linkDirectionalParticles={linkDirectionalParticles}
+          linkDirectionalParticleWidth={1.6}
           linkDirectionalParticleSpeed={0.005}
-          linkDirectionalParticleColor={(l: GraphLinkRich) =>
-            l.kind === "tag" ? "rgba(252,211,77,0.85)" : "rgba(186,230,253,0.7)"
-          }
-          onNodeClick={(n: GraphNodeRich) => {
-            handleNodeClickInternal(n);
-          }}
-          onNodeRightClick={(n: GraphNodeRich) => onNodeClick(n)}
-          onNodeHover={handleHoverInternal}
-          onBackgroundClick={() => {
-            setPinnedNodeId(null);
-            setAutoRotate(true);
-          }}
-          cooldownTicks={120}
-          warmupTicks={40}
-          d3AlphaDecay={0.02}
-          d3VelocityDecay={0.28}
+          linkDirectionalParticleColor={linkDirectionalParticleColor}
+          onNodeHover={handleNodeHover}
+          onNodeClick={handleNodeClick}
+          onNodeRightClick={handleNodeRightClick}
+          onBackgroundClick={handleBackgroundClick}
+          enableNodeDrag={true}
+          enableZoomInteraction={true}
+          enablePanInteraction={true}
+          minZoom={0.15}
+          maxZoom={8}
+          cooldownTicks={140}
+          warmupTicks={50}
+          d3AlphaDecay={0.025}
+          d3VelocityDecay={0.32}
         />
       ) : null}
 
-      {/* ── Floating side panel (right) ─────────────────────────────── */}
+      {/* ── Floating zoom controls (bottom-left) ─────────────── */}
+      <div className="absolute bottom-4 left-4 flex flex-col gap-1 rounded-2xl border border-white/10 bg-[rgba(8,11,20,0.8)] p-1 shadow-[0_18px_40px_rgba(0,0,0,0.55)] backdrop-blur">
+        <ZoomBtn icon={<ZoomIn className="h-3.5 w-3.5" />} title="Zoom in" onClick={handleZoomIn} />
+        <ZoomBtn icon={<Focus className="h-3.5 w-3.5" />} title="Fit graph" onClick={handleZoomFit} />
+        <ZoomBtn icon={<ZoomOut className="h-3.5 w-3.5" />} title="Zoom out" onClick={handleZoomOut} />
+      </div>
+
+      {/* ── Hint pill (bottom-center) ───────────────────────── */}
+      <div className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-[rgba(8,11,20,0.7)] px-3 py-1 font-mono text-[10.5px] text-white/45 backdrop-blur">
+        scroll to zoom · drag canvas to pan · click node to focus · right-click to open
+      </div>
+
+      {/* ── Settings panel (right) ──────────────────────────── */}
       <aside
-        className="pointer-events-auto absolute right-4 top-4 flex w-72 flex-col gap-3 rounded-2xl border border-white/10 bg-[rgba(8,11,20,0.72)] p-3 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl"
+        className="pointer-events-auto absolute right-4 top-4 flex w-[280px] flex-col rounded-2xl border border-white/10 bg-[rgba(8,11,20,0.78)] shadow-[0_24px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl"
         style={{ maxHeight: "calc(100% - 32px)" }}
       >
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/40" />
-          <input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filter nodes…"
-            className="w-full rounded-lg border border-white/10 bg-black/35 pl-7 pr-2 py-1.5 text-[12px] text-white placeholder-white/30 outline-none focus:border-violet-400/45"
-          />
-        </div>
-
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-white/65">
-            {autoRotate ? <Play className="h-3 w-3 text-emerald-300" /> : <Pause className="h-3 w-3 text-white/45" />}
-            Auto-rotate
-          </div>
-          <button
-            type="button"
-            onClick={() => setAutoRotate((v) => !v)}
-            className={`relative h-4 w-7 rounded-full transition ${autoRotate ? "bg-violet-500/65" : "bg-white/15"}`}
-            aria-label="Toggle auto-rotate"
-          >
-            <span
-              className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${
-                autoRotate ? "left-3.5" : "left-0.5"
-              }`}
+        {/* Search */}
+        <div className="border-b border-white/8 p-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/40" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filter nodes…"
+              className="w-full rounded-lg border border-white/10 bg-black/40 pl-8 pr-2 py-1.5 text-[12px] text-white placeholder-white/30 outline-none focus:border-violet-400/45"
             />
-          </button>
+          </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pr-1 [scrollbar-color:rgba(255,255,255,0.18)_transparent]">
-          {/* Selected / hovered node card */}
-          {pinned ? (
-            <div className="mb-3 rounded-xl border border-violet-400/25 bg-violet-500/[0.08] p-3">
+        {/* Pinned node card */}
+        <div className="px-3 pt-3">
+          {pinnedNode ? (
+            <div className="rounded-xl border border-violet-400/25 bg-violet-500/[0.07] p-3">
               <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-violet-200/85">
-                {pinned.kind === "tag" ? (
+                {pinnedNode.kind === "tag" ? (
                   <Hash className="h-3 w-3" />
                 ) : (
                   <FileText className="h-3 w-3" />
                 )}
-                {pinned.kind}
+                {pinnedNode.kind}
               </div>
               <div className="mt-1 truncate text-[13px] font-semibold text-white">
-                {pinned.label}
+                {pinnedNode.label}
               </div>
-              {pinned.folder ? (
+              {pinnedNode.folder ? (
                 <div className="mt-0.5 truncate font-mono text-[10.5px] text-white/45">
-                  {pinned.folder}
+                  {pinnedNode.folder}
                 </div>
               ) : null}
               <div className="mt-1 font-mono text-[10.5px] text-white/40">
-                degree {pinned.degree}
+                degree {pinnedNode.degree}
               </div>
-              {pinned.kind === "note" ? (
+              {pinnedNode.kind === "note" ? (
                 <button
                   type="button"
-                  onClick={() => onOpenSelected(pinned.id)}
+                  onClick={() => onOpenSelected(pinnedNode.id)}
                   className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-violet-400/45 bg-violet-500/15 px-2.5 py-1 text-[11px] font-semibold text-violet-50 transition hover:bg-violet-500/25"
                 >
                   <FileText className="h-3 w-3" />
@@ -965,25 +1131,41 @@ function GraphView({
               ) : null}
             </div>
           ) : (
-            <div className="mb-3 rounded-xl border border-white/10 bg-white/[0.025] p-3 text-[11.5px] text-white/55">
+            <div className="rounded-xl border border-white/10 bg-white/[0.025] p-3 text-[11.5px] text-white/55">
               <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-white/35">
                 Tip
               </div>
-              <p className="mt-1">
-                Drag the canvas to rotate. Scroll to zoom. <span className="text-white/80">Click</span> a node to pin it. <span className="text-white/80">Right-click</span> a note node to jump straight to its editor.
+              <p className="mt-1 leading-snug">
+                Click any node to focus it. Right-click a note to open it in the editor.
               </p>
             </div>
           )}
+        </div>
 
-          {/* Folder legend */}
-          <div className="mb-3">
-            <div className="mb-1 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
-              <Folder className="h-3 w-3" /> Folders
-            </div>
+        {/* Sections */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3 pt-2 [scrollbar-color:rgba(255,255,255,0.18)_transparent]">
+          {/* FILTERS */}
+          <Section
+            title="Filters"
+            icon={<Settings2 className="h-3 w-3" />}
+            open={section.filters}
+            onToggle={() => toggleSection("filters")}
+          >
+            <ToggleRow label="Show tags" value={showTags} onChange={setShowTags} />
+            <ToggleRow label="Show orphans" value={showOrphans} onChange={setShowOrphans} />
+          </Section>
+
+          {/* GROUPS */}
+          <Section
+            title="Groups"
+            icon={<Folder className="h-3 w-3" />}
+            open={section.groups}
+            onToggle={() => toggleSection("groups")}
+          >
             {folderCounts.size === 0 ? (
               <div className="px-1 text-[11px] text-white/35">No folders yet.</div>
             ) : (
-              <ul className="space-y-1 px-1">
+              <ul className="space-y-1">
                 {[...folderCounts.entries()]
                   .sort(([a], [b]) => a.localeCompare(b))
                   .map(([folder, count]) => (
@@ -994,49 +1176,256 @@ function GraphView({
                       <span
                         className="h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{
-                          background: folder === "(root)" ? ROOT_COLOR : folderColor(folder),
-                          boxShadow: `0 0 8px ${folder === "(root)" ? ROOT_COLOR : folderColor(folder)}55`,
+                          background:
+                            folder === "(root)" ? ROOT_COLOR : folderColor(folder),
+                          boxShadow: `0 0 8px ${
+                            folder === "(root)" ? ROOT_COLOR : folderColor(folder)
+                          }55`,
                         }}
                       />
-                      <span className="truncate">{folder}</span>
-                      <span className="ml-auto text-white/35">{count}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm(folder === "(root)" ? "" : folder)}
+                        className="flex-1 truncate text-left transition hover:text-white"
+                      >
+                        {folder}
+                      </button>
+                      <span className="text-white/35">{count}</span>
                     </li>
                   ))}
               </ul>
             )}
-          </div>
+            {topTags.length > 0 ? (
+              <>
+                <div className="mt-3 mb-1 flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
+                  <Hash className="h-3 w-3" /> Tags
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {topTags.map(([tag, deg]) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setSearchTerm(tag)}
+                      className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/[0.08] px-2 py-0.5 font-mono text-[10.5px] text-amber-100 transition hover:bg-amber-500/20"
+                    >
+                      #{tag}
+                      <span className="text-amber-200/60">{deg}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </Section>
 
-          {/* Top tags */}
-          <div>
-            <div className="mb-1 flex items-center gap-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/40">
-              <Hash className="h-3 w-3" /> Top tags
-            </div>
-            {topTags.length === 0 ? (
-              <div className="px-1 text-[11px] text-white/35">No tags yet.</div>
-            ) : (
-              <div className="flex flex-wrap gap-1 px-1">
-                {topTags.map(([tag, deg]) => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() => setSearchTerm(tag)}
-                    className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/[0.08] px-2 py-0.5 font-mono text-[10.5px] text-amber-100 transition hover:bg-amber-500/20"
-                  >
-                    #{tag}
-                    <span className="text-amber-200/60">{deg}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* DISPLAY */}
+          <Section
+            title="Display"
+            icon={<Maximize2 className="h-3 w-3" />}
+            open={section.display}
+            onToggle={() => toggleSection("display")}
+          >
+            <SliderRow
+              label="Node size"
+              min={0.4}
+              max={2.5}
+              step={0.05}
+              value={nodeSizeMul}
+              onChange={setNodeSizeMul}
+            />
+            <SliderRow
+              label="Link thickness"
+              min={0.4}
+              max={3}
+              step={0.05}
+              value={linkThicknessMul}
+              onChange={setLinkThicknessMul}
+            />
+            <SliderRow
+              label="Text fade"
+              min={0.6}
+              max={4}
+              step={0.05}
+              value={textFadeStart}
+              onChange={setTextFadeStart}
+              hint="Labels appear when zoom passes this value"
+            />
+            <ToggleRow
+              label="Animate edges"
+              value={animateEdges}
+              onChange={setAnimateEdges}
+            />
+          </Section>
+
+          {/* FORCES */}
+          <Section
+            title="Forces"
+            icon={<Network className="h-3 w-3" />}
+            open={section.forces}
+            onToggle={() => toggleSection("forces")}
+          >
+            <SliderRow
+              label="Center"
+              min={0}
+              max={1}
+              step={0.01}
+              value={centerForce}
+              onChange={setCenterForce}
+            />
+            <SliderRow
+              label="Repel"
+              min={20}
+              max={500}
+              step={5}
+              value={repelForce}
+              onChange={setRepelForce}
+            />
+            <SliderRow
+              label="Link distance"
+              min={10}
+              max={300}
+              step={2}
+              value={linkDistance}
+              onChange={setLinkDistance}
+            />
+            <SliderRow
+              label="Link strength"
+              min={0}
+              max={1}
+              step={0.01}
+              value={linkStrength}
+              onChange={setLinkStrength}
+            />
+          </Section>
         </div>
       </aside>
+    </div>
+  );
+}
 
-      {/* ── Floating bottom hint bar ───────────────────────────────── */}
-      <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-2 rounded-xl border border-white/10 bg-[rgba(8,11,20,0.6)] px-3 py-1.5 font-mono text-[10.5px] text-white/55 backdrop-blur">
-        <GitBranch className="h-3 w-3 text-violet-300" />
-        drag to rotate · scroll to zoom · click node to pin · right-click note to open
+// ── Small UI primitives used inside GraphView ─────────────────────────
+
+function ZoomBtn({
+  icon,
+  title,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      className="flex h-8 w-8 items-center justify-center rounded-xl text-white/60 transition hover:bg-white/10 hover:text-white"
+    >
+      {icon}
+    </button>
+  );
+}
+
+function Section({
+  title,
+  icon,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-2 overflow-hidden rounded-lg border border-white/8 bg-white/[0.015]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 px-2.5 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.16em] text-white/65 transition hover:bg-white/[0.04] hover:text-white"
+      >
+        <span className="text-violet-300/80">{icon}</span>
+        <span className="flex-1">{title}</span>
+        {open ? (
+          <ChevronUp className="h-3 w-3 text-white/45" />
+        ) : (
+          <ChevronDown className="h-3 w-3 text-white/45" />
+        )}
+      </button>
+      {open ? <div className="space-y-2 px-2.5 py-2 pt-0">{children}</div> : null}
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <span className="text-[11.5px] text-white/70">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        aria-pressed={value}
+        className={`relative h-4 w-7 rounded-full transition ${
+          value ? "bg-violet-500/65" : "bg-white/15"
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition ${
+            value ? "left-3.5" : "left-0.5"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function SliderRow({
+  label,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  hint,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (next: number) => void;
+  hint?: string;
+}) {
+  return (
+    <div className="py-0.5">
+      <div className="flex items-center justify-between text-[11.5px]">
+        <span className="text-white/70">{label}</span>
+        <span className="font-mono text-[10.5px] text-white/45">
+          {value.toFixed(value < 10 ? 2 : 0)}
+        </span>
       </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 w-full accent-violet-400"
+      />
+      {hint ? (
+        <div className="mt-0.5 text-[10.5px] text-white/35">{hint}</div>
+      ) : null}
     </div>
   );
 }
@@ -1067,9 +1456,6 @@ function graphLoadingOverlay(loading: boolean, empty: boolean) {
   }
   return null;
 }
-
-const escapeForLabel = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 // ─────────────────────────────────────────────────────────────────────
 // EDITOR VIEW — file tree + textarea + live preview
