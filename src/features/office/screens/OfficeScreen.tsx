@@ -71,10 +71,11 @@ import { SquadCreateModal } from "@/features/office/components/SquadCreateModal"
 import { SquadOpsModal } from "@/features/office/components/SquadOpsModal";
 import { SquadEditDeleteModal } from "@/features/office/components/SquadEditDeleteModal";
 import { CronJobsModal } from "@/features/office/components/CronJobsModal";
-// v135 — Company-scoped Obsidian-compatible notes vault (S3-backed).
-import { CompanyNotesModal } from "@/features/office/components/CompanyNotesModal";
-// v136 — Graph view (Obsidian-style brain) of the same vault.
-import { CompanyNotesGraphModal } from "@/features/office/components/CompanyNotesGraphModal";
+// v138 — CORTEX. Replaces the v135 CompanyNotesModal + v136
+// CompanyNotesGraphModal pair: one unified modal with internal mode
+// toggle (3D graph ↔ markdown editor). Same back, same vault, one
+// surface.
+import { CortexModal } from "@/features/office/components/CortexModal";
 import { CompanyProfileModal } from "@/features/office/components/CompanyProfileModal";
 // v118 — Email + Meta config consolidated into a single Tools modal with
 // horizontal tabs. The standalone v115 (UserEmailConfigModal) and v117
@@ -1107,14 +1108,13 @@ export function OfficeScreen({
   const [marketplaceOpen, setMarketplaceOpen] = useState(false);
   const [leadOpsModalOpen, setLeadOpsModalOpen] = useState(false);
   const [cronJobsModalOpen, setCronJobsModalOpen] = useState(false);
-  // v135/v136 — Company-scoped Obsidian-compatible notes vault.
-  // notesPreferredPath: when set, the notes modal opens with this path
-  // pre-selected (used by the graph view: clicking a node in
-  // CompanyNotesGraphModal closes the graph + opens this modal pointed
-  // at the chosen note).
-  const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [notesGraphModalOpen, setNotesGraphModalOpen] = useState(false);
-  const [notesPreferredPath, setNotesPreferredPath] = useState<string | null>(null);
+  // v138 — CORTEX modal (replaces v135 CompanyNotesModal + v136
+  // CompanyNotesGraphModal). One open flag + one "initial mode" so a
+  // single toolbar button can land the operator in either view (we
+  // default to "graph" — the immersive brain view).
+  const [cortexModalOpen, setCortexModalOpen] = useState(false);
+  const [cortexInitialView, setCortexInitialView] = useState<"graph" | "editor">("graph");
+  const [cortexInitialPath, setCortexInitialPath] = useState<string | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   // v118 — single modal for all per-user external tool wiring (email +
   // Meta IG/FB/WhatsApp). Opened from the Tools button in the toolbar
@@ -7406,40 +7406,27 @@ export function OfficeScreen({
           <span>{cronJobsModalOpen ? "Hide" : "Cron jobs"}</span>
         </button>
 
-        {/* v135 — Notes vault button. Cyan family (matches the chat
-            modal's "company tools" colour cluster). Opens the
-            S3-backed Obsidian-compatible vault for the operator's
-            company. */}
+        {/* v138 — CORTEX. Replaces the v135 Notes button + v136 Graph
+            button with one entry point. Click → opens the unified
+            modal in graph mode by default; the operator switches to
+            editor via the in-modal tab or by clicking a node. Violet
+            family — matches the brand mark inside the modal. */}
         <button
           type="button"
-          onClick={() => setNotesModalOpen((current) => !current)}
+          onClick={() => {
+            setCortexInitialView("graph");
+            setCortexInitialPath(null);
+            setCortexModalOpen((current) => !current);
+          }}
           className={`flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-all ${
-            notesModalOpen
-              ? "border-sky-300/60 bg-sky-500/15 text-sky-50"
-              : "border-sky-500/30 bg-[#04101a]/90 text-sky-200 hover:border-sky-400/55 hover:bg-sky-500/10 hover:text-sky-50"
+            cortexModalOpen
+              ? "border-violet-300/60 bg-violet-500/15 text-violet-50"
+              : "border-violet-500/30 bg-[#100819]/90 text-violet-200 hover:border-violet-400/55 hover:bg-violet-500/10 hover:text-violet-50"
           }`}
-          title={notesModalOpen ? "Close notes" : "Open notes vault"}
+          title={cortexModalOpen ? "Close Cortex" : "Open Cortex (knowledge graph + notes)"}
         >
-          {notesModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <FileText className="h-3.5 w-3.5" />}
-          <span>{notesModalOpen ? "Hide" : "Notes"}</span>
-        </button>
-
-        {/* v136 — Graph view (Obsidian-style brain). Sky family,
-            companion to the Notes button. Fullscreen modal with a
-            force-directed canvas of the vault's notes + tags +
-            wiki-links. */}
-        <button
-          type="button"
-          onClick={() => setNotesGraphModalOpen((current) => !current)}
-          className={`flex h-9 items-center gap-2 rounded-lg border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] shadow-lg backdrop-blur transition-all ${
-            notesGraphModalOpen
-              ? "border-sky-300/60 bg-sky-500/15 text-sky-50"
-              : "border-sky-500/30 bg-[#04101a]/90 text-sky-200 hover:border-sky-400/55 hover:bg-sky-500/10 hover:text-sky-50"
-          }`}
-          title={notesGraphModalOpen ? "Close graph" : "Open notes graph"}
-        >
-          {notesGraphModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Network className="h-3.5 w-3.5" />}
-          <span>{notesGraphModalOpen ? "Hide" : "Graph"}</span>
+          {cortexModalOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <Network className="h-3.5 w-3.5" />}
+          <span>{cortexModalOpen ? "Hide" : "Cortex"}</span>
         </button>
 
         <button
@@ -7746,33 +7733,22 @@ export function OfficeScreen({
         onDeleteSquad={handleDeleteSquad}
       />
 
-      {/* v135 — Company-scoped Obsidian-compatible notes vault.
-          Opens from the Notes button next to Cron jobs. The modal is
-          fully self-contained: tree on left, editor + live preview on
-          right, all CRUD calls flow through the back's
-          /api/CompanyNotes/* endpoints which scope by JWT companyId.
-          v136 — `initialPath` is set when the operator clicks a node
-          in the graph view; the modal pre-selects that note. */}
-      <CompanyNotesModal
-        open={notesModalOpen}
+      {/* v138 — CORTEX modal. Replaces v135 CompanyNotesModal +
+          v136 CompanyNotesGraphModal: one surface, two internal modes
+          (3D graph ↔ markdown editor). Click a node in the graph →
+          modal stays open and switches to editor at that path. The
+          `cortexInitialPath` is reused so external callers (e.g. a
+          future deep-link from a chat bubble) can land the operator
+          on a specific note. */}
+      <CortexModal
+        open={cortexModalOpen}
         onClose={() => {
-          setNotesModalOpen(false);
-          setNotesPreferredPath(null);
+          setCortexModalOpen(false);
+          setCortexInitialPath(null);
+          setCortexInitialView("graph");
         }}
-        initialPath={notesPreferredPath}
-      />
-
-      {/* v136 — Graph view (Obsidian-style brain). Fullscreen overlay.
-          Click a node → close graph, open Notes modal pointed at the
-          chosen note via the shared `notesPreferredPath` state. */}
-      <CompanyNotesGraphModal
-        open={notesGraphModalOpen}
-        onClose={() => setNotesGraphModalOpen(false)}
-        onOpenNote={(path) => {
-          setNotesGraphModalOpen(false);
-          setNotesPreferredPath(path);
-          setNotesModalOpen(true);
-        }}
+        initialView={cortexInitialView}
+        initialPath={cortexInitialPath}
       />
 
       <CronJobsModal
