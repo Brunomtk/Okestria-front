@@ -15,6 +15,7 @@ import {
   buildTranscriptEntriesFromLines,
   createTranscriptEntryFromLine,
   sortTranscriptEntries,
+  stripHiddenSystemContext,
   TRANSCRIPT_V2_ENABLED,
   type TranscriptAppendMeta,
   type TranscriptEntry,
@@ -441,9 +442,14 @@ const reducer = (state: AgentStoreState, action: Action): AgentStoreState => {
             sequenceKey: nextSequence,
           });
           if (!nextEntry) {
+            // v160 — guard the legacy fallback too: never persist the
+            // raw `[SYSTEM CONTEXT — …]` block in outputLines, even if
+            // the transcript entry couldn't be built.
+            const cleanLine = stripHiddenSystemContext(action.line);
+            if (!cleanLine) return agent;
             return {
               ...agent,
-              outputLines: trimOutputLines([...agent.outputLines, action.line]),
+              outputLines: trimOutputLines([...agent.outputLines, cleanLine]),
             };
           }
           const nextEntryId = nextEntry.entryId.trim();
@@ -486,7 +492,11 @@ const reducer = (state: AgentStoreState, action: Action): AgentStoreState => {
             outputLines:
               TRANSCRIPT_V2_ENABLED || hasReplacement
                 ? trimOutputLines(buildOutputLinesFromTranscriptEntries(nextEntries))
-                : trimOutputLines([...agent.outputLines, action.line]),
+                : trimOutputLines([
+                    ...agent.outputLines,
+                    // v160 — keep the legacy append clean of hidden context too
+                    stripHiddenSystemContext(action.line),
+                  ].filter((line) => line.length > 0)),
             transcriptEntries: nextEntries,
             transcriptRevision: (agent.transcriptRevision ?? 0) + 1,
             transcriptSequenceCounter: Math.max(

@@ -233,6 +233,28 @@ export const areTranscriptEntriesEqual = (
   return true;
 };
 
+/**
+ * v160 — Strip the hidden `[SYSTEM CONTEXT — ...] [END SYSTEM CONTEXT]`
+ * block that `chatSendOperation` prepends to the gateway message body
+ * (see `chatSendOperation.ts` line ~221). The block is invisible
+ * background context for the agent — it must NEVER be rendered as part
+ * of the user's bubble in the chat panel.
+ *
+ * The local echo is already clean, but when history comes back from
+ * the gateway (or events are replayed) the message text the gateway
+ * stores INCLUDES the prefix, and the bubble would otherwise show the
+ * whole company brief block above the user's actual question.
+ *
+ * Idempotent: runs once per line; if there's no marker it's a no-op.
+ */
+const SYSTEM_CONTEXT_STRIP_RE =
+  /\[SYSTEM CONTEXT[\s\S]*?\[END SYSTEM CONTEXT\]\s*/g;
+
+export function stripHiddenSystemContext(text: string): string {
+  if (!text || !text.includes("[SYSTEM CONTEXT")) return text;
+  return text.replace(SYSTEM_CONTEXT_STRIP_RE, "").trimStart();
+}
+
 export const createTranscriptEntryFromLine = (params: {
   line: string;
   sessionKey: string;
@@ -246,7 +268,10 @@ export const createTranscriptEntryFromLine = (params: {
   entryId?: string;
   confirmed?: boolean;
 }): TranscriptEntry | null => {
-  const text = params.line;
+  // v160 — sanitize the hidden system-context prefix BEFORE anything
+  // else looks at the line, so resolveKindRoleFromLine + fingerprinting
+  // + storage all work on the user-visible text only.
+  const text = stripHiddenSystemContext(params.line);
   if (!text) return null;
   const sessionKey = params.sessionKey.trim();
   if (!sessionKey) return null;
