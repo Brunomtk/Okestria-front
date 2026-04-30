@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { OrkestriaMark } from "@/components/OrkestriaMark";
 import { LiveMocksSection } from "@/features/marketing/LiveMocksSection";
+import { HeroLiveActivity } from "@/features/marketing/HeroLiveActivity";
 import dynamic from "next/dynamic";
 
 // React Three Fiber must run client-side; dynamic + ssr:false keeps
@@ -1256,11 +1257,28 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                {/* Agent canvas takes all the available room — gives the
-                    figure space to walk + pose without cramping. */}
-                <div className="relative flex-1">
+                {/* v142.1 — REBUILT body. Used to be one tall canvas
+                    with a void below. Now it's a fixed-height agent
+                    canvas + a live activity feed that fills the
+                    remaining space, so every pixel of the card has
+                    purpose. */}
+                <div className="relative h-[300px] shrink-0">
                   <HeroAgent className="absolute inset-0" />
+                  {/* Stage hairline that fades the canvas into the
+                      activity feed below — keeps the transition clean
+                      so the agent doesn't look like they're cut by a
+                      sharp border. */}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
+                    style={{
+                      background:
+                        "linear-gradient(to bottom, transparent, rgba(6,8,15,0.85))",
+                    }}
+                  />
                 </div>
+
+                <HeroLiveActivity />
 
                 {/* Stat band footer */}
                 <div className="grid grid-cols-3 gap-px border-t border-white/8 bg-white/[0.04] text-center text-[11.5px]">
