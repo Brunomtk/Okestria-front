@@ -22,6 +22,15 @@ import {
 import { authenticateUser } from "@/lib/auth/api";
 import { persistAuthSession } from "@/lib/auth/session-client";
 import { OrkestriaMark } from "@/components/OrkestriaMark";
+import dynamicImport from "next/dynamic";
+
+// 3D agent — same OfficeFigure as inside the workspace. Welcomes the
+// operator on the login page so they see the product before they sign
+// in. SSR-disabled because Three.js needs `window`.
+const HeroAgent = dynamicImport(
+  () => import("@/features/marketing/HeroAgent").then((m) => m.HeroAgent),
+  { ssr: false },
+);
 
 // -------------------------------------------------------------------------
 // Ambient background — soft particles + connecting lines. Cheap enough to
@@ -335,10 +344,15 @@ function LoginPageInner() {
         <div className="absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 bg-gradient-to-b from-cyan-500/10 via-violet-500/5 to-transparent blur-3xl" />
       </div>
 
-      {/* -------------------------- LEFT PANEL -------------------------- */}
-      <aside className="relative hidden w-1/2 flex-col justify-between p-10 lg:flex xl:p-14 2xl:p-16">
-        <div className="relative z-10 flex flex-col gap-10">
-          {/* Logo — v139 Cortex Cluster mark + gradient wordmark. */}
+      {/* -------------------------- LEFT PANEL --------------------------
+          v140 — Restructured: brand + activity at the top, a 3D agent
+          stage as the centerpiece, headline + copy + features below.
+          The figure is the same one operators see once they log in,
+          so the welcome feels like a smooth handoff into the product
+          rather than a marketing veneer. */}
+      <aside className="relative hidden w-1/2 flex-col gap-6 overflow-hidden p-10 lg:flex xl:p-14 2xl:p-16">
+        {/* Brand + activity — sits at the very top */}
+        <div className="relative z-10 flex flex-col gap-5">
           <Link href="/home" className="group inline-flex items-center gap-3 self-start">
             <div className="relative">
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-cyan-500/30 to-violet-500/30 opacity-0 blur-md transition-opacity group-hover:opacity-100" />
@@ -348,14 +362,44 @@ function LoginPageInner() {
               Orkestria
             </span>
           </Link>
-
-          {/* Live activity */}
           <LiveActivityFeed />
         </div>
 
-        {/* Headline + supporting copy */}
-        <div className="relative z-10 space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-3 py-1 text-xs font-medium text-cyan-300 backdrop-blur-sm animate-fade-in-up">
+        {/* Agent stage — visible above the fold on common laptop heights */}
+        <div className="relative z-10">
+          <div
+            className="relative h-[300px] w-full overflow-hidden rounded-3xl border border-white/10 backdrop-blur xl:h-[340px]"
+            style={{
+              background:
+                "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.16) 0%, rgba(15,23,42,0.85) 50%, rgba(6,8,15,0.95) 100%)",
+            }}
+          >
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 top-0 h-px"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)",
+              }}
+            />
+            <HeroAgent className="absolute inset-0" showPhaseLabel />
+            {/* Stat chips bottom corner */}
+            <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.18em] text-white/45">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Live agent
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/40 px-2.5 py-1 backdrop-blur">
+                <Shield className="h-3 w-3 text-cyan-300" />
+                Secure session
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Headline + copy + features — below the stage */}
+        <div className="relative z-10 space-y-5">
+          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-400/25 bg-cyan-400/5 px-3 py-1 text-xs font-medium text-cyan-300 backdrop-blur-sm animate-fade-in-up">
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/80" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
@@ -363,21 +407,21 @@ function LoginPageInner() {
             Your squads are already working
           </div>
 
-          <h1 className="text-4xl font-bold leading-[1.1] tracking-tight text-white xl:text-5xl 2xl:text-[3.3rem] animate-fade-in-up">
+          <h1 className="text-3xl font-bold leading-[1.1] tracking-tight text-white xl:text-4xl 2xl:text-[2.7rem] animate-fade-in-up">
             Welcome back to
             <br />
-            <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-pink-300 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-amber-300 bg-clip-text text-transparent">
               your workspace
             </span>
           </h1>
 
-          <p className="max-w-md text-base leading-relaxed text-white/55 xl:text-lg animate-fade-in-up animation-delay-200">
+          <p className="max-w-md text-[15px] leading-relaxed text-white/55 animate-fade-in-up animation-delay-200">
             Coordinate your agents, leads, knowledge and execution from one
             polished workspace built to move fast.
           </p>
 
-          <div className="grid gap-3 pt-2">
-            {features.map((feature, i) => (
+          <div className="grid gap-2.5">
+            {features.slice(0, 3).map((feature, i) => (
               <FeatureCard
                 key={feature.title}
                 icon={feature.icon}
@@ -387,12 +431,6 @@ function LoginPageInner() {
               />
             ))}
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="relative z-10 flex items-center gap-2 text-sm text-white/35">
-          <Shield className="h-4 w-4" />
-          <span>Secure access for admin &amp; company workspaces</span>
         </div>
       </aside>
 

@@ -81,10 +81,19 @@ export const OfficeFigure = ({
   profile,
   onReady,
   faceFocus = false,
+  externalAnimation = false,
 }: {
   profile: AgentAvatarProfile;
   onReady?: () => void;
   faceFocus?: boolean;
+  /**
+   * v140 — When true, the figure skips its own idle sway / breathing
+   * useFrame writes so an outer parent (e.g. HeroAgent) can drive the
+   * group's rotation, position, and arm rotations end-to-end without
+   * fighting the built-in animation. The figure still reports
+   * `onReady` exactly once.
+   */
+  externalAnimation?: boolean;
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   const leftArmRef = useRef<THREE.Group>(null);
@@ -101,6 +110,7 @@ export const OfficeFigure = ({
       onReady?.();
     }
     if (!groupRef.current) return;
+    if (externalAnimation) return; // v140 — outer parent drives the rig
     const t = state.clock.elapsedTime;
     if (faceFocus) {
       // Portrait mode — very subtle head-turn, no body sway, so the face
@@ -439,8 +449,12 @@ export const OfficeFigure = ({
         </>
       ) : null}
 
-      {/* ── Arms ── */}
-      <group ref={rightArmRef} position={[-0.12, 0.28, 0]}>
+      {/* ── Arms ──
+          v140 — `name` lets HeroAgent traverse() and grab these
+          groups to drive wave / walk / point animations on the
+          landing page without forking this file. Existing callers
+          aren't affected. */}
+      <group ref={rightArmRef} name="hero-arm-right" position={[-0.12, 0.28, 0]}>
         <mesh position={[0, 0.005, 0]}>
           <sphereGeometry args={[0.035, 14, 12]} />
           <meshLambertMaterial color={sleeveColor} />
@@ -467,7 +481,7 @@ export const OfficeFigure = ({
           <meshLambertMaterial color={skin} />
         </mesh>
       </group>
-      <group ref={leftArmRef} position={[0.12, 0.28, 0]}>
+      <group ref={leftArmRef} name="hero-arm-left" position={[0.12, 0.28, 0]}>
         <mesh position={[0, 0.005, 0]}>
           <sphereGeometry args={[0.035, 14, 12]} />
           <meshLambertMaterial color={sleeveColor} />

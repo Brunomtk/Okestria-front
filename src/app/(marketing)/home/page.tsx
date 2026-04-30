@@ -22,6 +22,14 @@ import {
 } from "lucide-react";
 import { OrkestriaMark } from "@/components/OrkestriaMark";
 import { LiveMocksSection } from "@/features/marketing/LiveMocksSection";
+import dynamic from "next/dynamic";
+
+// React Three Fiber must run client-side; dynamic + ssr:false keeps
+// Three.js out of the SSR bundle so the marketing page TTFB stays fast.
+const HeroAgent = dynamic(
+  () => import("@/features/marketing/HeroAgent").then((m) => m.HeroAgent),
+  { ssr: false },
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animated particles background
@@ -1198,7 +1206,69 @@ export default function LandingPage() {
               </div>
             </div>
 
-            <HeroConsole />
+            {/* v140 — Real 3D agent (the same OfficeFigure used inside
+                the workspace). Renders a randomly-seeded character that
+                cycles idle → wave → walk → point in a 15s loop. */}
+            <div className="relative">
+              {/* Glow plate behind the agent */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 -m-4 rounded-[40px]"
+                style={{
+                  background:
+                    "radial-gradient(ellipse at 50% 40%, rgba(124,58,237,0.18) 0%, rgba(34,211,238,0.06) 45%, transparent 70%)",
+                }}
+              />
+              <div
+                className="relative h-[480px] rounded-[32px] border border-white/10 backdrop-blur-md md:h-[540px]"
+                style={{
+                  background:
+                    "radial-gradient(ellipse at 50% 30%, rgba(124,58,237,0.16) 0%, rgba(15,23,42,0.85) 50%, rgba(6,8,15,0.95) 100%)",
+                }}
+              >
+                {/* Top hairline */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 h-px rounded-t-[32px]"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, transparent 0%, rgba(167,139,250,0.55) 50%, transparent 100%)",
+                  }}
+                />
+                {/* Eyebrow chip on top-left */}
+                <div className="absolute left-4 top-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.2em] text-violet-200/85 backdrop-blur">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inset-0 animate-ping rounded-full bg-violet-300/60" />
+                    <span className="relative h-1.5 w-1.5 rounded-full bg-violet-300" />
+                  </span>
+                  Live agent
+                </div>
+
+                <HeroAgent className="absolute inset-0" />
+
+                {/* Floating "agent stat" pills around the figure */}
+                <div className="pointer-events-none absolute bottom-6 left-6 right-6 grid grid-cols-3 gap-2 text-center text-[11px]">
+                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-cyan-300/80">
+                      Status
+                    </div>
+                    <div className="mt-0.5 text-white/85">Operational</div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-violet-300/80">
+                      Tasks
+                    </div>
+                    <div className="mt-0.5 text-white/85">12 today</div>
+                  </div>
+                  <div className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-amber-300/80">
+                      Squads
+                    </div>
+                    <div className="mt-0.5 text-white/85">3 active</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[#030810] to-transparent" />
