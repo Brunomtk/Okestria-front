@@ -111,9 +111,56 @@ export type OkestriaAgent = {
   role?: string | null;
   description?: string | null;
   avatarUrl?: string | null;
+  /** v148 — JSON string blob of the structured AgentAvatarProfile. */
+  avatarProfileJson?: string | null;
   emoji?: string | null;
   status?: boolean | null;
   isDefault?: boolean | null;
+};
+
+export type OkestriaAgentProfile = {
+  identityNotes?: string | null;
+  avatarNotes?: string | null;
+  soul?: string | null;
+  boundaries?: string | null;
+  vibe?: string | null;
+  continuity?: string | null;
+  agentsInstructions?: string | null;
+  userNotes?: string | null;
+  toolsNotes?: string | null;
+  memoryNotes?: string | null;
+  heartbeatNotes?: string | null;
+  model?: string | null;
+  thinkingLevel?: string | null;
+  temperature?: number | null;
+  profileJson?: string | null;
+};
+
+export type OkestriaAgentFile = {
+  fileType?: string | null;
+  content?: string | null;
+};
+
+export type OkestriaAgentDetails = OkestriaAgent & {
+  profile?: OkestriaAgentProfile | null;
+  files?: OkestriaAgentFile[] | null;
+};
+
+export type OkestriaAgentDeleteSummary = {
+  agentId: number;
+  agentName?: string | null;
+  agentSlug?: string | null;
+  agentExists: boolean;
+  deleted: boolean;
+  cronJobsAffected: number;
+  cronJobRunsAffected: number;
+  squadMembershipsAffected: number;
+  filesAffected: number;
+  hasProfile: boolean;
+  leadJobsDetached: number;
+  cronJobNames: string[];
+  squadNames: string[];
+  warning?: string | null;
 };
 
 export type OkestriaSquadMember = {
@@ -613,6 +660,24 @@ export async function fetchLeadById(leadId: number, token: string) {
 
 export async function fetchAgentById(agentId: number, token: string) {
   return requestJson<OkestriaAgent>(`/api/Agents/${agentId}`, undefined, token);
+}
+
+/**
+ * v148 — same endpoint as fetchAgentById, but typed to expose the
+ * full AgentDetailsDTO (profile + files). The back already returns
+ * this shape for `/api/Agents/{id}` — only the type narrowing was
+ * missing on the front.
+ */
+export async function fetchAgentDetails(agentId: number, token: string) {
+  return requestJson<OkestriaAgentDetails>(`/api/Agents/${agentId}`, undefined, token);
+}
+
+export async function fetchAgentDeletePreview(agentId: number, token: string) {
+  return requestJson<OkestriaAgentDeleteSummary>(
+    `/api/Agents/delete/${agentId}/preview`,
+    undefined,
+    token,
+  );
 }
 
 export async function fetchWorkspaceById(workspaceId: number, token: string) {
