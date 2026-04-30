@@ -283,14 +283,17 @@ export function HeroAgent({
       ) : null}
 
       <Canvas
-        // v142 hotfix — pulled the camera much closer + widened fov so
-        // the figure actually FILLS the hero canvas instead of looking
-        // tiny in a void of dark gradient. Was [0, 0.4, 4.6] @ fov 28
-        // which made the agent ~30% of the frame at best.
-        camera={{ position: [0, 0.5, 3.4], fov: 36 }}
+        // v142.3 — final framing math. The OfficeFigure rig has its
+        // feet at y ≈ -0.78 and head tip at y ≈ 1.82, so the figure
+        // is ~2.6 world units tall. With fov 38 at z=3.8 the
+        // vertical visible plane is 2 · 3.8 · tan(19°) ≈ 2.62 units,
+        // which means the figure fills the canvas top-to-bottom with
+        // a hair of margin — head visible, feet visible, NO cropping.
+        // lookAt y=0.55 centers the body in the frame.
+        camera={{ position: [0, 0.55, 3.8], fov: 38 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.15, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.55, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Lighting matches the office scene defaults so the agent

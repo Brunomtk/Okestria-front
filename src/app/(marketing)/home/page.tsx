@@ -1262,12 +1262,13 @@ export default function LandingPage() {
                     canvas + a live activity feed that fills the
                     remaining space, so every pixel of the card has
                     purpose. */}
-                <div className="relative h-[300px] shrink-0">
-                  <HeroAgent className="absolute inset-0" />
-                  {/* Stage hairline that fades the canvas into the
-                      activity feed below — keeps the transition clean
-                      so the agent doesn't look like they're cut by a
-                      sharp border. */}
+                <div className="relative h-[340px] shrink-0">
+                  {/* v142.3 — phase label hidden. Per operator
+                      feedback the "WALKING THE FLOOR / IDLE / etc."
+                      badge was visual noise on top of the agent;
+                      the figure speaks for itself. */}
+                  <HeroAgent className="absolute inset-0" showPhaseLabel={false} />
+                  {/* Soft fade into the activity feed below */}
                   <div
                     aria-hidden
                     className="pointer-events-none absolute inset-x-0 bottom-0 h-8"
