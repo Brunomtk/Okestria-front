@@ -129,9 +129,18 @@ export function filterUsers(items: OkestriaUser[], query: string) {
 export function filterLeads(items: OkestriaLead[], query: string) {
   if (!query) return items;
   return items.filter((item) =>
-    [item.businessName, item.contactName, item.email, item.phone, item.city, item.state].some((value) =>
-      (value ?? '').toLowerCase().includes(query),
-    ),
+    [
+      item.businessName,
+      item.contactName,
+      item.ownerFirstName,
+      item.ownerLastName,
+      item.email,
+      item.phone,
+      item.city,
+      item.state,
+      item.category,
+      item.website,
+    ].some((value) => (value ?? '').toLowerCase().includes(query)),
   );
 }
 

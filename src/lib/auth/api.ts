@@ -70,15 +70,46 @@ export type OkestriaPagedResponse<T> = {
 export type OkestriaLead = {
   id: number;
   companyId?: number | null;
-  leadGenerationJobId?: number | null;
-  businessName?: string | null;
+  /** Synthesized from owner first+last on the back's LeadDTO. */
   contactName?: string | null;
+  /** Compatibility shim — some callers still read `leadGenerationJobId`. */
+  leadGenerationJobId?: number | null;
+  createdByUserId?: number | null;
+  lastJobId?: number | null;
+  businessName?: string | null;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
   email?: string | null;
+  emails?: string[];
   phone?: string | null;
+  address?: string | null;
   city?: string | null;
   state?: string | null;
+  zip?: string | null;
+  category?: string | null;
+  website?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  description?: string | null;
+  hoursOfOperation?: string | null;
   status?: string | null;
+  ptxFit?: string | null;
+  suggestedProduct?: string | null;
+  outreachInsight?: string | null;
+  outreachScript?: string | null;
+  outreachEmailHtml?: string | null;
+  notes?: string | null;
+  socialLinks?: string[];
+  source?: string | null;
+  sourceMetadata?: Record<string, string>;
+  insightsGeneratedWithAi?: boolean | null;
+  insightsUsedFallback?: boolean | null;
+  insightsGenerationStatus?: string | null;
+  insightsWarningCode?: string | null;
+  insightsWarningMessage?: string | null;
+  scrapedAtUtc?: string | null;
   createdDate?: string | null;
+  updatedDate?: string | null;
 };
 
 export type OkestriaWorkspace = {
@@ -746,6 +777,97 @@ export async function fetchWorkspaceById(workspaceId: number, token: string) {
 
 export async function fetchSquadById(squadId: number, token: string) {
   return requestJson<OkestriaSquadDetails>(`/api/Squads/${squadId}`, undefined, token);
+}
+
+// ── v151 — Squad executions (admin · mission detail) ───────────────
+
+export type OkestriaSquadExecutionStep = {
+  id: number;
+  executionId: number;
+  agentId: number;
+  agentName?: string | null;
+  agentSlug?: string | null;
+  stepOrder: number;
+  stepKind: string;
+  title: string;
+  status: string;
+  inputPrompt?: string | null;
+  outputText?: string | null;
+  externalRuntime?: string | null;
+  externalTaskId?: string | null;
+  externalRunId?: string | null;
+  externalSessionKey?: string | null;
+  errorMessage?: string | null;
+  metadataJson?: string | null;
+  lastSyncedAtUtc?: string | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+};
+
+export type OkestriaSquadExecutionMessage = {
+  id: number;
+  executionId: number;
+  stepId?: number | null;
+  sequence: number;
+  role: string;
+  authorType: string;
+  authorId?: number | null;
+  authorName?: string | null;
+  content: string;
+  metadataJson?: string | null;
+  createdDate: string;
+};
+
+export type OkestriaSquadExecutionEvent = {
+  id: number;
+  executionId: number;
+  stepId?: number | null;
+  type: string;
+  level: string;
+  message: string;
+  dataJson?: string | null;
+  createdDate: string;
+};
+
+export type OkestriaSquadExecution = {
+  id: number;
+  executionKey: string;
+  companyId: number;
+  squadId: number;
+  squadName?: string | null;
+  requestedByUserId?: number | null;
+  requestedByUserName?: string | null;
+  title: string;
+  prompt: string;
+  mode: string;
+  status: string;
+  preferredModel?: string | null;
+  currentStepOrder: number;
+  summary?: string | null;
+  finalResponse?: string | null;
+  errorMessage?: string | null;
+  startedAtUtc?: string | null;
+  finishedAtUtc?: string | null;
+  leadId?: number | null;
+  leadGenerationJobId?: number | null;
+  leadContextJson?: string | null;
+  attachmentCount: number;
+  createdDate: string;
+  updatedDate: string;
+  steps: OkestriaSquadExecutionStep[];
+  messages: OkestriaSquadExecutionMessage[];
+  events: OkestriaSquadExecutionEvent[];
+};
+
+export async function fetchSquadExecutionById(
+  executionId: number,
+  token: string,
+) {
+  return requestJson<OkestriaSquadExecution>(
+    `/api/SquadExecutions/${executionId}`,
+    undefined,
+    token,
+  );
 }
 
 // ── v149 — Cron jobs (admin detail + run controls) ──────────────────

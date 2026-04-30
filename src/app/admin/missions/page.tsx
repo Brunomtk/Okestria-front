@@ -122,6 +122,7 @@ async function renderMissionsPage() {
                     <AdminCellTitle
                       primary={m.title || `Mission #${m.id}`}
                       secondary={`${m.squadName ?? `Squad #${m.squadId}`} · ${m.mode} · started ${fmtAgo(m.startedAtUtc ?? m.createdDate)}`}
+                      href={`/admin/missions/${m.id}`}
                     />
                   </div>
                 ),

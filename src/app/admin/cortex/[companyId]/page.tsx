@@ -82,13 +82,32 @@ async function render(params: Promise<{ companyId: string }>) {
   if (!Number.isFinite(id) || id <= 0) notFound();
 
   const session = await requireAdminSession();
-  const [tree, graph, companiesResp] = await Promise.all([
-    fetchAdminCortexTree(id, session.token!).catch(() => null),
-    fetchAdminCortexGraph(id, session.token!).catch(() => null),
+  const [treeResult, graphResult, companiesResp] = await Promise.all([
+    fetchAdminCortexTree(id, session.token!).then(
+      (t) => ({ ok: true as const, value: t }),
+      (err) => ({
+        ok: false as const,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    ),
+    fetchAdminCortexGraph(id, session.token!).then(
+      (g) => ({ ok: true as const, value: g }),
+      (err) => ({
+        ok: false as const,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    ),
     fetchCompaniesPaged(session.token!, { pageNumber: 1, pageSize: 200 }).catch(
       () => null,
     ),
   ]);
+
+  const tree = treeResult.ok ? treeResult.value : null;
+  const graph = graphResult.ok ? graphResult.value : null;
+  const treeError = treeResult.ok ? null : treeResult.error;
+  const graphError = graphResult.ok ? null : graphResult.error;
+  if (treeError) console.error("[admin/cortex] tree fetch failed:", treeError);
+  if (graphError) console.error("[admin/cortex] graph fetch failed:", graphError);
 
   const company = (companiesResp?.result ?? []).find((c) => c.id === id);
   const companyName = company?.name ?? `Company #${id}`;
@@ -133,6 +152,47 @@ async function render(params: Promise<{ companyId: string }>) {
           </>
         }
       />
+
+      {treeError || graphError ? (
+        <div className="rounded-xl border border-rose-400/30 bg-rose-500/[0.06] p-4">
+          <p className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-rose-300/80">
+            Cortex backend probe failed
+          </p>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-white/65">
+            One or both Cortex endpoints returned an error for this tenant.
+            The page rendered with whatever it could load — re-check the
+            host log for the full stack.
+          </p>
+          <ul className="mt-2.5 space-y-1 font-mono text-[11px] text-rose-200/85">
+            {treeError ? (
+              <li>
+                ✗{" "}
+                <code className="rounded bg-white/10 px-1 text-cyan-200">
+                  GET /api/AdminOverview/cortex/{id}/tree
+                </code>{" "}
+                — {treeError}
+              </li>
+            ) : null}
+            {graphError ? (
+              <li>
+                ✗{" "}
+                <code className="rounded bg-white/10 px-1 text-cyan-200">
+                  GET /api/AdminOverview/cortex/{id}/graph
+                </code>{" "}
+                — {graphError}
+              </li>
+            ) : null}
+          </ul>
+          <p className="mt-2.5 font-mono text-[10px] text-white/40">
+            Most common cause: the back is older than v83 and these proxy
+            endpoints don&apos;t exist yet. Deploy{" "}
+            <code className="rounded bg-white/10 px-1 text-cyan-200">
+              ok_back_v83_admin_cortex_proxy
+            </code>{" "}
+            (or newer) and refresh.
+          </p>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard

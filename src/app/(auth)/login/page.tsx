@@ -77,7 +77,7 @@ function LoginPageInner() {
   const submitLockRef = useRef(false);
 
   useEffect(() => {
-    router.prefetch("/admin/companies");
+    router.prefetch("/admin");
     router.prefetch("/company/office");
   }, [router]);
 
@@ -99,7 +99,7 @@ function LoginPageInner() {
         rememberMe,
       });
       persistAuthSession(session);
-      const defaultPath = session.type === 1 ? "/admin/companies" : "/company/office";
+      const defaultPath = session.type === 1 ? "/admin" : "/company/office";
       const targetPath = returnTo ?? defaultPath;
       window.location.assign(targetPath);
     } catch (err) {
