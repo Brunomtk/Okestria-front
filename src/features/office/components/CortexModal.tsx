@@ -835,6 +835,14 @@ function GraphView({
   const nodeCanvasObject = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      // First-tick guard: d3-force populates x/y AFTER the first tick;
+      // without this the canvas APIs throw "non-finite" errors when
+      // nodes are still un-laid-out (especially right after the modal
+      // opens or after a force-slider change reheats the simulation).
+      const x = Number(node.x);
+      const y = Number(node.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
       const id = String(node.id);
       const isActive = id === activeId;
       const inHighlight = isInHighlight(id) && isMatched(id);
@@ -848,38 +856,34 @@ function GraphView({
       const isTag = node.kind === "tag";
       const baseColor =
         (isTag ? TAG_COLOR : folderColor(node.folder ?? null)) || ROOT_COLOR;
-      const r = nodeRadius(node as GraphNodeRich);
+      const rRaw = nodeRadius(node as GraphNodeRich);
+      const r = Number.isFinite(rRaw) && rRaw > 0 ? rRaw : 3;
 
       // Outer halo (additive feel via radial gradient)
       if (baseAlpha > 0.4) {
         const haloR = r * (isActive ? 5.2 : 3.2);
-        const grad = ctx.createRadialGradient(
-          node.x,
-          node.y,
-          0,
-          node.x,
-          node.y,
-          haloR,
-        );
-        grad.addColorStop(0, withAlpha(baseColor, baseAlpha * (isActive ? 0.6 : 0.32)));
-        grad.addColorStop(0.5, withAlpha(baseColor, baseAlpha * 0.1));
-        grad.addColorStop(1, withAlpha(baseColor, 0));
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, haloR, 0, 2 * Math.PI);
-        ctx.fill();
+        if (Number.isFinite(haloR) && haloR > 0) {
+          const grad = ctx.createRadialGradient(x, y, 0, x, y, haloR);
+          grad.addColorStop(0, withAlpha(baseColor, baseAlpha * (isActive ? 0.6 : 0.32)));
+          grad.addColorStop(0.5, withAlpha(baseColor, baseAlpha * 0.1));
+          grad.addColorStop(1, withAlpha(baseColor, 0));
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(x, y, haloR, 0, 2 * Math.PI);
+          ctx.fill();
+        }
       }
 
       // Solid disc
       ctx.fillStyle = withAlpha(baseColor, baseAlpha);
       ctx.beginPath();
-      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.fill();
 
       // Active outline
       if (isActive) {
         ctx.strokeStyle = withAlpha("#ffffff", 0.9);
-        ctx.lineWidth = 1.6 / globalScale;
+        ctx.lineWidth = 1.6 / Math.max(0.0001, globalScale);
         ctx.stroke();
       }
 
@@ -894,13 +898,13 @@ function GraphView({
           : Math.min(1, Math.max(0, (globalScale - textFadeStart) * 1.6));
       const labelAlpha = showLabel * baseAlpha;
       if (labelAlpha > 0.05) {
-        const fontSize = Math.max(2.8, 11 / globalScale);
+        const fontSize = Math.max(2.8, 11 / Math.max(0.0001, globalScale));
         ctx.font = `${fontSize}px ui-sans-serif, -apple-system, "Segoe UI", sans-serif`;
         ctx.fillStyle = withAlpha("#ffffff", labelAlpha * 0.92);
         ctx.textAlign = "center";
         ctx.textBaseline = "top";
         const labelText = isTag ? `#${node.label}` : truncateLabel(node.label, 32);
-        ctx.fillText(labelText, node.x, node.y + r + 1.6 / globalScale);
+        ctx.fillText(labelText, x, y + r + 1.6 / Math.max(0.0001, globalScale));
       }
     },
     [activeId, isInHighlight, isMatched, folderColor, nodeRadius, textFadeStart],
@@ -911,10 +915,14 @@ function GraphView({
   const nodePointerAreaPaint = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (node: any, color: string, ctx: CanvasRenderingContext2D) => {
-      const r = nodeRadius(node as GraphNodeRich) * 1.6;
+      const x = Number(node.x);
+      const y = Number(node.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+      const rRaw = nodeRadius(node as GraphNodeRich) * 1.6;
+      const r = Number.isFinite(rRaw) && rRaw > 0 ? rRaw : 4;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
       ctx.fill();
     },
     [nodeRadius],
