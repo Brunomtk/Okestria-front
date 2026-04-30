@@ -6603,6 +6603,14 @@ export function OfficeScreen({
           onOpenProfile={() => {
             setProfileModalOpen(true);
           }}
+          // v142.8 — clicking any server rack in the 3D office now
+          // opens the Cortex modal at the knowledge graph view (the
+          // physical "brain hardware" → the brain itself).
+          onOpenCortex={() => {
+            setCortexInitialView("graph");
+            setCortexInitialPath(null);
+            setCortexModalOpen(true);
+          }}
           // v118 — Tools button lives right next to the avatar profile
           // button in the same view-controls toolbar group. Single click
           // opens the unified Email + Meta config modal.

@@ -1670,6 +1670,11 @@ export function RetroOffice3D({
   onAddAgent,
   profileButtonActive = false,
   onOpenProfile,
+  // v142.8 — Server racks now open the Cortex modal (knowledge graph
+  // + notes vault). Operator's mental model: server rack = brain
+  // storage = cortex. Without this callback the click falls through
+  // to the default GitHub terminal opener.
+  onOpenCortex,
   // v118 — Tools button lives in the same toolbar group as the avatar
   // profile button. Single click opens the unified UserToolsModal where
   // operators wire email + Meta (IG/FB/WhatsApp) credentials.
@@ -1783,6 +1788,9 @@ export function RetroOffice3D({
   onAddAgent?: () => void;
   profileButtonActive?: boolean;
   onOpenProfile?: () => void;
+  // v142.8 — invoked when the operator clicks any server rack in the
+  // 3D scene. Wires the "physical" brain hardware to the Cortex modal.
+  onOpenCortex?: () => void;
   // v118 — Tools button & active flag.
   toolsButtonActive?: boolean;
   onOpenTools?: () => void;
@@ -4072,11 +4080,20 @@ export function RetroOffice3D({
         return;
       }
       if (item.type === "server_rack") {
+        // v142.8 — Server rack now opens the Cortex modal (knowledge
+        // graph + notes vault). Falls back to the legacy GitHub
+        // terminal flow only when the parent didn't supply
+        // `onOpenCortex`, so older callers keep working.
         setFollowAgentId(null);
         setActiveAtmUid(null);
         setActiveQaTerminalUid(null);
+        setActiveGithubTerminalUid(null);
         onMonitorSelect?.(null);
-        setActiveGithubTerminalUid(serverTerminal?._uid ?? uid);
+        if (onOpenCortex) {
+          onOpenCortex();
+        } else {
+          setActiveGithubTerminalUid(serverTerminal?._uid ?? uid);
+        }
         return;
       }
       if (

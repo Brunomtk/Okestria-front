@@ -8,6 +8,13 @@ import {
   isAuthExpired,
   onAuthExpired,
 } from '@/lib/auth/session-client';
+// v142.8 — Use the polished OrkestriaLoader (mark + cosmic bg +
+// cycling messages + gradient sweep bar) for the connecting state
+// instead of the bespoke spinner-and-text layout that lived here.
+// We only render OrkestriaLoader on the happy "connecting" path —
+// the session-expired and error branches keep their custom UIs
+// because they need actionable buttons.
+import { OrkestriaLoader } from '@/components/OrkestriaLoader';
 
 type GatewayConnectScreenProps = {
   gatewayUrl: string;
@@ -150,71 +157,57 @@ export const GatewayConnectScreen = ({
               Nada do seu trabalho foi perdido.
             </p>
           </>
+        ) : !error ? (
+          // Happy connecting path — render the polished OrkestriaLoader
+          // exactly as it appears on every other "wait for the
+          // workspace" surface. It already includes the brand mark,
+          // cycling messages, and the gradient sweep bar.
+          <OrkestriaLoader
+            showProgress={false}
+            messages={[
+              "Reaching the gateway…",
+              "Authenticating session…",
+              "Wiring up agents…",
+              "Loading your squads…",
+              "Almost there…",
+            ]}
+          />
         ) : (
           <>
-            {/* Elegant spinner */}
+            {/* ERROR PATH — keeps a compact custom layout because it
+                needs the retry + back-to-login buttons that the
+                generic loader doesn't carry. */}
             <div className="relative w-20 h-20 mb-10">
-              {/* Outer ring */}
-              <div className="absolute inset-0 rounded-full border-2 border-cyan-500/10" />
-
-              {/* Spinning arc */}
-              <svg className="absolute inset-0 w-full h-full animate-spin" style={{ animationDuration: '1.5s' }}>
-                <circle
-                  cx="40"
-                  cy="40"
-                  r="38"
-                  fill="none"
-                  stroke="url(#spinnerGradient)"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeDasharray="80 160"
-                />
-                <defs>
-                  <linearGradient id="spinnerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#22d3ee" />
-                    <stop offset="100%" stopColor="#8b5cf6" />
-                  </linearGradient>
-                </defs>
-              </svg>
-
-              {/* Center dot */}
+              <div className="absolute inset-0 rounded-full border-2 border-rose-500/15" />
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-3 h-3 rounded-full bg-gradient-to-br from-cyan-400 to-violet-500 animate-pulse" />
+                <svg
+                  className="h-9 w-9 text-rose-300"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126Zm9.303-2.626h.008v.008h-.008Z"
+                  />
+                </svg>
               </div>
             </div>
 
-            {/* Brand */}
             <h1 className="text-2xl font-semibold mb-2 text-white tracking-tight">
               Orkestria
             </h1>
 
-            {/* Status message — when an error is present we render
-                it on its own line (cleaner wrap) and right below it
-                the "retry / back to login" action row. Without those
-                two buttons the operator is trapped on this screen
-                with no way out except a manual page refresh. */}
             <div className="mb-6 max-w-md text-center">
-              {error ? (
-                <p className="text-[12.5px] leading-relaxed text-rose-300/90">
-                  {error}
-                </p>
-              ) : (
-                <p className="text-sm text-white/40 transition-opacity duration-300">
-                  {loadingMessages[currentMessage]}
-                </p>
-              )}
+              <p className="text-[12.5px] leading-relaxed text-rose-300/90">
+                {error}
+              </p>
             </div>
 
-            {/* Minimal loading bar — only when actually trying to
-                connect. Once we have an error the bar is misleading. */}
-            {!error ? (
-              <div className="w-48 h-0.5 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full w-1/3 bg-gradient-to-r from-cyan-500 to-violet-500 rounded-full animate-[loading_1.5s_ease-in-out_infinite]" />
-              </div>
-            ) : null}
-
             {/* Connection status */}
-            <div className="mt-6 flex items-center gap-2 text-xs text-white/30">
+            <div className="mt-2 flex items-center gap-2 text-xs text-white/30">
               <div className={`w-1.5 h-1.5 rounded-full transition-colors ${
                 status === 'connecting'
                   ? 'bg-cyan-400 animate-pulse'
