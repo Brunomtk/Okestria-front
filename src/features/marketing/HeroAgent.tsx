@@ -41,19 +41,28 @@ import { OfficeFigure } from "@/features/agents/components/AgentOfficeFigure3D";
 
 // ── Geometry constants ──────────────────────────────────────────────
 //
-// OfficeFigure's bounding box in world space (measured empirically
-// against the avatar editor preview): feet ≈ y=-0.78, head ≈ y=1.22.
-// Mid-point ≈ +0.22. We want the figure centered on world y=0, so
-// the wrapper group sits at y = -0.22. With this in place, the
-// figure spans roughly y ∈ [-1, +1] — a 2-unit-tall character
-// centered on the camera's line of sight.
-const RIG_MID_Y_OFFSET = -0.22;
+// I read every position in OfficeFigure's geometry (legs, torso,
+// head, hat) and applied the inner group's `scale={[2.6, 2.86, 2.6]}`
+// + `position={[0, -0.78, 0]}` on top. Empirically the figure renders
+// roughly:
+//   feet  ≈ y = -0.78
+//   head  ≈ y = +0.80   (head sphere center around 0.55 in inner
+//                         local × scale 2.86 ≈ 1.57, then +offset)
+//   mid   ≈ y = +0.01
+// Total visual height ≈ 1.58 world units.
+//
+// Strategy: skip wrapper offsets (they keep producing off-center
+// renders when fov / aspect changes). Instead, plant the camera +
+// lookAt directly at the figure's TRUE vertical mid. This is what
+// AgentAvatarPreview3D does internally, just with our own zoom.
+const RIG_MID_Y = 0.0;
 
-// Camera placement. fov 38 + z=3.0 yields a vertical visible plane
-// of 2 · 3.0 · tan(19°) ≈ 2.06 world units, which is just slightly
-// taller than the 2-unit figure — head + feet visible with a hair
-// of margin on either side.
-const CAMERA_Z = 3.0;
+// Camera placement. fov 38 + z=2.4 yields a vertical visible plane
+// of 2 · 2.4 · tan(19°) ≈ 1.65 world units. The figure is ~1.58
+// units tall, so it fills ~95% of the canvas vertically with a hair
+// of margin top + bottom. Camera y = lookAt y = mid → symmetric
+// composition with NO tilt.
+const CAMERA_Z = 2.4;
 const CAMERA_FOV = 38;
 
 // ─────────────────────────────────────────────────────────────────────
@@ -128,11 +137,11 @@ function PortraitFigure({
     if (!group) return;
 
     // Outer transform — small horizontal sway + breath. Position y is
-    // FIXED at RIG_MID_Y_OFFSET so the figure stays centered.
+    // FIXED at RIG_MID_Y so the figure stays centered.
     const sway = Math.sin(t * 0.55) * 0.18 + 0.04;
     const breath = Math.sin(t * 0.9) * 0.005;
     group.rotation.y = sway;
-    group.position.y = RIG_MID_Y_OFFSET + breath;
+    group.position.y = RIG_MID_Y + breath;
 
     // Default idle arm pose
     let leftArmX = -0.05 + Math.sin(t * 0.9) * 0.05;
@@ -168,7 +177,7 @@ function PortraitFigure({
   return (
     // Initial position matches what useFrame writes on tick 1 so the
     // figure doesn't pop up by 0.22 units on the first paint.
-    <group ref={groupRef} position={[0, RIG_MID_Y_OFFSET, 0]}>
+    <group ref={groupRef} position={[0, RIG_MID_Y, 0]}>
       <OfficeFigure profile={profile} onReady={onReady} externalAnimation />
     </group>
   );
@@ -216,10 +225,15 @@ export function HeroAgent({
       ) : null}
 
       <Canvas
-        camera={{ position: [0, 0, CAMERA_Z], fov: CAMERA_FOV }}
+        // Camera planted at the figure's vertical mid (RIG_MID_Y) and
+        // looking at the same point — symmetric composition with no
+        // tilt. fov × distance pre-tuned so the figure fills 95% of
+        // the canvas vertically. Wrapper position is also at
+        // RIG_MID_Y so the figure RENDERS centered on world origin.
+        camera={{ position: [0, RIG_MID_Y, CAMERA_Z], fov: CAMERA_FOV }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, RIG_MID_Y, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Same lighting as the avatar editor + office scene so the
