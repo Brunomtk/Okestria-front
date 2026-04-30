@@ -287,7 +287,10 @@ export async function POST() {
           await jsonFetch<unknown>(
             `${apiBase}/api/Agents/${agent.id}/profile`,
             {
-              method: "POST",
+              // v158 — back exposes UpsertProfile as PUT, not POST.
+              // Sending POST yielded 405 Method Not Allowed for every
+              // agent on the first sync attempt.
+              method: "PUT",
               headers: jsonAuth,
               body: JSON.stringify(detailsRaw.profile ?? {}),
               cache: "no-store",
