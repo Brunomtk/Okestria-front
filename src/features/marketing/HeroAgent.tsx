@@ -1,29 +1,32 @@
 "use client";
 
 /**
- * v140 — HeroAgent.
+ * v142.5 — HeroAgent rewritten from scratch.
  *
- * Renders the EXACT same 3D figure used in the office scene as the
- * star of the landing-page hero. The agent runs an animation cycle
- * — idle / wave / point / walk — on a soft cosmic stage so visitors
- * see the actual product (not a generic illustration) within the
- * first second of landing.
+ * Earlier versions wrestled the OfficeFigure rig's idiosyncratic
+ * coordinate system (internal `position={[0, -0.78, 0]}` with
+ * `scale={[2.6, 2.6 * 1.1, 2.6]}`) by piling on camera offsets and
+ * lookAt math, which kept producing crops, voids, or off-center
+ * framing depending on the viewport. This version takes a different
+ * tack:
  *
- * Why this implementation:
- *   • The figure rig (`OfficeFigure`) already publishes refs for
- *     left/right arm groups; we use those for the wave + point
- *     animations directly inside <Canvas> with `useFrame`.
- *   • Walking is faked at the group level (translate + bob) — the
- *     legs aren't independently rigged, so animating the whole
- *     figure on a sine-wave path reads as "strolling" without
- *     uncanny knee bends.
- *   • Profile is generated from a stable random seed once on mount,
- *     so each visitor gets a fresh agent (skin tone / hair / outfit)
- *     but the figure doesn't reroll mid-session.
- *   • Loaded with `next/dynamic` (`ssr: false`) at the parent so
- *     React Three Fiber + the avatar shaders stay out of the SSR
- *     bundle. Without that, hydration would fail on the
- *     <canvas>-only rendering paths.
+ *   1. Wrap OfficeFigure in our own `<group>` whose y position
+ *      cancels the rig's natural mid-height offset, so the figure
+ *      visually centers on world origin (head at +y, feet at -y).
+ *   2. Camera sits on the world origin's horizontal plane (y=0,
+ *      z=3.4) with a wide fov (38°) and `lookAt(0,0,0)`. No tilt,
+ *      no offset — symmetric framing top-to-bottom.
+ *   3. No floor disc, no glow rings, no opaque platform under the
+ *      feet. The figure floats against the gradient background of
+ *      the parent card, which gives the cleanest portrait read.
+ *   4. Subtle `idle ↔ wave ↔ point` pose cycle on the figure's
+ *      arms (we drive the arm groups by name lookup, the figure is
+ *      in `externalAnimation` mode so there's no fight with the
+ *      built-in sway).
+ *
+ * If the operator opens the modal AGAIN later and wants the camera
+ * to slide a smidge closer, only one number (`CAMERA_Z`) needs to
+ * change — the figure stays centered automatically.
  */
 
 import { Canvas, useFrame } from "@react-three/fiber";
@@ -36,145 +39,122 @@ import {
 } from "@/lib/avatars/profile";
 import { OfficeFigure } from "@/features/agents/components/AgentOfficeFigure3D";
 
-type Phase = "idle" | "wave" | "walk" | "point";
+// ── Geometry constants ──────────────────────────────────────────────
+//
+// OfficeFigure's bounding box in world space (measured empirically
+// against the avatar editor preview): feet ≈ y=-0.78, head ≈ y=1.22.
+// Mid-point ≈ +0.22. We want the figure centered on world y=0, so
+// the wrapper group sits at y = -0.22. With this in place, the
+// figure spans roughly y ∈ [-1, +1] — a 2-unit-tall character
+// centered on the camera's line of sight.
+const RIG_MID_Y_OFFSET = -0.22;
 
-/**
- * Cycle plan — feels intentional rather than random:
- *   idle (3s) → wave (2s) → idle (1.5s) → walk (4s) → point (2s) → idle (2.5s)
- * Total ~15s, then loops.
- */
-const CYCLE: Array<{ phase: Phase; duration: number }> = [
-  { phase: "idle",  duration: 3.0 },
-  { phase: "wave",  duration: 2.0 },
-  { phase: "idle",  duration: 1.5 },
-  { phase: "walk",  duration: 4.0 },
-  { phase: "point", duration: 2.0 },
-  { phase: "idle",  duration: 2.5 },
+// Camera placement. fov 38 + z=3.0 yields a vertical visible plane
+// of 2 · 3.0 · tan(19°) ≈ 2.06 world units, which is just slightly
+// taller than the 2-unit figure — head + feet visible with a hair
+// of margin on either side.
+const CAMERA_Z = 3.0;
+const CAMERA_FOV = 38;
+
+// ─────────────────────────────────────────────────────────────────────
+// Pose cycle — idle / wave / point. No walking in the hero portrait;
+// walking is what `OfficeMock3D` does for the section showcase.
+// ─────────────────────────────────────────────────────────────────────
+
+type Pose = "idle" | "wave" | "point";
+const CYCLE: Array<{ pose: Pose; duration: number }> = [
+  { pose: "idle",  duration: 4.0 },
+  { pose: "wave",  duration: 2.2 },
+  { pose: "idle",  duration: 2.2 },
+  { pose: "point", duration: 2.4 },
+  { pose: "idle",  duration: 3.2 },
 ];
 
 // ─────────────────────────────────────────────────────────────────────
-// Inner figure — drives the animation. Renders inside <Canvas>.
+// Inner figure with pose driver
 // ─────────────────────────────────────────────────────────────────────
 
-function AnimatedHeroFigure({
+function PortraitFigure({
   profile,
   onReady,
-  onPhaseChange,
 }: {
   profile: AgentAvatarProfile;
   onReady?: () => void;
-  onPhaseChange?: (phase: Phase) => void;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  // Refs into OfficeFigure's arm groups — set after first render via the
-  // imperative DOM-ish escape hatch below.
   const armRefs = useRef<{ left: THREE.Group | null; right: THREE.Group | null }>({
     left: null,
     right: null,
   });
-  const phaseRef = useRef<Phase>("idle");
+  const cycleIdxRef = useRef(0);
   const phaseStartRef = useRef(0);
-  const cycleIndexRef = useRef(0);
-  const lastPublishedPhaseRef = useRef<Phase | null>(null);
+
+  // Find arm groups by name once after mount (renamed in v140).
+  useEffect(() => {
+    const group = groupRef.current;
+    if (!group) return;
+    const scan = () => {
+      group.traverse((child) => {
+        if (child.name === "hero-arm-left" && child instanceof THREE.Group) {
+          armRefs.current.left = child;
+        }
+        if (child.name === "hero-arm-right" && child instanceof THREE.Group) {
+          armRefs.current.right = child;
+        }
+      });
+    };
+    scan();
+    const id = setTimeout(scan, 50);
+    return () => clearTimeout(id);
+  }, [profile]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
     if (phaseStartRef.current === 0) phaseStartRef.current = t;
 
-    // Advance through the cycle when the current phase's duration is up.
-    const elapsed = t - phaseStartRef.current;
-    const current = CYCLE[cycleIndexRef.current % CYCLE.length]!;
-    if (elapsed >= current.duration) {
-      cycleIndexRef.current = (cycleIndexRef.current + 1) % CYCLE.length;
-      phaseStartRef.current = t;
-      const nextPhase = CYCLE[cycleIndexRef.current]!.phase;
-      phaseRef.current = nextPhase;
-    } else {
-      phaseRef.current = current.phase;
+    // Advance through the pose cycle.
+    let elapsed = t - phaseStartRef.current;
+    let current = CYCLE[cycleIdxRef.current % CYCLE.length]!;
+    while (elapsed >= current.duration) {
+      elapsed -= current.duration;
+      phaseStartRef.current += current.duration;
+      cycleIdxRef.current = (cycleIdxRef.current + 1) % CYCLE.length;
+      current = CYCLE[cycleIdxRef.current]!;
     }
+    const pose = current.pose;
+    const localT = elapsed;
 
-    if (lastPublishedPhaseRef.current !== phaseRef.current) {
-      lastPublishedPhaseRef.current = phaseRef.current;
-      onPhaseChange?.(phaseRef.current);
-    }
-
-    const phase = phaseRef.current;
-    const localT = elapsed; // seconds inside the current phase
     const group = groupRef.current;
     if (!group) return;
 
-    // Default rest pose. NOTE: the inner OfficeFigure group already has
-    // its `position={[0, -0.78, 0]}` from its JSX, so my OUTER group's
-    // y is an OFFSET on top of that. Base 0 here = same height as the
-    // figure's normal "standing on the floor" pose.
-    let bodyRotY = Math.sin(t * 0.55) * 0.18 + 0.05;
-    let bodyX = 0;
-    let bodyY = Math.sin(t * 0.9) * 0.006; // breath
+    // Outer transform — small horizontal sway + breath. Position y is
+    // FIXED at RIG_MID_Y_OFFSET so the figure stays centered.
+    const sway = Math.sin(t * 0.55) * 0.18 + 0.04;
+    const breath = Math.sin(t * 0.9) * 0.005;
+    group.rotation.y = sway;
+    group.position.y = RIG_MID_Y_OFFSET + breath;
+
+    // Default idle arm pose
     let leftArmX = -0.05 + Math.sin(t * 0.9) * 0.05;
     let leftArmZ = -0.14;
     let rightArmX = -0.05 + Math.sin(t * 0.9 + Math.PI) * 0.05;
     let rightArmZ = 0.14;
 
-    if (phase === "idle") {
-      // Already covered by defaults — gentle sway + breath.
-    } else if (phase === "wave") {
-      // Right arm raises and waves side-to-side. Body subtly leans
-      // toward camera so the wave reads as "hi, you".
-      bodyRotY = Math.sin(t * 0.4) * 0.08 + 0.05;
-      const wavePhase = Math.min(1, localT / 0.4); // ramp up
-      const waveFall = Math.min(1, Math.max(0, (current.duration - localT) / 0.4)); // ramp down
-      const ramp = wavePhase * waveFall;
-      rightArmX = -1.5 * ramp; // arm up high
+    if (pose === "wave") {
+      const ramp =
+        Math.min(1, localT / 0.4) *
+        Math.min(1, Math.max(0, (current.duration - localT) / 0.4));
+      rightArmX = -1.5 * ramp;
       rightArmZ = 0.5 + Math.sin(t * 7) * 0.45 * ramp;
-      // Tiny torso lean so the wave feels emphatic
-      bodyX = 0.02 * ramp;
-    } else if (phase === "walk") {
-      // Walk along a horizontal arc — left, then right, then settle.
-      // Path: [0 → -0.7 → +0.7 → 0] over the phase's duration.
-      const u = Math.min(1, localT / current.duration);
-      // 4 keyframes: 0→-0.7 (turn), -0.7→+0.7 (cross), +0.7→0 (return)
-      let x: number;
-      if (u < 0.25) {
-        x = -2.8 * u; // 0 → -0.7
-      } else if (u < 0.75) {
-        x = -0.7 + 2.8 * (u - 0.25); // -0.7 → +0.7
-      } else {
-        x = 0.7 - 2.8 * (u - 0.75); // +0.7 → 0
-      }
-      bodyX = x;
-      // Walking bob (faster cadence + bigger amplitude than idle breath)
-      const cadence = t * 6.0;
-      bodyY = Math.abs(Math.sin(cadence)) * 0.04; // offset on top of inner group's -0.78
-      // Face direction: rotate body to face the next x position.
-      const dirSign =
-        u < 0.25 ? -1 :
-        u < 0.5  ? +1 :
-        u < 0.75 ? +1 :
-                   -1;
-      bodyRotY = dirSign * 0.5;
-      // Arms swing opposite to legs.
-      leftArmX = Math.sin(cadence) * 0.45;
-      rightArmX = -Math.sin(cadence) * 0.45;
-      leftArmZ = -0.18;
-      rightArmZ = 0.18;
-    } else if (phase === "point") {
-      // Right arm points outward, body rotates slightly to look in
-      // that direction — like the agent is "inviting you to scroll".
-      const ramp = Math.min(1, localT / 0.4) * Math.min(1, (current.duration - localT) / 0.4);
-      bodyRotY = -0.35 * ramp + 0.05;
+    } else if (pose === "point") {
+      const ramp =
+        Math.min(1, localT / 0.4) *
+        Math.min(1, Math.max(0, (current.duration - localT) / 0.4));
+      group.rotation.y = -0.35 * ramp + sway * (1 - ramp);
       rightArmX = -0.6 * ramp;
       rightArmZ = 0.9 * ramp;
-      // Hold idle for the left
-      leftArmX = -0.05;
-      leftArmZ = -0.14;
     }
 
-    group.rotation.y = bodyRotY;
-    group.position.x = bodyX;
-    group.position.y = bodyY;
-
-    // Apply arm overrides — we have to dive into the inner OfficeFigure
-    // arm refs which were captured via a one-shot scan after mount.
     if (armRefs.current.left) {
       armRefs.current.left.rotation.x = leftArmX;
       armRefs.current.left.rotation.z = leftArmZ;
@@ -185,84 +165,11 @@ function AnimatedHeroFigure({
     }
   });
 
-  // After OfficeFigure mounts, scan the children to find arm groups
-  // (named via `name` we set below). This lets us drive the arms
-  // without forking the OfficeFigure source.
-  useEffect(() => {
-    const scan = () => {
-      const group = groupRef.current;
-      if (!group) return;
-      group.traverse((child) => {
-        if (child.name === "hero-arm-left" && child instanceof THREE.Group) {
-          armRefs.current.left = child;
-        }
-        if (child.name === "hero-arm-right" && child instanceof THREE.Group) {
-          armRefs.current.right = child;
-        }
-      });
-    };
-    // Try once immediately + once after a tick (OfficeFigure mounts async).
-    scan();
-    const id = setTimeout(scan, 50);
-    return () => clearTimeout(id);
-  }, [profile]);
-
   return (
-    <group ref={groupRef}>
-      {/* externalAnimation tells OfficeFigure to skip its own idle
-          sway/breathing so our HeroAgent useFrame is the sole driver
-          of the rig (rotation + position via groupRef, arm rotations
-          via the named groups inside the figure). */}
+    // Initial position matches what useFrame writes on tick 1 so the
+    // figure doesn't pop up by 0.22 units on the first paint.
+    <group ref={groupRef} position={[0, RIG_MID_Y_OFFSET, 0]}>
       <OfficeFigure profile={profile} onReady={onReady} externalAnimation />
-    </group>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────
-// Stage — soft podium + glow rings under the figure
-// ─────────────────────────────────────────────────────────────────────
-
-// v142.4 — HeroStage downgraded to a near-invisible halo. At the new
-// tight zoom the old prominent disc + 2 glow rings would crop awkwardly
-// against the figure's feet; the figure looks better floating against
-// the gradient background with just a soft purple smear underneath.
-function HeroStage() {
-  return (
-    <group position={[0, -0.8, 0]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
-        <circleGeometry args={[0.85, 48]} />
-        <meshBasicMaterial color="#a78bfa" transparent opacity={0.18} />
-      </mesh>
-    </group>
-  );
-}
-
-// Old multi-ring stage retained for reference but unused.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function HeroStageLegacy() {
-  return (
-    <group position={[0, -0.8, 0]}>
-      {/* Floor disc */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[1.6, 64]} />
-        <meshStandardMaterial
-          color="#0b0e1a"
-          roughness={0.85}
-          metalness={0.15}
-          transparent
-          opacity={0.85}
-        />
-      </mesh>
-      {/* Inner glow ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
-        <ringGeometry args={[0.95, 1.05, 64]} />
-        <meshBasicMaterial color="#a78bfa" transparent opacity={0.35} />
-      </mesh>
-      {/* Outer thinner glow ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.001, 0]}>
-        <ringGeometry args={[1.45, 1.5, 64]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.25} />
-      </mesh>
     </group>
   );
 }
@@ -273,14 +180,14 @@ function HeroStageLegacy() {
 
 export function HeroAgent({
   className = "",
-  showPhaseLabel = true,
+  // Kept for backward-compat with callers — v142.4 quietly hid this.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  showPhaseLabel,
 }: {
   className?: string;
   showPhaseLabel?: boolean;
 }) {
-  // Random seed picked once per page-mount. We salt with a date-bucket
-  // so refreshes within the same session usually keep the same look,
-  // but a new visitor gets something fresh.
+  // Random seed picked once per page-mount.
   const seed = useMemo(() => {
     const stamp = Date.now();
     const r = Math.floor(Math.random() * 100000);
@@ -288,103 +195,47 @@ export function HeroAgent({
   }, []);
   const profile = useMemo(() => createAgentAvatarProfileFromSeed(seed), [seed]);
   const [ready, setReady] = useState(false);
-  const [phase, setPhase] = useState<Phase>("idle");
 
   return (
     <div className={`relative ${className}`}>
-      {/* Loading veil while the avatar shaders compile */}
+      {/* Soft ambient halo behind the figure — pure CSS, never
+          competes with the 3D character for visual weight. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(ellipse at 50% 55%, rgba(167,139,250,0.22) 0%, rgba(34,211,238,0.06) 40%, transparent 70%)",
+        }}
+      />
+
       {!ready ? (
         <div className="absolute inset-0 z-10 flex items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-violet-300" />
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-violet-300" />
         </div>
       ) : null}
 
       <Canvas
-        // v142.4 — pulled the camera in dramatically closer. The
-        // figure renders ~2.0 world units tall (geometry × scale.y
-        // 2.86, offset y=-0.78). With fov 42 at z=2.5 the vertical
-        // visible plane is 2 · 2.5 · tan(21°) ≈ 1.92 units — the
-        // figure now fills the canvas head-to-toe at ~95% with a
-        // tight margin. lookAt y=0.22 centers on the chest, which
-        // is the natural focal point of a portrait composition.
-        camera={{ position: [0, 0.22, 2.5], fov: 42 }}
+        camera={{ position: [0, 0, CAMERA_Z], fov: CAMERA_FOV }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.22, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
         style={{ width: "100%", height: "100%" }}
       >
-        {/* Lighting matches the office scene defaults so the agent
-            feels like they walked straight out of the workspace. */}
+        {/* Same lighting as the avatar editor + office scene so the
+            figure's materials read consistently across surfaces. */}
         <ambientLight intensity={0.95} />
         <directionalLight position={[3, 4, 5]} intensity={2.0} />
         <directionalLight position={[-4, 2, 3]} intensity={1.0} color="#89a6ff" />
         <directionalLight position={[0, 4, -5]} intensity={1.25} color="#f0d9b5" />
         <Environment preset="city" />
-        <HeroStage />
-        <AnimatedHeroFigure
+        <PortraitFigure
           profile={profile}
           onReady={() => setReady(true)}
-          onPhaseChange={setPhase}
         />
       </Canvas>
-
-      {/* Phase indicator — small floating pill that changes label as
-          the agent transitions through idle/wave/walk/point. */}
-      {showPhaseLabel && ready ? (
-        <div
-          key={phase}
-          className="ork-phase-badge absolute left-1/2 top-3 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/55 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.18em] text-white/65 backdrop-blur"
-        >
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{
-              background:
-                phase === "wave"
-                  ? "#f59e0b"
-                  : phase === "walk"
-                    ? "#22d3ee"
-                    : phase === "point"
-                      ? "#a78bfa"
-                      : "#34d399",
-              boxShadow:
-                phase === "wave"
-                  ? "0 0 8px #f59e0b80"
-                  : phase === "walk"
-                    ? "0 0 8px #22d3ee80"
-                    : phase === "point"
-                      ? "0 0 8px #a78bfa80"
-                      : "0 0 8px #34d39980",
-            }}
-          />
-          {phaseLabel(phase)}
-        </div>
-      ) : null}
-
-      <style jsx>{`
-        @keyframes ork-phase-fade-in {
-          from { opacity: 0; transform: translate(-50%, -2px); }
-          to   { opacity: 1; transform: translate(-50%, 0); }
-        }
-        .ork-phase-badge {
-          animation: ork-phase-fade-in 0.4s ease-out;
-        }
-      `}</style>
     </div>
   );
-}
-
-function phaseLabel(p: Phase): string {
-  switch (p) {
-    case "wave":
-      return "Saying hi";
-    case "walk":
-      return "Walking the floor";
-    case "point":
-      return "Showing you around";
-    case "idle":
-    default:
-      return "Idle";
-  }
 }
 
 export default HeroAgent;
