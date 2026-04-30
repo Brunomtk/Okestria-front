@@ -21,17 +21,22 @@ import { OrkestriaMark } from "@/components/OrkestriaMark";
 import {
   Activity,
   Bot,
+  Brain,
   Building2,
   CreditCard,
   Database,
   History,
   Layers,
   LayoutDashboard,
+  ListTodo,
   LogOut,
+  MessageSquare,
   Network,
   Settings,
   ShieldCheck,
+  Sparkles,
   Target,
+  Timer,
   Users,
   UsersRound,
 } from "lucide-react";
@@ -75,7 +80,17 @@ const NAV: NavGroup[] = [
     items: [
       { href: "/admin/agents", label: "Agents", icon: Bot, accent: "text-violet-300" },
       { href: "/admin/squads", label: "Squads", icon: UsersRound, accent: "text-cyan-300" },
+      { href: "/admin/chats", label: "Chats", icon: MessageSquare, accent: "text-violet-300" },
+      { href: "/admin/tasks", label: "Tasks", icon: ListTodo, accent: "text-cyan-300" },
+      { href: "/admin/cron", label: "Cron jobs", icon: Timer, accent: "text-amber-300" },
+      { href: "/admin/cortex", label: "Cortex", icon: Brain, accent: "text-cyan-300" },
+    ],
+  },
+  {
+    title: "Pipeline",
+    items: [
       { href: "/admin/leads", label: "Leads", icon: Target, accent: "text-amber-300" },
+      { href: "/admin/missions", label: "Missions", icon: Sparkles, accent: "text-emerald-300" },
     ],
   },
   {

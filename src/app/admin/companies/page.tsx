@@ -1,13 +1,36 @@
-import { Bot, Building2, CheckCircle2, Layers, MoreHorizontal, Power, Search, Trash2, Users, XCircle } from 'lucide-react';
-import Link from 'next/link';
-import { fetchAgentsByCompany, fetchCompaniesPaged, fetchUsersByCompany, fetchWorkspacesByCompany, type OkestriaCompany } from '@/lib/auth/api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { toggleCompanyStatusAction, deleteCompanyAction } from '../_actions';
-import { buildPageHref, filterCompanies, getPageNumber, getSearchTerm, paginate, requireAdminSession, type AdminSearchParams } from '../_lib/admin';
+import {
+  Bot,
+  Building2,
+  CheckCircle2,
+  Layers,
+  Plus,
+  Users,
+  XCircle,
+} from "lucide-react";
+import Link from "next/link";
+import {
+  fetchAgentsByCompany,
+  fetchCompaniesPaged,
+  fetchUsersByCompany,
+  fetchWorkspacesByCompany,
+  type OkestriaCompany,
+} from "@/lib/auth/api";
+import {
+  filterCompanies,
+  getPageNumber,
+  getSearchTerm,
+  paginate,
+  requireAdminSession,
+  type AdminSearchParams,
+} from "../_lib/admin";
+import { PageHeader, Section, StatCard, StatusPill } from "../_components/AdminUI";
+import {
+  AdminCellAvatar,
+  AdminCellTitle,
+  AdminMonoText,
+  AdminTable,
+} from "../_components/AdminTable";
+import { Pagination, SearchBar } from "../_components/AdminListChrome";
 
 type PageProps = { searchParams?: Promise<AdminSearchParams> };
 
@@ -17,7 +40,10 @@ export default async function AdminCompaniesPage({ searchParams }: PageProps) {
   const page = getPageNumber(params);
   const query = getSearchTerm(params);
 
-  const companiesResponse = await fetchCompaniesPaged(session.token!, { pageNumber: 1, pageSize: 100 }).catch(() => null);
+  const companiesResponse = await fetchCompaniesPaged(session.token!, {
+    pageNumber: 1,
+    pageSize: 100,
+  }).catch(() => null);
   const allCompanies: OkestriaCompany[] = companiesResponse?.result ?? [];
   const filtered = filterCompanies(allCompanies, query);
   const pagination = paginate(filtered, page, 10);
@@ -29,82 +55,112 @@ export default async function AdminCompaniesPage({ searchParams }: PageProps) {
         fetchAgentsByCompany(company.id, session.token!).catch(() => []),
         fetchWorkspacesByCompany(company.id, session.token!).catch(() => []),
       ]);
-      return { company, usersCount: users.length, agentsCount: agents.length, workspacesCount: workspaces.length };
+      return {
+        company,
+        usersCount: users.length,
+        agentsCount: agents.length,
+        workspacesCount: workspaces.length,
+      };
     }),
   );
 
+  const totalActive = filtered.filter((c) => c.status !== false).length;
+  const totalInactive = filtered.filter((c) => c.status === false).length;
+  const totalWorkspacesOnPage = rows.reduce((s, r) => s + r.workspacesCount, 0);
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Companies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Lista real de companies, com navegação para detalhe e ações administrativas que o back atual já suporta.</p>
-        </div>
-      <div className="flex flex-wrap gap-2"><Link href="/admin/companies/new"><Button className="gap-2">Nova company</Button></Link></div>
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Tenants"
+        title="Companies"
+        subtitle="All multi-tenant companies registered on Orkestria. Click a row to drill in."
+        right={
+          <Link
+            href="/admin/companies/new"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-violet-400/40 bg-violet-500/15 px-4 py-2 text-[13px] font-semibold text-violet-100 transition hover:bg-violet-500/25"
+          >
+            <Plus className="h-3.5 w-3.5" /> New company
+          </Link>
+        }
+      />
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total" value={filtered.length} icon={Building2} accent="violet" hint="filtered" />
+        <StatCard label="Active" value={totalActive} icon={CheckCircle2} accent="emerald" hint="status = true" />
+        <StatCard label="Inactive" value={totalInactive} icon={XCircle} accent="rose" hint="status = false" />
+        <StatCard label="Workspaces (page)" value={totalWorkspacesOnPage} icon={Layers} accent="amber" hint="this page only" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <div className="rounded-xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><Building2 className="h-5 w-5 text-primary" /></div><div><p className="text-2xl font-semibold text-foreground">{filtered.length}</p><p className="text-xs text-muted-foreground">Companies filtradas</p></div></div></div>
-        <div className="rounded-xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10"><CheckCircle2 className="h-5 w-5 text-emerald-500" /></div><div><p className="text-2xl font-semibold text-foreground">{filtered.filter((item) => item.status !== false).length}</p><p className="text-xs text-muted-foreground">Ativas</p></div></div></div>
-        <div className="rounded-xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-destructive/10"><XCircle className="h-5 w-5 text-destructive" /></div><div><p className="text-2xl font-semibold text-foreground">{filtered.filter((item) => item.status === false).length}</p><p className="text-xs text-muted-foreground">Inativas</p></div></div></div>
-        <div className="rounded-xl border border-border bg-card p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10"><Layers className="h-5 w-5 text-amber-500" /></div><div><p className="text-2xl font-semibold text-foreground">{rows.reduce((sum, row) => sum + row.workspacesCount, 0)}</p><p className="text-xs text-muted-foreground">Workspaces na página</p></div></div></div>
-      </div>
+      <SearchBar query={query} basePath="/admin/companies" placeholder="Search by name, email or CNPJ…" />
 
-      <form className="flex flex-col gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative flex-1 max-w-md"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input name="q" defaultValue={query} placeholder="Buscar por nome, email ou CNPJ..." className="pl-9" /></div>
-        <div className="flex items-center gap-2"><Button type="submit" variant="outline" size="sm">Aplicar busca</Button><Link href="/admin/companies"><Button type="button" variant="ghost" size="sm">Limpar</Button></Link></div>
-      </form>
-
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <Table>
-          <TableHeader><TableRow className="bg-muted/50"><TableHead className="w-12">#</TableHead><TableHead>Company</TableHead><TableHead>Contato</TableHead><TableHead>Uso</TableHead><TableHead>Status</TableHead><TableHead className="w-12"></TableHead></TableRow></TableHeader>
-          <TableBody>
-            {rows.length ? rows.map(({ company, usersCount, agentsCount, workspacesCount }) => (
-              <TableRow key={company.id} className="group">
-                <TableCell className="font-mono text-xs text-muted-foreground">{company.id}</TableCell>
-                <TableCell>
-                  <div>
-                    <Link href={`/admin/companies/${company.id}`} className="font-medium text-foreground hover:text-primary">{company.name ?? `Company #${company.id}`}</Link>
-                    <p className="text-xs text-muted-foreground">{company.cnpj ?? 'Sem CNPJ informado'}</p>
+      <Section title={`Companies · ${filtered.length}`} subtitle="latest first" accent="violet">
+        <AdminTable
+          columns={[
+            { key: "id", header: "#", className: "w-16" },
+            { key: "company", header: "Company" },
+            { key: "contact", header: "Contact" },
+            { key: "usage", header: "Usage" },
+            { key: "status", header: "Status", className: "w-32" },
+            { key: "actions", header: "", className: "w-24 text-right" },
+          ]}
+          rows={rows.map(({ company, usersCount, agentsCount, workspacesCount }) => ({
+            id: company.id,
+            cells: {
+              id: <AdminMonoText>#{company.id}</AdminMonoText>,
+              company: (
+                <div className="flex items-center gap-3">
+                  <AdminCellAvatar emoji="🏢" accent="#a78bfa" />
+                  <AdminCellTitle
+                    primary={company.name ?? `Company #${company.id}`}
+                    secondary={company.cnpj ?? "no CNPJ on file"}
+                    href={`/admin/companies/${company.id}`}
+                  />
+                </div>
+              ),
+              contact: (
+                <div className="space-y-0.5">
+                  <div className="truncate text-[12.5px] text-white/75">
+                    {company.email ?? <span className="text-white/40">no email</span>}
                   </div>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1 text-sm text-muted-foreground">
-                    <p>{company.email ?? 'Sem email'}</p>
-                    <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{usersCount}</span>
-                      <span className="inline-flex items-center gap-1"><Bot className="h-3 w-3" />{agentsCount}</span>
-                      <span className="inline-flex items-center gap-1"><Layers className="h-3 w-3" />{workspacesCount}</span>
-                    </div>
+                  <div className="flex flex-wrap gap-2 font-mono text-[10.5px] text-white/45">
+                    <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" />{usersCount}</span>
+                    <span className="inline-flex items-center gap-1"><Bot className="h-3 w-3" />{agentsCount}</span>
+                    <span className="inline-flex items-center gap-1"><Layers className="h-3 w-3" />{workspacesCount}</span>
                   </div>
-                </TableCell>
-                <TableCell><p className="text-sm text-muted-foreground">{usersCount} users · {agentsCount} agents · {workspacesCount} workspaces</p></TableCell>
-                <TableCell><Badge variant={company.status ? 'default' : 'secondary'}>{company.status ? 'Ativa' : 'Inativa'}</Badge></TableCell>
-                <TableCell>
-                  <div className="group relative">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 transition-opacity group-hover:opacity-100"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <Link href={`/admin/companies/${company.id}`}><DropdownMenuItem className="gap-2">Abrir detalhe</DropdownMenuItem></Link><Link href={`/admin/companies/${company.id}/edit`}><DropdownMenuItem className="gap-2">Editar</DropdownMenuItem></Link>
-                        <form action={toggleCompanyStatusAction}><input type="hidden" name="companyId" value={company.id} /><input type="hidden" name="redirectTo" value="/admin/companies" /><button type="submit" className="w-full text-left"><DropdownMenuItem className="gap-2"><Power className="h-4 w-4" />{company.status ? 'Desativar' : 'Ativar'}</DropdownMenuItem></button></form>
-                        <form action={deleteCompanyAction}><input type="hidden" name="companyId" value={company.id} /><button type="submit" className="w-full text-left"><DropdownMenuItem className="gap-2 text-destructive"><Trash2 className="h-4 w-4" />Excluir</DropdownMenuItem></button></form>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )) : <TableRow><TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">Nenhuma company encontrada.</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </div>
+                </div>
+              ),
+              usage: (
+                <AdminMonoText>
+                  {usersCount} users · {agentsCount} agents · {workspacesCount} workspaces
+                </AdminMonoText>
+              ),
+              status: (
+                <StatusPill
+                  status={company.status !== false ? "ok" : "idle"}
+                  label={company.status !== false ? "active" : "inactive"}
+                />
+              ),
+              actions: (
+                <Link
+                  href={`/admin/companies/${company.id}`}
+                  className="text-[12px] font-medium text-violet-300 transition-colors hover:text-violet-100"
+                >
+                  Open →
+                </Link>
+              ),
+            },
+          }))}
+          emptyHint="No companies found."
+        />
+      </Section>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <p>Pagina {pagination.currentPage} de {pagination.pageCount} · {filtered.length} registros encontrados</p>
-        <div className="flex items-center gap-2">
-          <Link href={buildPageHref('/admin/companies', params, Math.max(1, pagination.currentPage - 1))}><Button variant="outline" size="sm" disabled={pagination.currentPage <= 1}>Anterior</Button></Link>
-          <Link href={buildPageHref('/admin/companies', params, Math.min(pagination.pageCount, pagination.currentPage + 1))}><Button variant="outline" size="sm" disabled={pagination.currentPage >= pagination.pageCount}>Próxima</Button></Link>
-        </div>
-      </div>
+      <Pagination
+        basePath="/admin/companies"
+        currentPage={pagination.currentPage}
+        pageCount={pagination.pageCount}
+        params={params}
+        totalLabel={`${filtered.length} record${filtered.length === 1 ? "" : "s"}`}
+      />
     </div>
   );
 }

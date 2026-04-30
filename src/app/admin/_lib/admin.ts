@@ -148,7 +148,7 @@ function pickPlanName(subscription: OkestriaSubscription | null, plans: Okestria
   if (subscription?.planName?.trim()) return subscription.planName.trim();
   const matchedPlan = plans.find((plan) => plan.id != null && plan.id === subscription?.planId);
   if (matchedPlan?.name?.trim()) return matchedPlan.name.trim();
-  return 'Sem plano';
+  return 'No plan';
 }
 
 export async function getAdminBillingData(token: string) {
@@ -169,7 +169,7 @@ export async function getAdminBillingData(token: string) {
       const row: AdminBillingRow = {
         companyId: company.id,
         companyName: company.name?.trim() || `Company #${company.id}`,
-        companyEmail: company.email?.trim() || 'Sem email',
+        companyEmail: company.email?.trim() || 'No email',
         planName: pickPlanName(subscription, plansRes),
         planId: subscription?.planId ?? null,
         amount: subscription?.amount ?? null,

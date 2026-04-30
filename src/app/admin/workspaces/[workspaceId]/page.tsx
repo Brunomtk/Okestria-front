@@ -1,58 +1,115 @@
-import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { ArrowLeft, Building2, Layers, FileText } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { requireAdminSession } from '../../_lib/admin';
-import { fetchCompaniesPaged, fetchWorkspaceById } from '@/lib/auth/api';
+import { Building2, Layers } from "lucide-react";
+import { notFound } from "next/navigation";
+import { fetchCompaniesPaged, fetchWorkspaceById } from "@/lib/auth/api";
+import { requireAdminSession } from "../../_lib/admin";
+import { Section } from "../../_components/AdminUI";
+import {
+  DetailActionLink,
+  DetailFact,
+  DetailHeader,
+  DetailLinkRow,
+  DetailTagPill,
+} from "../../_components/AdminDetail";
 
-export default async function AdminWorkspaceDetailPage({ params }: { params: Promise<{ workspaceId: string }> }) {
+export default async function AdminWorkspaceDetailPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
   const { workspaceId } = await params;
   const id = Number(workspaceId);
   if (!Number.isFinite(id) || id <= 0) notFound();
+
   const session = await requireAdminSession();
   const [workspace, companies] = await Promise.all([
     fetchWorkspaceById(id, session.token!).catch(() => null),
-    fetchCompaniesPaged(session.token!, { pageNumber: 1, pageSize: 200 }).catch(() => null),
+    fetchCompaniesPaged(session.token!, { pageNumber: 1, pageSize: 200 }).catch(
+      () => null,
+    ),
   ]);
   if (!workspace) notFound();
-  const companyName = (companies?.result ?? []).find((item) => item.id === workspace.companyId)?.name ?? `Company #${workspace.companyId}`;
+
+  const companyName =
+    (companies?.result ?? []).find((item) => item.id === workspace.companyId)
+      ?.name ?? `Company #${workspace.companyId}`;
+
+  const isActive = workspace.status !== false;
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-3">
-        <Link href="/admin/workspaces" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Voltar para Workspaces</Link>
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">{workspace.name ?? `Workspace #${workspace.id}`}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Detalhe do workspace carregado diretamente do backend.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant={workspace.status !== false ? 'default' : 'secondary'}>{workspace.status !== false ? 'Ativo' : 'Inativo'}</Badge>
-          <Badge variant="outline">ID #{workspace.id}</Badge>
-        </div>
-      </div>
+    <div className="space-y-8">
+      <DetailHeader
+        backHref="/admin/workspaces"
+        backLabel="Back to workspaces"
+        eyebrow={`Workspace · #${workspace.id}`}
+        title={workspace.name ?? `Workspace #${workspace.id}`}
+        subtitle="Live administrative view of this workspace."
+        pills={
+          <>
+            <DetailTagPill variant={isActive ? "emerald" : "outline"}>
+              {isActive ? "active" : "inactive"}
+            </DetailTagPill>
+            <DetailTagPill>ID #{workspace.id}</DetailTagPill>
+          </>
+        }
+        actions={
+          <DetailActionLink
+            href={`/admin/workspaces/${workspace.id}/edit`}
+            accent="violet"
+          >
+            Edit
+          </DetailActionLink>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-        <Card>
-          <CardContent className="flex flex-col items-center gap-4 p-8 text-center">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-amber-500/10 text-amber-500"><Layers className="h-12 w-12" /></div>
-            <p className="text-xl font-semibold">{workspace.name ?? '--'}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Dados do workspace</CardTitle>
-            <CardDescription>Informações persistidas na base atual.</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Company</p><p className="mt-1 inline-flex items-center gap-2 font-medium"><Building2 className="h-4 w-4 text-muted-foreground" />{companyName}</p></div>
-            <div className="rounded-xl border border-border p-4"><p className="text-xs uppercase tracking-wide text-muted-foreground">Status</p><p className="mt-1 font-medium">{workspace.status !== false ? 'Ativo' : 'Inativo'}</p></div>
-            <div className="rounded-xl border border-border p-4 md:col-span-2"><p className="text-xs uppercase tracking-wide text-muted-foreground">Descrição</p><p className="mt-1 inline-flex items-start gap-2 font-medium"><FileText className="mt-0.5 h-4 w-4 text-muted-foreground" />{workspace.description ?? 'Sem descrição cadastrada.'}</p></div>
-          </CardContent>
-        </Card>
+        <Section title="Identity" subtitle="how it shows up" accent="emerald">
+          <div className="flex flex-col items-center gap-4 p-8 text-center">
+            <div
+              className="flex h-24 w-24 items-center justify-center rounded-full text-emerald-200"
+              style={{
+                background:
+                  "radial-gradient(circle at 30% 30%, rgba(52,211,153,0.30) 0%, rgba(34,211,238,0.16) 60%, transparent 100%)",
+                border: "1px solid rgba(52,211,153,0.32)",
+              }}
+            >
+              <Layers className="h-12 w-12" />
+            </div>
+            <p className="text-[18px] font-semibold text-white/95">
+              {workspace.name ?? "—"}
+            </p>
+          </div>
+        </Section>
+
+        <Section title="Workspace details" subtitle="primary record" accent="cyan">
+          <div className="grid gap-4 p-5 md:grid-cols-2">
+            <DetailFact
+              label="Tenant"
+              value={companyName}
+              icon={Building2}
+            />
+            <DetailFact
+              label="Status"
+              value={isActive ? "Active" : "Inactive"}
+            />
+            <DetailFact
+              label="Description"
+              span={2}
+              value={workspace.description ?? "No description set."}
+            />
+          </div>
+        </Section>
       </div>
-      <Link href={`/admin/companies/${workspace.companyId}`}><Button variant="outline">Abrir company vinculada</Button></Link>
+
+      <Section title="Quick access" accent="violet">
+        <div className="space-y-2 p-5">
+          <DetailLinkRow
+            href={`/admin/companies/${workspace.companyId}`}
+            icon={Building2}
+          >
+            Open linked tenant
+          </DetailLinkRow>
+        </div>
+      </Section>
     </div>
   );
 }
