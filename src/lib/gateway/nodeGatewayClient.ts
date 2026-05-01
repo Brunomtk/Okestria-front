@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getPublicKeyAsync, signAsync, utils } from "@noble/ed25519";
+import WsWebSocket from "ws";
 import { GatewayResponseError } from "@/lib/gateway/errors";
 
 type GatewayResponseFrame = {
@@ -192,7 +193,20 @@ export class NodeGatewayClient {
   private connectSent = false;
   private connectTimer: NodeJS.Timeout | null = null;
 
-  async connect(params: { gatewayUrl: string; token?: string | null }) {
+  async connect(params: {
+    gatewayUrl: string;
+    token?: string | null;
+    /**
+     * v164 — Optional `Origin` header. The gateway enforces
+     * `gateway.controlUi.allowedOrigins`; native (undici) WebSocket
+     * follows the WHATWG spec which forbids custom headers, so when
+     * an origin is supplied we route through the `ws` package which
+     * does support `headers`. Existing callers that omit `origin`
+     * keep the original undici behavior — no risk of regressing the
+     * remote-office message path that already works in production.
+     */
+    origin?: string | null;
+  }) {
     const gatewayUrl = params.gatewayUrl.trim();
     if (!gatewayUrl) {
       throw new Error("Remote office gateway URL is not configured.");
@@ -203,7 +217,12 @@ export class NodeGatewayClient {
     this.connectToken = params.token?.trim() ?? "";
     this.deviceIdentity = await createDeviceIdentity();
 
-    const socket = new WebSocket(gatewayUrl);
+    const origin = params.origin?.trim() ?? "";
+    const socket: WebSocket = origin
+      ? (new WsWebSocket(gatewayUrl, {
+          headers: { Origin: origin },
+        }) as unknown as WebSocket)
+      : new WebSocket(gatewayUrl);
     this.socket = socket;
 
     socket.addEventListener("message", (event) => {

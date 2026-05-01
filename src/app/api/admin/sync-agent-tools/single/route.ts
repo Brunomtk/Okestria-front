@@ -105,6 +105,49 @@ type Report = {
   ms?: number;
 };
 
+/**
+ * v164 — Pull a stable Origin to send on the gateway WS handshake.
+ * Gateway enforces `controlUi.allowedOrigins`; this server-to-server
+ * call has no browser Origin to inherit. The browser Control UI lives
+ * on the same host as the gateway (see `resolveControlUiUrl` in
+ * AgentsPageScreen.tsx — wss://host → https://host) and that origin
+ * is implicitly allowed, so we reuse the same derivation here.
+ * An operator override is also honored for unusual setups.
+ */
+function deriveOriginFromGatewayUrl(gatewayUrl: string): string {
+  try {
+    const u = new URL(gatewayUrl);
+    if (u.protocol === "ws:") u.protocol = "http:";
+    if (u.protocol === "wss:") u.protocol = "https:";
+    return `${u.protocol}//${u.host}`;
+  } catch {
+    return "";
+  }
+}
+
+function resolveControlUiOrigin(request: NextRequest, gatewayUrl: string): string {
+  const envOrigin =
+    process.env.GATEWAY_CONTROL_UI_ORIGIN?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.APP_URL?.trim() ||
+    "";
+  if (envOrigin) return envOrigin.replace(/\/$/, "");
+
+  const fromGateway = deriveOriginFromGatewayUrl(gatewayUrl);
+  if (fromGateway) return fromGateway;
+
+  try {
+    const u = new URL(request.url);
+    const forwardedHost = request.headers.get("x-forwarded-host");
+    const forwardedProto = request.headers.get("x-forwarded-proto");
+    const host = forwardedHost ?? u.host;
+    const proto = forwardedProto ?? u.protocol.replace(":", "");
+    return `${proto}://${host}`;
+  } catch {
+    return "";
+  }
+}
+
 export async function POST(request: NextRequest) {
   const start = Date.now();
   const url = new URL(request.url);
@@ -284,10 +327,12 @@ export async function POST(request: NextRequest) {
   const gateway = new NodeGatewayClient();
   try {
     const remainingForConnect = TOTAL_BUDGET_MS - (Date.now() - start);
+    const origin = resolveControlUiOrigin(request, gatewayUrl);
     await withDeadline(
       gateway.connect({
         gatewayUrl,
         token: upstreamToken || null,
+        origin: origin || null,
       }),
       remainingForConnect,
       "gateway connect",
