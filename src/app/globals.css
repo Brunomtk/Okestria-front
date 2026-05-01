@@ -1088,6 +1088,48 @@ textarea:focus::-webkit-scrollbar {
   background: var(--chat-assistant-bg);
   padding: 0.92rem 1.08rem;
   box-shadow: inset 0 1px 0 var(--elev-overlay-1);
+  /* v176 — long URLs / unbroken tokens (CDN paths, JWTs the agent
+     pastes back, etc.) used to stretch the card past its max-width
+     and tear the scroll. min-width:0 lets the flex parent shrink it,
+     overflow-wrap:anywhere makes those tokens wrap mid-word as a
+     last resort, word-break covers the older Safari spellings. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* v176 — same wrapping safety inside the user bubble. The user's
+   own message can also paste a long URL or pre-block. */
+.ui-chat-user-card {
+  min-width: 0;
+}
+.ui-chat-user-card .agent-markdown {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* v176 — collapsible assistant body. Used when the rendered reply
+   would otherwise dominate the scroll; the soft fade hints there is
+   more content below the cut, the operator hits "Show full reply"
+   to expand. */
+.ui-chat-assistant-collapsed {
+  position: relative;
+  max-height: 32rem;
+  overflow: hidden;
+}
+.ui-chat-assistant-collapsed::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 4.5rem;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in oklch, var(--chat-assistant-bg) 75%, transparent) 65%,
+    var(--chat-assistant-bg) 100%
+  );
+  pointer-events: none;
 }
 
 .dark .ui-chat-assistant-card {

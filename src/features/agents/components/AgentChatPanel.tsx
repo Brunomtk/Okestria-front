@@ -14,7 +14,7 @@ import {
 import type { AgentState as AgentRecord } from "@/features/agents/state/store";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, ChevronRight, Clock, Cog, Mic, Paperclip, Pencil, Square, Trash2, Users, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, ChevronUp, Clock, Cog, Mic, Paperclip, Pencil, Square, Trash2, Users, X } from "lucide-react";
 import type { GatewayModelChoice } from "@/lib/gateway/models";
 import { rewriteMediaLinesToMarkdown } from "@/lib/text/media-markdown";
 import { normalizeAssistantDisplayText } from "@/lib/text/assistantText";
@@ -425,6 +425,100 @@ const UserMessageCard = memo(function UserMessageCard({
   );
 });
 
+/**
+ * v176 — Wraps the assistant card body and collapses very long
+ * replies behind a "Show full reply" toggle so the chat scroll
+ * stays usable. Streaming replies are NEVER collapsed (operator
+ * needs to see new tokens as they arrive). Auto-resets to the
+ * collapsed state when a brand new reply with different content
+ * starts displaying — otherwise the next reply would inherit the
+ * "expanded" toggle from the previous one.
+ */
+const ASSISTANT_COLLAPSE_THRESHOLD = 1_800;
+
+const CollapsibleAssistantBubble = memo(function CollapsibleAssistantBubble({
+  contentText,
+  streaming,
+}: {
+  contentText: string;
+  streaming: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // When the contentText switches to a different long reply, reset
+  // the toggle so the new one starts collapsed instead of inheriting
+  // the previous reply's "expanded" state.
+  useEffect(() => {
+    setExpanded(false);
+  }, [contentText.slice(0, 64)]);
+
+  const overLimit = !streaming && contentText.length > ASSISTANT_COLLAPSE_THRESHOLD;
+
+  const renderBody = () => {
+    if (streaming) {
+      if (!contentText.includes("MEDIA:")) {
+        return (
+          <div className="whitespace-pre-wrap break-words text-foreground">
+            {contentText}
+          </div>
+        );
+      }
+      const rewritten = rewriteMediaLinesToMarkdown(contentText);
+      if (!rewritten.includes("![](")) {
+        return (
+          <div className="whitespace-pre-wrap break-words text-foreground">
+            {contentText}
+          </div>
+        );
+      }
+      return (
+        <div className="agent-markdown text-foreground">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{rewritten}</ReactMarkdown>
+        </div>
+      );
+    }
+    return (
+      <div className="agent-markdown text-foreground">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          {rewriteMediaLinesToMarkdown(contentText)}
+        </ReactMarkdown>
+      </div>
+    );
+  };
+
+  if (!overLimit) {
+    return <div className="ui-chat-assistant-card">{renderBody()}</div>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <div
+        className={`ui-chat-assistant-card ${
+          expanded ? "" : "ui-chat-assistant-collapsed"
+        }`}
+      >
+        {renderBody()}
+      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface-3 px-3 py-1.5 font-mono text-[11px] font-medium tracking-[0.02em] text-foreground/85 transition hover:bg-surface-2"
+      >
+        {expanded ? (
+          <>
+            <ChevronUp className="h-3 w-3" />
+            Collapse
+          </>
+        ) : (
+          <>
+            <ChevronDown className="h-3 w-3" />
+            Show full reply ({contentText.length.toLocaleString()} chars)
+          </>
+        )}
+      </button>
+    </div>
+  );
+});
+
 const AssistantMessageCard = memo(function AssistantMessageCard({
   avatarSeed,
   avatarUrl,
@@ -533,38 +627,10 @@ const AssistantMessageCard = memo(function AssistantMessageCard({
             ) : null}
 
             {contentText ? (
-              <div className="ui-chat-assistant-card">
-                {streaming ? (
-                  (() => {
-                    if (!contentText.includes("MEDIA:")) {
-                      return (
-                        <div className="whitespace-pre-wrap break-words text-foreground">
-                          {contentText}
-                        </div>
-                      );
-                    }
-                    const rewritten = rewriteMediaLinesToMarkdown(contentText);
-                    if (!rewritten.includes("![](")) {
-                      return (
-                        <div className="whitespace-pre-wrap break-words text-foreground">
-                          {contentText}
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="agent-markdown text-foreground">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{rewritten}</ReactMarkdown>
-                      </div>
-                    );
-                  })()
-                ) : (
-                  <div className="agent-markdown text-foreground">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {rewriteMediaLinesToMarkdown(contentText)}
-                    </ReactMarkdown>
-                  </div>
-                )}
-              </div>
+              <CollapsibleAssistantBubble
+                contentText={contentText}
+                streaming={Boolean(streaming)}
+              />
             ) : null}
           </div>
         )}
