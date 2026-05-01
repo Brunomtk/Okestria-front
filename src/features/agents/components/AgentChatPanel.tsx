@@ -22,6 +22,7 @@ import { isNearBottom } from "@/lib/dom";
 import { useVoiceRecorder, type VoiceRecorderState, type VoiceSendPayload } from "@/hooks/useVoiceRecorder";
 import { AgentAvatar } from "./AgentAvatar";
 import { AgentOfficeFigure3D } from "./AgentOfficeFigure3D";
+import { CopyMessageButton } from "@/components/ui/CopyMessageButton";
 import type { ChatSendAttachment, ChatSendPayload } from "@/features/agents/operations/chatSendOperation";
 import type {
   ExecApprovalDecision,
@@ -408,11 +409,14 @@ const UserMessageCard = memo(function UserMessageCard({
         <div className="type-meta min-w-0 truncate font-mono text-foreground/90">
           You
         </div>
-        {typeof timestampMs === "number" ? (
-          <time className="type-meta shrink-0 rounded-md bg-surface-3 px-2 py-0.5 font-mono text-muted-foreground/70">
-            {formatChatTimestamp(timestampMs)}
-          </time>
-        ) : null}
+        <div className="flex shrink-0 items-center gap-1.5">
+          <CopyMessageButton text={text} variant="ghost" label="Copy your message" />
+          {typeof timestampMs === "number" ? (
+            <time className="type-meta rounded-md bg-surface-3 px-2 py-0.5 font-mono text-muted-foreground/70">
+              {formatChatTimestamp(timestampMs)}
+            </time>
+          ) : null}
+        </div>
       </div>
       <div className="agent-markdown type-body px-3 py-3 text-foreground dark:px-3.5 dark:py-3.5">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -466,11 +470,20 @@ const AssistantMessageCard = memo(function AssistantMessageCard({
           <div className="type-meta min-w-0 truncate font-mono text-foreground/90">
             {name}
           </div>
-          {resolvedTimestamp !== null ? (
-            <time className="type-meta shrink-0 rounded-md bg-surface-3 px-2 py-0.5 font-mono text-muted-foreground/90">
-              {formatChatTimestamp(resolvedTimestamp)}
-            </time>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1.5">
+            {hasContent && !streaming ? (
+              <CopyMessageButton
+                text={contentText ?? ""}
+                variant="ghost"
+                label={`Copy ${name}'s reply`}
+              />
+            ) : null}
+            {resolvedTimestamp !== null ? (
+              <time className="type-meta rounded-md bg-surface-3 px-2 py-0.5 font-mono text-muted-foreground/90">
+                {formatChatTimestamp(resolvedTimestamp)}
+              </time>
+            ) : null}
+          </div>
         </div>
 
         {compactStreamingIndicator ? (

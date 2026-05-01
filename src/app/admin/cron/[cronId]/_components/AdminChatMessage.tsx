@@ -16,6 +16,7 @@ import remarkGfm from "remark-gfm";
 import type { ComponentProps } from "react";
 import type { Components } from "react-markdown";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { CopyMessageButton } from "@/components/ui/CopyMessageButton";
 
 const MAX_COLLAPSED_CHARS = 1400;
 
@@ -145,10 +146,17 @@ export function AdminChatMessage({ content }: { content: string }) {
   return (
     <div className="space-y-2">
       <div
-        className={`overflow-hidden rounded-2xl rounded-tl-sm border border-white/10 bg-black/30 px-4 py-3 transition-all ${
+        className={`group/admin-msg relative overflow-hidden rounded-2xl rounded-tl-sm border border-white/10 bg-black/30 px-4 py-3 transition-all ${
           overflows && !expanded ? "max-h-[28rem]" : ""
         }`}
       >
+        {/* v163 — floating copy chip, fades in on hover so it never */}
+        {/* fights for attention with the message itself.            */}
+        <div className="pointer-events-none absolute right-2 top-2 opacity-0 transition-opacity duration-150 group-hover/admin-msg:opacity-100 focus-within:opacity-100">
+          <div className="pointer-events-auto">
+            <CopyMessageButton text={text} variant="subtle" label="Copy message" />
+          </div>
+        </div>
         <ReactMarkdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
           {visible}
         </ReactMarkdown>
