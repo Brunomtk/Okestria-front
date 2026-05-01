@@ -320,8 +320,12 @@ export function AgentToolsPicker({
         </button>
       </div>
 
-      {/* Recipe cards */}
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* v173 — slim cards: icon + name + wired chip + (optional caps).
+         Operator wanted a clean tool list, not a recipe textbook —
+         the long descriptions/endpoints/reasons live in the Composed
+         Preview details below for anyone who needs them. The hover
+         tooltip surfaces the one-liner / "why off" reason. */}
+      <div className="grid gap-2 sm:grid-cols-2">
         {recipes.map((recipe) => {
           const Icon = recipe.icon;
           const showCaps =
@@ -330,56 +334,39 @@ export function AgentToolsPicker({
           return (
             <div
               key={recipe.id}
-              className={`rounded-xl border p-3 ${
+              title={recipe.configured ? recipe.oneLiner : recipe.reason ?? recipe.oneLiner}
+              className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${
                 recipe.configured
                   ? "border-white/10 bg-white/[0.02]"
-                  : "border-white/5 bg-white/[0.01] opacity-65"
+                  : "border-white/5 bg-white/[0.01] opacity-60"
               }`}
             >
-              <div className="flex items-start gap-2.5">
-                <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${
-                    recipe.configured
-                      ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-300"
-                      : "border-white/10 bg-white/[0.03] text-white/35"
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
+              <span
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${
+                  recipe.configured
+                    ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-300"
+                    : "border-white/10 bg-white/[0.03] text-white/35"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium text-white">
+                {recipe.title}
+              </span>
+              {showCaps ? (
+                <span className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] text-white/55">
+                  {recipe.perCallCap ?? "?"}/{recipe.dailyCap ?? "?"}
                 </span>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[12.5px] font-semibold text-white">
-                      {recipe.title}
-                    </span>
-                    {recipe.configured ? (
-                      <span className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-emerald-200">
-                        wired · auto
-                      </span>
-                    ) : (
-                      <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-amber-200">
-                        not configured
-                      </span>
-                    )}
-                    {showCaps ? (
-                      <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.16em] text-white/65">
-                        {recipe.perCallCap ?? "?"}/call · {recipe.dailyCap ?? "?"}/day
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-white/65">
-                    {recipe.oneLiner}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-2 text-[11px] leading-relaxed text-white/55">
-                {recipe.description}
-              </p>
-              <p className="mt-2 break-words font-mono text-[10px] text-cyan-200/65">
-                {recipe.endpoint}
-              </p>
-              {!recipe.configured && recipe.reason ? (
-                <p className="mt-1 text-[10.5px] italic text-amber-200/70">{recipe.reason}</p>
               ) : null}
+              {recipe.configured ? (
+                <span className="shrink-0 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-emerald-200">
+                  wired
+                </span>
+              ) : (
+                <span className="shrink-0 rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-[0.18em] text-amber-200">
+                  off
+                </span>
+              )}
             </div>
           );
         })}

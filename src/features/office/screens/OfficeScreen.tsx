@@ -5703,6 +5703,22 @@ export function OfficeScreen({
     [remoteOfficeSnapshot]
   );
   const chatRosterEntries = useMemo<ChatRosterEntry[]>(() => {
+    // v173 — index local agents' last-activity timestamp so we can
+    // sort the chat sidebar with most-recently-used on top. The
+    // runtime bridge bumps lastActivityAt on every chat / heartbeat /
+    // cron event; we OR it with run-started + last-message stamps
+    // so freshly-opened agents that haven't replied yet still float
+    // above stale ones.
+    const lastActivityByAgentId = new Map<string, number>();
+    for (const agent of state.agents) {
+      const stamp = Math.max(
+        agent.lastActivityAt ?? 0,
+        agent.runStartedAt ?? 0,
+        agent.lastAssistantMessageAt ?? 0,
+      );
+      lastActivityByAgentId.set(agent.agentId, stamp);
+    }
+
     const localEntries: ChatRosterEntry[] = state.agents.map((agent) => ({
       id: agent.agentId,
       name: agent.name || agent.agentId,
@@ -5727,6 +5743,18 @@ export function OfficeScreen({
       isRunning: agent.status === "working",
     }));
     const allEntries = [...squadEntries, ...localEntries, ...remoteEntries];
+
+    // v173 — recency sort. Local agents have a stamp; squads/remotes
+    // fall back to 0 and stable alphabetical so they don't randomly
+    // jump around as one agent gets used.
+    const recencyOf = (entry: ChatRosterEntry) =>
+      entry.kind === "local" ? lastActivityByAgentId.get(entry.id) ?? 0 : 0;
+    allEntries.sort((a, b) => {
+      const ra = recencyOf(a);
+      const rb = recencyOf(b);
+      if (ra !== rb) return rb - ra;
+      return a.name.localeCompare(b.name);
+    });
 
     if (chatTargetView === "agents") {
       return allEntries.filter((entry) => entry.kind === "local" || entry.kind === "remote");

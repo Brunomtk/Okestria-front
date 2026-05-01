@@ -397,11 +397,9 @@ export function GatewayCronEditorModal({
                   />
                 </Field>
                 <Field label="Timezone">
-                  <input
+                  <TimezoneSelect
                     value={form.cronTz}
-                    onChange={(e) => update("cronTz", e.target.value)}
-                    className="cron-tab-input font-mono text-[12px]"
-                    placeholder={DEFAULT_TZ}
+                    onChange={(next) => update("cronTz", next)}
                   />
                 </Field>
               </div>
@@ -685,5 +683,161 @@ function Toggle({
       </span>
       <span className="text-[12px] text-white/85">{label}</span>
     </label>
+  );
+}
+
+// v173 — IANA timezone groups for the cron schedule. Operator-curated:
+// the regions Okestria customers actually live in, not the full
+// 400-entry zoneinfo dump. If the operator's saved/browser-detected
+// zone isn't in the list we still show it (pinned as "saved zone")
+// so editing an existing cron never silently discards its tz.
+const TIMEZONE_GROUPS: Array<{ region: string; zones: string[] }> = [
+  {
+    region: "Brasil",
+    zones: [
+      "America/Sao_Paulo",
+      "America/Manaus",
+      "America/Belem",
+      "America/Fortaleza",
+      "America/Recife",
+      "America/Cuiaba",
+      "America/Porto_Velho",
+      "America/Rio_Branco",
+      "America/Noronha",
+    ],
+  },
+  {
+    region: "United States",
+    zones: [
+      "America/New_York",
+      "America/Chicago",
+      "America/Denver",
+      "America/Phoenix",
+      "America/Los_Angeles",
+      "America/Anchorage",
+      "Pacific/Honolulu",
+    ],
+  },
+  {
+    region: "Latin America",
+    zones: [
+      "America/Mexico_City",
+      "America/Bogota",
+      "America/Lima",
+      "America/Santiago",
+      "America/Caracas",
+      "America/Argentina/Buenos_Aires",
+      "America/Montevideo",
+      "America/Asuncion",
+    ],
+  },
+  {
+    region: "Europe",
+    zones: [
+      "Europe/Lisbon",
+      "Europe/London",
+      "Europe/Madrid",
+      "Europe/Paris",
+      "Europe/Berlin",
+      "Europe/Rome",
+      "Europe/Amsterdam",
+      "Europe/Stockholm",
+      "Europe/Athens",
+      "Europe/Moscow",
+    ],
+  },
+  {
+    region: "Africa & Middle East",
+    zones: [
+      "Africa/Lagos",
+      "Africa/Cairo",
+      "Africa/Johannesburg",
+      "Asia/Jerusalem",
+      "Asia/Dubai",
+    ],
+  },
+  {
+    region: "Asia & Oceania",
+    zones: [
+      "Asia/Kolkata",
+      "Asia/Bangkok",
+      "Asia/Singapore",
+      "Asia/Hong_Kong",
+      "Asia/Shanghai",
+      "Asia/Tokyo",
+      "Asia/Seoul",
+      "Australia/Perth",
+      "Australia/Sydney",
+      "Pacific/Auckland",
+    ],
+  },
+  { region: "UTC", zones: ["UTC"] },
+];
+
+const computeOffsetLabel = (tz: string): string => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "shortOffset",
+    }).formatToParts(new Date());
+    const offset = parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+    return offset || "";
+  } catch {
+    return "";
+  }
+};
+
+function TimezoneSelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+}) {
+  // Browser-detected zone, used both as the "Detected" option and as
+  // a sane fallback when the saved value is empty.
+  const detected = (() => {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    } catch {
+      return "";
+    }
+  })();
+  const trimmed = value.trim();
+  const knownZones = new Set(TIMEZONE_GROUPS.flatMap((g) => g.zones));
+  // Pin the saved zone if it isn't already in the curated list — keeps
+  // existing crons editable without losing their tz.
+  const showSavedExtra = trimmed && !knownZones.has(trimmed);
+  return (
+    <select
+      value={trimmed}
+      onChange={(e) => onChange(e.target.value)}
+      className="cron-tab-input font-mono text-[12px]"
+    >
+      {detected ? (
+        <option value={detected}>
+          🌐 Detected · {detected}
+          {computeOffsetLabel(detected) ? ` (${computeOffsetLabel(detected)})` : ""}
+        </option>
+      ) : null}
+      {showSavedExtra ? (
+        <optgroup label="Saved zone">
+          <option value={trimmed}>
+            {trimmed}
+            {computeOffsetLabel(trimmed) ? ` (${computeOffsetLabel(trimmed)})` : ""}
+          </option>
+        </optgroup>
+      ) : null}
+      {TIMEZONE_GROUPS.map((group) => (
+        <optgroup key={group.region} label={group.region}>
+          {group.zones.map((zone) => (
+            <option key={zone} value={zone}>
+              {zone}
+              {computeOffsetLabel(zone) ? ` (${computeOffsetLabel(zone)})` : ""}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </select>
   );
 }
