@@ -9,6 +9,7 @@ import {
   AgentToolsPicker,
   stripAutoToolsSection,
 } from "@/features/agents/components/AgentToolsPicker";
+import { getBrowserCompanyId } from "@/lib/agents/backend-api";
 import {
   AGENT_FILE_META,
   AGENT_FILE_PLACEHOLDERS,
@@ -136,6 +137,7 @@ export const AgentBrainPanel = ({
             onChange={(next) => {
               setAgentFileContent(name, next);
             }}
+            companyId={getBrowserCompanyId()}
           />
         ) : null}
         <textarea

@@ -507,6 +507,72 @@ export const persistCompanyAgentFromWizard = async (params: {
 };
 
 /**
+ * v171 — Per-company snapshot of agent-callable tools and their
+ * effective config. The picker uses this to render real cards (with
+ * daily caps, hookBaseUrl, etc.) instead of static placeholders.
+ * Returns null on any error so the picker can fall back gracefully
+ * to the static recipe list.
+ */
+export type AgentToolsCatalog = {
+  companyId: number;
+  notesVault: { configured: boolean; endpoint?: string | null; note?: string | null };
+  email: { configured: boolean; endpoint?: string | null; note?: string | null };
+  instagramApify: {
+    configured: boolean;
+    endpoint?: string | null;
+    note?: string | null;
+    perCallCap?: number | null;
+    dailyCap?: number | null;
+  };
+  apifyGeneric: {
+    configured: boolean;
+    endpoint?: string | null;
+    note?: string | null;
+    perCallCap?: number | null;
+    dailyCap?: number | null;
+  };
+};
+
+export const fetchAgentToolsCatalog = async (params: {
+  companyId: number;
+  token?: string | null;
+}): Promise<AgentToolsCatalog | null> => {
+  try {
+    return await requestBackendJson<AgentToolsCatalog>(
+      `/api/Agents/tools-catalog/${params.companyId}`,
+      undefined,
+      params.token,
+    );
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * v172 — Per-message envelope tail for chat dispatch. Pulls the SAME
+ * EMAIL ACCESS / SOCIAL MEDIA / NOTES VAULT / INSTAGRAM SCRAPE blocks
+ * the cron dispatcher inlines into every USER message — chat now
+ * carries the same toolkit so the agent actually uses email /
+ * Instagram / Obsidian. Returns empty string when nothing is wired
+ * (back returns `{ envelope: "" }`) or on any error.
+ */
+export const fetchAgentChatEnvelope = async (params: {
+  companyId: number;
+  token?: string | null;
+}): Promise<string> => {
+  try {
+    const result = await requestBackendJson<{ envelope?: string | null }>(
+      `/api/Agents/chat-envelope/${params.companyId}`,
+      undefined,
+      params.token,
+    );
+    return (result.envelope ?? "").trim();
+  } catch {
+    return "";
+  }
+};
+
+/**
  * v168 — Fetch the back's *composed* TOOLS.md for an agent (operator
  * content + auto-injected Notes Vault + Instagram Apify recipes — all
  * the v84 stuff). Used right after wizard / editor saves so we can

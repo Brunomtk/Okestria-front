@@ -142,6 +142,7 @@ import {
   fetchCompanyAgentDetails,
   fetchCompanyAgentRuntimeRoster,
   fetchCompanyAgents,
+  fetchAgentChatEnvelope,
   fetchAgentComposedToolsContent,
   fetchCompanyAgentScope,
   getBrowserAccessToken,
@@ -1213,29 +1214,52 @@ export function OfficeScreen({
   const normalizedCompanyName = companyName?.trim() || null;
   const normalizedWorkspaceName = workspaceName?.trim() || null;
 
-  // ── Company email context (loaded once, injected silently into every chat message) ──
+  // ── Company email context + per-user toolkit envelope (loaded
+  //    once, injected silently into every chat message) ──
+  // v172 — also fetches the chat envelope from the back so every
+  // chat message carries the SAME EMAIL ACCESS / SOCIAL MEDIA /
+  // NOTES VAULT / INSTAGRAM SCRAPE blocks the cron dispatcher
+  // inlines. Without this the chat agent only sees company
+  // context and refuses to use email / Instagram / Obsidian
+  // even though TOOLS.md mentions them.
   const companyContextRef = useRef<string | null>(null);
   useEffect(() => {
     if (!companyId) return;
     const token = getBrowserAccessToken();
     if (!token) return;
-    fetchCompanyEmailContext(companyId, token)
-      .then((ctx: OkestriaCompanyEmailContext) => {
-        const parts: string[] = [];
-        if (normalizedCompanyName) parts.push(`Company: ${normalizedCompanyName}`);
-        if (ctx.description?.trim()) parts.push(`About: ${ctx.description.trim()}`);
-        if (ctx.products?.trim()) parts.push(`Products/Services: ${ctx.products.trim()}`);
-        if (ctx.tone?.trim()) parts.push(`Communication tone: ${ctx.tone.trim()}`);
-        if (ctx.website?.trim()) parts.push(`Website: ${ctx.website.trim()}`);
-        if (ctx.phone?.trim()) parts.push(`Phone: ${ctx.phone.trim()}`);
-        if (ctx.extraNotes?.trim()) parts.push(`Additional notes: ${ctx.extraNotes.trim()}`);
-        if (userFullName?.trim()) parts.push(`Current user: ${userFullName.trim()}`);
-        if (userRole?.trim()) parts.push(`User role: ${userRole.trim()}`);
-        companyContextRef.current = parts.length > 0 ? parts.join("\n") : null;
-      })
-      .catch(() => {
-        // Silently ignore — company context is best-effort
-      });
+    let cancelled = false;
+    void Promise.all([
+      fetchCompanyEmailContext(companyId, token).catch(
+        () => ({}) as OkestriaCompanyEmailContext,
+      ),
+      fetchAgentChatEnvelope({ companyId, token }),
+    ]).then(([ctx, envelopeTail]) => {
+      if (cancelled) return;
+      const parts: string[] = [];
+      if (normalizedCompanyName) parts.push(`Company: ${normalizedCompanyName}`);
+      if (ctx.description?.trim()) parts.push(`About: ${ctx.description.trim()}`);
+      if (ctx.products?.trim()) parts.push(`Products/Services: ${ctx.products.trim()}`);
+      if (ctx.tone?.trim()) parts.push(`Communication tone: ${ctx.tone.trim()}`);
+      if (ctx.website?.trim()) parts.push(`Website: ${ctx.website.trim()}`);
+      if (ctx.phone?.trim()) parts.push(`Phone: ${ctx.phone.trim()}`);
+      if (ctx.extraNotes?.trim()) parts.push(`Additional notes: ${ctx.extraNotes.trim()}`);
+      if (userFullName?.trim()) parts.push(`Current user: ${userFullName.trim()}`);
+      if (userRole?.trim()) parts.push(`User role: ${userRole.trim()}`);
+      const head = parts.join("\n");
+      const envelope = envelopeTail.trim();
+      if (!head && !envelope) {
+        companyContextRef.current = null;
+        return;
+      }
+      // Concatenate company head + envelope tail. Both end up inside
+      // the existing [SYSTEM CONTEXT — …] markers added by chatSend
+      // so the v160-v167 strip already hides them from the chat
+      // bubble display.
+      companyContextRef.current = envelope ? `${head}\n${envelope}`.trim() : head;
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [companyId, normalizedCompanyName, userFullName, userRole]);
   const companyHeadline = normalizedCompanyName ?? normalizedWorkspaceName ?? "Headquarters";
   const preferredOfficeTitle = normalizedCompanyName

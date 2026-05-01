@@ -23,6 +23,7 @@ import {
 } from "@/lib/avatars/profile";
 import { randomUUID } from "@/lib/uuid";
 import { parseAgentTemplateImport } from "@/lib/agents/agentTemplateImport";
+import { getBrowserCompanyId } from "@/lib/agents/backend-api";
 
 type AgentCreateWizardModalProps = {
   open: boolean;
@@ -740,6 +741,7 @@ export function AgentCreateWizardModal({
                       <AgentToolsPicker
                         value={draft.tools}
                         onChange={(next) => updateDraft("tools", next)}
+                        companyId={getBrowserCompanyId()}
                       />
                     ) : null}
                     <textarea
