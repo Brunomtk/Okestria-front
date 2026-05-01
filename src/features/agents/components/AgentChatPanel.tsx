@@ -1335,6 +1335,19 @@ const AgentChatComposer = memo(function AgentChatComposer({
             onKeyDown={onKeyDown}
             placeholder="type a message"
           />
+          {/* v175 — once the draft passes the auto-fold threshold, show
+             a small chip so the operator knows the message will be
+             sent as a .txt attachment instead of inline. Threshold
+             matches handleSend's LONG_MESSAGE_THRESHOLD constant. */}
+          {value.length > 4_000 ? (
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400/35 bg-amber-500/10 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.16em] text-amber-200"
+              title="When you Send, this long message will be folded into a .txt attachment so the chat bubble doesn't break and the gateway accepts it."
+            >
+              <Paperclip className="h-3 w-3" />
+              {value.length.toLocaleString()} chars · auto-fold to .txt
+            </span>
+          ) : null}
           {composerToolbarExtra}
           <button
             className="rounded-md border border-border/70 bg-surface-3 px-2.5 py-2 font-mono text-[11px] font-medium tracking-[0.02em] text-white transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:border-border/30 disabled:bg-muted/20 disabled:text-muted-foreground"
@@ -1533,13 +1546,56 @@ export const AgentChatPanel = ({
         setAttachmentError("Wait for the current run to finish before sending files.");
         return;
       }
+      // v175 — when the user dumps a wall of text into the composer
+      // (a long brief, a pasted document, etc.) the chat bubble
+      // visually breaks AND the gateway's per-message size budget
+      // kicks in. Above LONG_MESSAGE_THRESHOLD chars we auto-fold
+      // the text into a .txt attachment + replace the inline body
+      // with a one-liner pointing at the file. The runtime treats
+      // it identically to any other attachment (uploaded as part
+      // of `chat.send` payload), and the agent reads the file
+      // content the same way it reads pasted notes.
+      const LONG_MESSAGE_THRESHOLD = 4_000;
+      let outboundText = trimmed;
+      let outboundAttachments = attachments;
+      if (trimmed.length > LONG_MESSAGE_THRESHOLD) {
+        const stamp = new Date()
+          .toISOString()
+          .replace(/[:T]/g, "-")
+          .replace(/\..+$/, "");
+        const filename = `chat-message-${stamp}.txt`;
+        // UTF-8-safe base64 (TextEncoder → byte array → base64).
+        let base64 = "";
+        try {
+          const bytes = new TextEncoder().encode(trimmed);
+          let binary = "";
+          for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+          base64 = typeof btoa === "function" ? btoa(binary) : "";
+        } catch {
+          base64 = "";
+        }
+        if (base64) {
+          const sizeBytes = new TextEncoder().encode(trimmed).byteLength;
+          const folded: ChatSendAttachment = {
+            filename,
+            mimeType: "text/plain",
+            content: base64,
+            sizeBytes,
+          };
+          outboundAttachments = [...attachments, folded];
+          outboundText = `📎 Long message (${trimmed.length.toLocaleString()} chars) attached as **${filename}** — please read the file for the full request.`;
+        }
+        // If base64 encoding failed for some unlikely reason, fall
+        // through and send the raw text — better that than dropping
+        // the operator's message.
+      }
       plainDraftRef.current = "";
       setDraftValue("");
       setAttachments([]);
       setAttachmentError(null);
       onDraftChange("");
       scrollToBottomNextOutputRef.current = true;
-      onSend({ text: trimmed, attachments });
+      onSend({ text: outboundText, attachments: outboundAttachments });
     },
     [attachments, canSend, onDraftChange, onSend, running]
   );
