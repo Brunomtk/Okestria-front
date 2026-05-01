@@ -71,13 +71,32 @@ export function AdminCortexGraph3D({ graph }: { graph: AdminCortexGraph }) {
   // Clone every render so react-force-graph doesn't reuse the same
   // node objects across re-renders (it mutates them in place to
   // store x/y/z and would otherwise pin them to old positions).
-  const data = useMemo(
-    () => ({
-      nodes: graph.nodes.map((n) => ({ ...n })),
-      links: graph.links.map((l) => ({ ...l })),
-    }),
-    [graph],
-  );
+  //
+  // v177 — also DROP any link whose source/target points at a node
+  // that isn't in the nodes array. d3's `forceLink` throws
+  // `Error: node not found: #<id>` and the unhandled exception
+  // takes down the whole admin page (the back can race-publish a
+  // link before its node row replicates, and the cortex API has been
+  // seen returning links to deleted notes). Filtering here is a
+  // cheap O(n+l) safety net.
+  const data = useMemo(() => {
+    const nodes = graph.nodes.map((n) => ({ ...n }));
+    const nodeIds = new Set(nodes.map((n) => n.id));
+    const links = graph.links
+      .filter((l) => {
+        const srcId =
+          typeof l.source === "object" && l.source !== null
+            ? (l.source as { id?: string }).id
+            : (l.source as string | undefined);
+        const tgtId =
+          typeof l.target === "object" && l.target !== null
+            ? (l.target as { id?: string }).id
+            : (l.target as string | undefined);
+        return Boolean(srcId && tgtId && nodeIds.has(srcId) && nodeIds.has(tgtId));
+      })
+      .map((l) => ({ ...l }));
+    return { nodes, links };
+  }, [graph]);
 
   const isEmpty = data.nodes.length === 0;
 

@@ -1096,6 +1096,34 @@ textarea:focus::-webkit-scrollbar {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+  /* v177 — pathological / repeated replies (10k+ chars after the
+     v176 collapse is expanded) used to push the chat panel past
+     the viewport. Hard-cap the bubble at 75vh so the operator can
+     scroll inside the bubble itself rather than the whole panel
+     getting torn apart. Small replies never trigger this — the
+     browser only paints overflow when content actually exceeds the
+     ceiling. */
+  max-height: 75vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.ui-chat-assistant-card::-webkit-scrollbar {
+  width: 8px;
+}
+.ui-chat-assistant-card::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+}
+.ui-chat-assistant-card::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* When the v176 collapse wrapper is also active, drop the inner
+   max-height — the wrapper owns the height (32rem) so the inner
+   scroll would just be redundant. */
+.ui-chat-assistant-collapsed.ui-chat-assistant-card {
+  max-height: 32rem;
+  overflow: hidden;
 }
 
 /* v176 — same wrapping safety inside the user bubble. The user's

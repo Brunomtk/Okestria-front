@@ -44,6 +44,7 @@ import {
 import { AdminDeleteButton } from "../../_components/AdminDeleteButton";
 import { safeAdminPage } from "../../_lib/safe-page";
 import { AdminAgentAvatar } from "./_components/AdminAgentAvatar";
+import { AdminAgentAvatarBoundary } from "./_components/AdminAgentAvatarBoundary";
 
 /**
  * v148 — Admin · Agent detail (rich edition).
@@ -156,11 +157,16 @@ async function render(params: Promise<{ agentId: string }>) {
         >
           <div className="space-y-4 p-5">
             <div className="relative mx-auto aspect-square w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(ellipse_at_top,_rgba(167,139,250,0.18)_0%,_rgba(8,11,20,0.85)_55%,_#04060d_100%)]">
-              <AdminAgentAvatar
-                avatarProfileJson={agent.avatarProfileJson ?? null}
-                fallbackSeed={agent.slug ?? `agent-${agent.id}`}
-                className="absolute inset-0"
-              />
+              {/* v177 — wrap the 3D Canvas in an error boundary so a
+                  shader / THREE / profile-shape failure doesn't crash
+                  the whole agent detail page. */}
+              <AdminAgentAvatarBoundary agentName={agent.name ?? `Agent #${agent.id}`}>
+                <AdminAgentAvatar
+                  avatarProfileJson={agent.avatarProfileJson ?? null}
+                  fallbackSeed={agent.slug ?? `agent-${agent.id}`}
+                  className="absolute inset-0"
+                />
+              </AdminAgentAvatarBoundary>
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-x-0 bottom-0 h-24"
