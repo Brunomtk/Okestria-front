@@ -70,6 +70,44 @@ export const AGENT_FILE_PLACEHOLDERS: Record<AgentFileName, string> = {
   "MEMORY.md": "Durable facts, decisions, and preferences to remember.",
 };
 
+/**
+ * v168 — Pre-made TOOLS.md operator template.
+ *
+ * Dropped into a fresh agent's TOOLS textarea (or available as a
+ * one-click "insert template" in the editor). Documents the *how*
+ * the operator wants this agent to use its tools — separate from
+ * the auto-injected recipes (Notes Vault / Instagram Apify) which
+ * the v84 composer appends below the operator section automatically.
+ */
+export const AGENT_TOOLS_TEMPLATE = `# TOOLS — operator notes
+
+How I use my available tools, and the conventions I follow.
+
+## Default behaviors
+
+- Always confirm destructive actions with the operator before running them.
+- Prefer reading existing notes (Notes Vault) before scraping fresh data.
+- When a third-party scrape costs API budget, summarize first, then ask
+  before pulling more.
+
+## Notes Vault — when I write
+
+- Daily briefings: \`briefings/YYYY-MM-DD-<topic>.md\`
+- Lead summaries: \`leads/<handle>.md\`
+- Playbooks: \`playbooks/<topic>.md\`
+- Journal: \`journal/YYYY-MM-DD.md\`
+
+## Instagram scraping — what I capture
+
+- Default \`resultsType: "posts"\`, \`limit: 12\` unless the operator says otherwise.
+- Always set \`persistToVault: true\` so the run is replayable later.
+- If the daily Apify budget is exhausted, STOP and tell the operator in the reply.
+
+## Custom shortcuts
+
+(Add team-specific tool shortcuts here — slash-commands, sheet templates, etc.)
+`;
+
 export const createAgentFilesState = () =>
   Object.fromEntries(
     AGENT_FILE_NAMES.map((name) => [name, { content: "", exists: false }])

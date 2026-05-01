@@ -6,6 +6,10 @@ import type { AgentState } from "@/features/agents/state/store";
 import type { GatewayClient } from "@/lib/gateway/GatewayClient";
 import { AgentIdentityFields } from "@/features/agents/components/AgentIdentityFields";
 import {
+  AgentToolsPicker,
+  stripAutoToolsSection,
+} from "@/features/agents/components/AgentToolsPicker";
+import {
   AGENT_FILE_META,
   AGENT_FILE_PLACEHOLDERS,
   type AgentFileName,
@@ -122,10 +126,30 @@ export const AgentBrainPanel = ({
     (name: Exclude<AgentFileName, "IDENTITY.md">) => (
       <AgentBrainPanelSection title={AGENT_FILE_META[name].title}>
         <div className="text-xs text-muted-foreground">{AGENT_FILE_META[name].hint}</div>
+        {/* v168 — TOOLS gets the recipes picker (auto-injected at      */}
+        {/* runtime by the back v84 composer) above the textarea so the */}
+        {/* operator sees what's coming for free + can drop in a sane   */}
+        {/* starter template.                                            */}
+        {name === "TOOLS.md" ? (
+          <AgentToolsPicker
+            value={stripAutoToolsSection(agentFiles[name].content)}
+            onChange={(next) => {
+              setAgentFileContent(name, next);
+            }}
+          />
+        ) : null}
         <textarea
           aria-label={AGENT_FILE_META[name].title}
-          className="h-[min(56vh,480px)] w-full resize-y rounded-md border border-border/80 bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground outline-none"
-          value={agentFiles[name].content}
+          className={`${
+            name === "TOOLS.md"
+              ? "h-[min(40vh,360px)]"
+              : "h-[min(56vh,480px)]"
+          } w-full resize-y rounded-md border border-border/80 bg-background px-4 py-3 font-mono text-sm leading-6 text-foreground outline-none`}
+          value={
+            name === "TOOLS.md"
+              ? stripAutoToolsSection(agentFiles[name].content)
+              : agentFiles[name].content
+          }
           placeholder={AGENT_FILE_PLACEHOLDERS[name]}
           disabled={agentFilesLoading || agentFilesSaving}
           onChange={(event) => {

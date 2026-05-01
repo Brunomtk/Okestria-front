@@ -191,13 +191,21 @@ const buildProfilePayload = (
 
 const buildFilesPayload = (draft: PersonalityBuilderDraft, profile: AgentAvatarProfile): BackendAgentFile[] => {
   const serialized = serializePersonalityFiles(draft);
+  // v168 — TOOLS is intentionally OMITTED here: the immediately-prior
+  // /api/Agents/{id}/profile PUT already wrote TOOLS through the v84
+  // ComposeAutoInjectedToolsAsync composer (operator content + Notes
+  // Vault + Instagram Apify recipes). Sending TOOLS again here would
+  // overwrite that composed version with raw operator-only content,
+  // which is exactly the bug new agents were hitting (no Obsidian /
+  // no Instagram in their TOOLS.md). The back v85 path is also now
+  // defensive — UpsertFiles re-composes TOOLS if it ever receives
+  // one — but skipping it here is the cleaner contract.
   return [
     { fileType: "IDENTITY", content: serialized["IDENTITY.md"] },
     { fileType: "AVATAR", content: JSON.stringify(profile, null, 2) },
     { fileType: "SOUL", content: serialized["SOUL.md"] },
     { fileType: "AGENTS", content: serialized["AGENTS.md"] },
     { fileType: "USER", content: serialized["USER.md"] },
-    { fileType: "TOOLS", content: serialized["TOOLS.md"] },
     { fileType: "MEMORY", content: serialized["MEMORY.md"] },
     { fileType: "HEARTBEAT", content: serialized["HEARTBEAT.md"] },
   ];
@@ -496,6 +504,33 @@ export const persistCompanyAgentFromWizard = async (params: {
   );
 
   return agent;
+};
+
+/**
+ * v168 — Fetch the back's *composed* TOOLS.md for an agent (operator
+ * content + auto-injected Notes Vault + Instagram Apify recipes — all
+ * the v84 stuff). Used right after wizard / editor saves so we can
+ * push the same composed content into OpenClaw via the gateway WS,
+ * keeping the runtime TOOLS file in sync with what the back DB just
+ * wrote. Returns null if the agent has no TOOLS file row yet.
+ */
+export const fetchAgentComposedToolsContent = async (params: {
+  backendAgentId: number;
+  token?: string | null;
+}): Promise<string | null> => {
+  type AgentDetails = {
+    files?: Array<{ fileType?: string | null; content?: string | null }>;
+  };
+  const details = await requestBackendJson<AgentDetails>(
+    `/api/Agents/${params.backendAgentId}`,
+    undefined,
+    params.token,
+  );
+  const tools = (details.files ?? []).find(
+    (f) => (f.fileType ?? "").toUpperCase() === "TOOLS",
+  );
+  if (!tools) return null;
+  return tools.content ?? "";
 };
 
 export const updateAgentAvatarProfileJson = async (params: {

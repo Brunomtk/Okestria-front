@@ -142,6 +142,7 @@ import {
   fetchCompanyAgentDetails,
   fetchCompanyAgentRuntimeRoster,
   fetchCompanyAgents,
+  fetchAgentComposedToolsContent,
   fetchCompanyAgentScope,
   getBrowserAccessToken,
   persistCompanyAgentFromWizard,
@@ -2228,11 +2229,21 @@ export function OfficeScreen({
       setCreateAgentBusy(true);
       setCreateAgentModalError(null);
       try {
+        // v168 — skip TOOLS.md from the WS-direct push: the runtime
+        // TOOLS needs the v84 auto-injected recipes (Notes Vault,
+        // Instagram Apify) which only the back composer can generate
+        // (it has the per-company hookBaseUrl + token). We do the
+        // back save first, then fetch the back's composed TOOLS, then
+        // push THAT to the gateway. End result: runtime TOOLS.md
+        // includes operator content + Obsidian + Apify on day one,
+        // no manual Admin → Sync tools needed.
         const files = serializePersonalityFiles(params.draft);
+        const filesWithoutTools = { ...files };
+        delete (filesWithoutTools as Partial<typeof files>)["TOOLS.md"];
         await writeGatewayAgentFiles({
           client,
           agentId: params.agentId,
-          files,
+          files: filesWithoutTools,
         });
         const currentAgent =
           stateRef.current.agents.find((entry) => entry.agentId === params.agentId) ?? null;
@@ -2249,11 +2260,32 @@ export function OfficeScreen({
           }
         }
         handleAvatarProfileSave(params.agentId, params.profile);
-        await persistCompanyAgentFromWizard({
+        const persistedAgent = await persistCompanyAgentFromWizard({
           gatewayAgentId: params.agentId,
           draft: params.draft,
           profile: params.profile,
         });
+        // v168 — pull the back-composed TOOLS (operator + auto-injects)
+        // and push it into OpenClaw so the runtime starts with it.
+        try {
+          const composedTools = await fetchAgentComposedToolsContent({
+            backendAgentId: persistedAgent.id,
+          });
+          if (composedTools !== null) {
+            await writeGatewayAgentFiles({
+              client,
+              agentId: params.agentId,
+              files: { "TOOLS.md": composedTools },
+            });
+          }
+        } catch (toolsSyncError) {
+          // Non-fatal: the agent is created and works; the operator
+          // can run Admin → Sync tools to recover. Surface as warning.
+          console.warn(
+            "[wizard] Failed to sync composed TOOLS to gateway after create:",
+            toolsSyncError,
+          );
+        }
         await loadAgents({ forceSettings: true });
         setCreateAgentWizardOpen(false);
         setCreateAgentModalError(null);

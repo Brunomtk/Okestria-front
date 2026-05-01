@@ -7,9 +7,11 @@ import {
   type AgentIdentityValues,
 } from "@/features/agents/components/AgentIdentityFields";
 import { AgentAvatarEditorPanel } from "@/features/agents/components/AgentAvatarEditorPanel";
+import { AgentToolsPicker } from "@/features/agents/components/AgentToolsPicker";
 import {
   AGENT_FILE_META,
   AGENT_FILE_PLACEHOLDERS,
+  AGENT_TOOLS_TEMPLATE,
 } from "@/lib/agents/agentFiles";
 import {
   createEmptyPersonalityDraft,
@@ -102,6 +104,12 @@ const wizardSteps: Array<{ id: WizardStepId; label: string; hint: string }> = [
 const buildInitialDraft = (suggestedName: string): PersonalityBuilderDraft => {
   const draft = createEmptyPersonalityDraft();
   draft.identity.name = suggestedName.trim() || "New Agent";
+  // v168 — pre-fill the TOOLS textarea with the operator template so a
+  // freshly opened wizard isn't staring at an empty box. The auto-
+  // injected recipe section (Notes Vault, Instagram Apify) is appended
+  // by the back composer at save time — it lives BELOW the operator
+  // section, never overwriting it.
+  draft.tools = AGENT_TOOLS_TEMPLATE;
   return draft;
 };
 
@@ -725,8 +733,17 @@ export function AgentCreateWizardModal({
                   <section className="space-y-3">
                     <h3 className="text-sm font-medium text-foreground">{activeStep.label}</h3>
                     <div className="text-xs text-muted-foreground">{activeStep.hint}</div>
+                    {/* v168 — show the auto-injected recipes picker BEFORE the */}
+                    {/* operator-content textarea so the operator sees what is */}
+                    {/* coming for free, and can drop in a starter template.  */}
+                    {step === "TOOLS.md" ? (
+                      <AgentToolsPicker
+                        value={draft.tools}
+                        onChange={(next) => updateDraft("tools", next)}
+                      />
+                    ) : null}
                     <textarea
-                      className={`${textAreaClassName} min-h-[56vh] font-mono`}
+                      className={`${textAreaClassName} min-h-[40vh] font-mono`}
                       value={
                         step === "AGENTS.md"
                           ? draft.agents
