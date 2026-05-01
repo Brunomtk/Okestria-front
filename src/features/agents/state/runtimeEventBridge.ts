@@ -13,6 +13,7 @@ import {
   stripUiMetadata,
 } from "@/lib/text/message-extract";
 import { normalizeAssistantDisplayText } from "@/lib/text/assistantText";
+import { stripHiddenSystemContext } from "@/features/agents/state/transcript";
 
 type LifecyclePhase = "start" | "end" | "error";
 
@@ -256,15 +257,20 @@ export const buildHistoryLines = (messages: ChatHistoryMessage[]): HistoryLinesR
       continue;
     }
     if (role === "user") {
-      if (text && isHeartbeatPrompt(text)) continue;
-      if (text && isRestartSentinelMessage(text)) continue;
-      if (text) {
+      // v162: chatSendOperation prepends an injected `[SYSTEM CONTEXT — …] … [END SYSTEM CONTEXT]`
+      // block to the gateway message body so the agent has fresh user/agent metadata; the gateway
+      // echoes that raw body back in chat.history. We strip it here so the chat bubble shows ONLY
+      // what the user actually typed, but keep heartbeat/restart sentinels intact above.
+      const cleanedText = text ? stripHiddenSystemContext(text) : text;
+      if (cleanedText && isHeartbeatPrompt(cleanedText)) continue;
+      if (cleanedText && isRestartSentinelMessage(cleanedText)) continue;
+      if (cleanedText) {
         const at = extractMessageTimestamp(message);
         if (typeof at === "number") {
           lines.push(formatMetaMarkdown({ role: "user", timestamp: at }));
         }
-        lines.push(`> ${text}`);
-        lastUser = text;
+        lines.push(`> ${cleanedText}`);
+        lastUser = cleanedText;
         if (typeof at === "number") {
           lastUserAt = at;
         }

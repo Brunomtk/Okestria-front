@@ -1,30 +1,35 @@
 import { NextResponse, type NextRequest } from "next/server";
-import WebSocket from "ws";
+import { NodeGatewayClient } from "@/lib/gateway/nodeGatewayClient";
 import { requireAdminSession } from "@/app/admin/_lib/admin";
 
 /**
- * v159 — Per-agent sync.
+ * v162 — Per-agent sync, now using the proper gateway handshake.
  *
- * One agent per HTTP call. The browser loops these. Hard timeouts
- * everywhere (WS open: 8s, WS call: 8s, total: 25s) so a hanging
- * gateway never holds the request hostage. Returns ALWAYS within
- * the budget, with the precise step that failed.
+ * v159 talked to the gateway with bare jsonrpc 2.0 frames and skipped
+ * the device-signed `connect` handshake — the gateway answered with
+ * `code=1008 reason="connect required"` and the rest of the requests
+ * came back as 1006 (connection torn down). NodeGatewayClient already
+ * implements the full handshake (Ed25519 device key, nonce challenge,
+ * `{type:"req"}` framing) and is what the office/remote-message route
+ * uses — we reuse it here.
  *
- * Pipeline:
+ * Pipeline (one agent per HTTP call, browser loops these):
  *   1. PUT /api/Agents/{id}/profile (re-save → triggers v84
  *      ComposeAutoInjectedToolsAsync on the back).
  *   2. GET /api/Agents/{id} → read freshly-composed TOOLS file.
- *   3. Open WS to wss://api.ptxgrowth.us/api/gateway/ws (8s timeout).
- *   4. Call agents.files.set { agentId: slug, name: "TOOLS.md", content }.
- *   5. Close WS, return JSON.
+ *   3. NodeGatewayClient.connect(wss://api.ptxgrowth.us/api/gateway/ws,
+ *      jwt) → device handshake completes.
+ *   4. client.request("agents.files.set", { agentId: slug, name, content })
+ *   5. Close, return JSON.
+ *
+ * Hard timeouts everywhere so a hung gateway never holds the request
+ * hostage; total budget per agent stays at 25s.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // hard cap, covers all timeouts comfortably
+export const maxDuration = 60;
 
-const WS_OPEN_TIMEOUT_MS = 8_000;
-const WS_CALL_TIMEOUT_MS = 8_000;
 const HTTP_TIMEOUT_MS = 12_000;
 const TOTAL_BUDGET_MS = 25_000;
 
@@ -66,79 +71,28 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-type RpcResult = unknown;
-
-function callOnce(
-  jwt: string,
-  method: string,
-  params: unknown,
-  budgetMs: number,
-): Promise<RpcResult> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (err: Error | null, result?: RpcResult) => {
-      if (settled) return;
-      settled = true;
-      try {
-        ws.close();
-      } catch {
-        /* ignore */
-      }
-      err ? reject(err) : resolve(result);
-    };
-
-    const url = `${resolveGatewayProxyUrl()}?access_token=${encodeURIComponent(jwt)}`;
-    const ws = new WebSocket(url);
-
-    const overall = setTimeout(
-      () => finish(new Error(`overall WS budget exceeded (${budgetMs}ms)`)),
-      budgetMs,
-    );
-    const open = setTimeout(
-      () => finish(new Error(`WS connect timeout (${WS_OPEN_TIMEOUT_MS}ms)`)),
-      WS_OPEN_TIMEOUT_MS,
-    );
-    let call: NodeJS.Timeout | null = null;
-
-    ws.on("open", () => {
-      clearTimeout(open);
-      const id = "1";
-      ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params }));
-      call = setTimeout(
-        () => finish(new Error(`WS call timeout · ${method} (${WS_CALL_TIMEOUT_MS}ms)`)),
-        WS_CALL_TIMEOUT_MS,
-      );
-    });
-
-    ws.on("message", (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-        if (msg && typeof msg === "object" && "id" in msg && msg.id === "1") {
-          if (call) clearTimeout(call);
-          if (msg.error) {
-            finish(
-              new Error(`gateway error ${msg.error.code ?? "?"}: ${msg.error.message ?? "unknown"}`),
-            );
-          } else {
-            clearTimeout(overall);
-            finish(null, msg.result);
-          }
-        }
-      } catch {
-        /* ignore non-JSON / hello / events */
-      }
-    });
-
-    ws.on("error", (err) => finish(err as Error));
-    ws.on("close", (code, reason) => {
-      if (!settled)
-        finish(
-          new Error(
-            `WS closed before response (code=${code} reason=${reason?.toString().slice(0, 80) ?? ""})`,
-          ),
+async function withDeadline<T>(
+  promise: Promise<T>,
+  remainingMs: number,
+  label: string,
+): Promise<T> {
+  if (remainingMs <= 0) {
+    throw new Error(`${label}: total budget exhausted`);
+  }
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label}: timed out after ${remainingMs}ms`)),
+          remainingMs,
         );
-    });
-  });
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 type Step = "auth" | "fetch" | "resave" | "compose" | "push" | "done";
@@ -161,7 +115,13 @@ export async function POST(request: NextRequest) {
 
   if (!Number.isFinite(agentId) || agentId <= 0) {
     return NextResponse.json(
-      { ok: false, step: "auth", error: "missing or invalid agentId", agentId: 0, agentSlug: null } satisfies Report,
+      {
+        ok: false,
+        step: "auth",
+        error: "missing or invalid agentId",
+        agentId: 0,
+        agentSlug: null,
+      } satisfies Report,
       { status: 400 },
     );
   }
@@ -283,13 +243,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 4. Push to OpenClaw via WS — strict overall budget
+  // 4. Push to OpenClaw via the proper device handshake.
+  // NodeGatewayClient handles the connect.challenge / Ed25519 signature
+  // dance; without it the gateway closes with 1008 "connect required".
+  const gateway = new NodeGatewayClient();
   try {
-    await callOnce(
-      jwt,
+    const remainingForConnect = TOTAL_BUDGET_MS - (Date.now() - start);
+    await withDeadline(
+      gateway.connect({
+        gatewayUrl: resolveGatewayProxyUrl(),
+        token: jwt,
+      }),
+      remainingForConnect,
+      "gateway connect",
+    );
+
+    const remainingForCall = TOTAL_BUDGET_MS - (Date.now() - start);
+    await withDeadline(
+      gateway.request("agents.files.set", {
+        agentId: slug,
+        name: "TOOLS.md",
+        content: toolsContent,
+      }),
+      remainingForCall,
       "agents.files.set",
-      { agentId: slug, name: "TOOLS.md", content: toolsContent },
-      TOTAL_BUDGET_MS - (Date.now() - start),
     );
   } catch (err) {
     return NextResponse.json(
@@ -304,6 +281,12 @@ export async function POST(request: NextRequest) {
       } satisfies Report,
       { status: 200 },
     );
+  } finally {
+    try {
+      gateway.close();
+    } catch {
+      /* ignore */
+    }
   }
 
   return NextResponse.json(
