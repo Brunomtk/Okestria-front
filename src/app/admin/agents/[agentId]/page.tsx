@@ -156,7 +156,11 @@ async function render(params: Promise<{ agentId: string }>) {
           accent="violet"
         >
           <div className="space-y-4 p-5">
-            <div className="relative mx-auto aspect-square w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(ellipse_at_top,_rgba(167,139,250,0.18)_0%,_rgba(8,11,20,0.85)_55%,_#04060d_100%)]">
+            {/* v181 — was aspect-square, but a 1:1 card + a tall figure +
+                "zoomed in" + "down at the name strip" is geometrically
+                impossible without cropping the body. Switching to 3:4
+                gives the vertical room the operator wanted. */}
+            <div className="relative mx-auto aspect-[3/4] w-full max-w-[420px] overflow-hidden rounded-2xl border border-white/8 bg-[radial-gradient(ellipse_at_top,_rgba(167,139,250,0.18)_0%,_rgba(8,11,20,0.85)_55%,_#04060d_100%)]">
               {/* v177 — wrap the 3D Canvas in an error boundary so a
                   shader / THREE / profile-shape failure doesn't crash
                   the whole agent detail page. */}

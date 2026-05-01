@@ -88,29 +88,33 @@ export function AdminAgentAvatar({
       ) : null}
       <Canvas
         key={profileKey}
-        /*  v180 — operator wants the figure DROPPED to the bottom of
-         *  the card (close to the "Closer Concierge" name strip) and
-         *  ZOOMED IN. Three changes vs the editor framing:
+        /*  v181 — anchored framing on a 3:4 portrait card.
          *
-         *    1. Camera distance pulled in from z=5.2 → z=3.6 (~30%
-         *       closer ⇒ figure paints ~50% larger).
-         *    2. fov nudged 24° → 30° to keep the head from getting
-         *       cut off at the new distance.
-         *    3. Figure translated downward in world space via a
-         *       wrapping group at y=-0.30 — that moves the body into
-         *       the lower portion of the canvas without tilting the
-         *       camera, so the perspective stays straight-on.
+         *  After two failed attempts to push the figure down inside
+         *  a 1:1 canvas, the page now uses aspect-[3/4]. This Canvas
+         *  frames the figure as if it were standing on the bottom
+         *  edge of the card (close to the "name" label strip).
          *
-         *  LookAt drops to y=-0.05 so the frame center matches the
-         *  group offset; OrbitControls inherit the same target so a
-         *  manual rotate stays anchored on the figure instead of
-         *  pivoting around mid-air. Hair tip stays inside the frame
-         *  (top margin ≈ 0.32u) and the feet barely touch the lower
-         *  edge (bottom ≈ 0.07u of crop, invisible at this scale). */
-        camera={{ position: [0.45, -0.05, 3.6], fov: 30 }}
+         *  How it works:
+         *    • OfficeFigure hard-anchors its inner group at world
+         *      y=-0.78 (its "ground"). The hair tip sits ≈ y=+0.94.
+         *    • LookAt drops all the way to the GROUND (y=-0.78), so
+         *      the figure feet sit at the visual center of the
+         *      portrait frame and the body extends UPWARD from
+         *      there in screen space — i.e. the body fills the
+         *      upper half of the card, feet anchored mid-card.
+         *    • Camera position lifted to y=-0.10 (above the ground
+         *      target) so it gently looks down — natural eye-level
+         *      portrait, not a worm's-eye shot.
+         *    • z=2.6 + fov=38 → tight zoom; the figure now fills
+         *      most of the portrait card top-to-bottom and SITS at
+         *      the bottom strip exactly where the name label is.
+         *      No group offset needed — anchoring is purely from
+         *      the camera math, so the figure stays straight-on. */
+        camera={{ position: [0.45, -0.1, 2.6], fov: 38 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, -0.05, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, -0.78, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Three lights matching the office figure highlights so the
@@ -121,20 +125,15 @@ export function AdminAgentAvatar({
         <directionalLight position={[-4, 2, 3]} intensity={1.0} color="#89a6ff" />
         <directionalLight position={[0, 4, -5]} intensity={1.25} color="#f0d9b5" />
         <Environment preset="city" />
-        {/* v180 — wrapping group physically moves the figure down so
-         *  the bottom of the body lands near the "name" label strip
-         *  at the bottom of the card. */}
-        <group position={[0, -0.3, 0]}>
-          <OfficeFigure
-            profile={profile}
-            onReady={() => setReadyKey(profileKey)}
-          />
-        </group>
+        <OfficeFigure
+          profile={profile}
+          onReady={() => setReadyKey(profileKey)}
+        />
         {interactive ? (
           <OrbitControls
             enablePan={false}
             enableZoom={false}
-            target={[0, -0.05, 0]}
+            target={[0, -0.78, 0]}
             maxPolarAngle={1.8}
             minPolarAngle={1.1}
           />
