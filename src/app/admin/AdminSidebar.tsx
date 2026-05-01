@@ -33,6 +33,7 @@ import {
   MessageSquare,
   Network,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Target,
@@ -86,6 +87,7 @@ const NAV: NavGroup[] = [
       { href: "/admin/cron", label: "Cron jobs", icon: Timer, accent: "text-amber-300" },
       { href: "/admin/cortex", label: "Cortex", icon: Brain, accent: "text-cyan-300" },
       { href: "/admin/sync-tools", label: "Sync TOOLS", icon: Wrench, accent: "text-emerald-300" },
+      { href: "/admin/gateway-reconcile", label: "Reconcile gateway", icon: ShieldAlert, accent: "text-rose-300" },
     ],
   },
   {
