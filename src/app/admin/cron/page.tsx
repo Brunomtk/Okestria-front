@@ -10,13 +10,19 @@ import {
   AdminTable,
 } from "../_components/AdminTable";
 import { safeAdminPage } from "../_lib/safe-page";
+import { CronAdminTabs } from "./_components/CronAdminTabs";
 
 /**
- * v146 — Admin · Cron jobs.
+ * v165 — Admin · Cron jobs (now tabbed).
  *
- * Cross-tenant cron schedule, wired to /api/AdminOverview/cron/all.
- * The endpoint walks every company's cron table and returns one
- * flat array, ordered by next-run-utc descending.
+ *   • Tab "Sistema (PTX)" keeps the v146 cross-tenant table built from
+ *     /api/AdminOverview/cron/all (every PTX-side cron, all companies).
+ *     The JSX below was previously the entire page — it's still server-
+ *     rendered with the same data, just passed into <CronAdminTabs/>.
+ *
+ *   • Tab "Agentes (OpenClaw)" mounts a client component that talks to
+ *     the gateway through /api/admin/gateway-crons/* (cron.list/run/
+ *     remove/add). Edit/Delete/Run-now/Create live there.
  */
 
 function fmtNextIn(iso?: string | null): string {
@@ -45,16 +51,29 @@ export default async function AdminCronPage() {
 
 async function renderCronPage() {
   const session = await requireAdminSession();
-  const jobs: AdminCronJobRow[] = await fetchAdminCronJobs(session.token!).catch(
-    () => [],
+  const jobs: AdminCronJobRow[] = await fetchAdminCronJobs(session.token!).catch(() => []);
+
+  const ptxContent = renderPtxCronContent(jobs);
+
+  return (
+    <div className="space-y-8">
+      <PageHeader
+        eyebrow="Operations · Cron"
+        title="Scheduled jobs"
+        subtitle="PTX-system cron and OpenClaw gateway cron, side by side. Switch tabs to manage either."
+      />
+
+      <CronAdminTabs ptxContent={ptxContent} ptxJobCount={jobs.length} />
+    </div>
   );
+}
 
-  const armed   = jobs.filter((j) => j.status.toLowerCase() === "active").length;
+function renderPtxCronContent(jobs: AdminCronJobRow[]) {
+  const armed = jobs.filter((j) => j.status.toLowerCase() === "active").length;
   const running = jobs.filter((j) => j.status.toLowerCase() === "running").length;
-  const paused  = jobs.filter((j) => j.status.toLowerCase() === "paused").length;
-  const failed  = jobs.filter((j) => (j.lastRunStatus ?? "").toLowerCase() === "failed").length;
+  const paused = jobs.filter((j) => j.status.toLowerCase() === "paused").length;
+  const failed = jobs.filter((j) => (j.lastRunStatus ?? "").toLowerCase() === "failed").length;
 
-  // group by tenant
   const byCompany = new Map<string, number>();
   for (const j of jobs) {
     byCompany.set(j.companyName, (byCompany.get(j.companyName) ?? 0) + 1);
@@ -62,17 +81,23 @@ async function renderCronPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader
-        eyebrow="Operations · Cron"
-        title="Scheduled jobs"
-        subtitle="Every recurring agent action across the platform — daily briefings, hourly sweeps, weekly digests, etc. Live data."
-      />
-
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total jobs" value={jobs.length} icon={Timer} accent="amber" hint={`across ${byCompany.size} tenants`} />
+        <StatCard
+          label="Total jobs"
+          value={jobs.length}
+          icon={Timer}
+          accent="amber"
+          hint={`across ${byCompany.size} tenants`}
+        />
         <StatCard label="Armed" value={armed} icon={Clock} accent="cyan" />
         <StatCard label="Running now" value={running} icon={Play} accent="emerald" />
-        <StatCard label="Paused / failed" value={paused + failed} icon={paused >= failed ? Pause : XCircle} accent="rose" hint={`${paused} paused · ${failed} failed`} />
+        <StatCard
+          label="Paused / failed"
+          value={paused + failed}
+          icon={paused >= failed ? Pause : XCircle}
+          accent="rose"
+          hint={`${paused} paused · ${failed} failed`}
+        />
       </div>
 
       <Section title="All scheduled jobs" subtitle="next first" accent="amber">
@@ -114,15 +139,20 @@ async function renderCronPage() {
                     <div className="font-mono text-[11.5px] text-white/75">
                       {j.cronExpression ?? "—"}
                     </div>
-                    <div className="font-mono text-[10px] text-white/40">
-                      {j.timezone}
-                    </div>
+                    <div className="font-mono text-[10px] text-white/40">{j.timezone}</div>
                   </div>
                 ),
-                next: <span className="font-mono text-[11px] text-white/55">{fmtNextIn(j.nextRunAtUtc)}</span>,
+                next: (
+                  <span className="font-mono text-[11px] text-white/55">
+                    {fmtNextIn(j.nextRunAtUtc)}
+                  </span>
+                ),
                 runs: (
                   <span className="font-mono text-[11px] text-white/65">
-                    {j.runCount}{j.failureCount ? <span className="text-rose-300"> · {j.failureCount} fail</span> : null}
+                    {j.runCount}
+                    {j.failureCount ? (
+                      <span className="text-rose-300"> · {j.failureCount} fail</span>
+                    ) : null}
                   </span>
                 ),
                 status: <StatusPill status={pill.status} label={pill.label} />,
