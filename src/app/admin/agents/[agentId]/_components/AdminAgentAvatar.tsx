@@ -84,11 +84,18 @@ export function AdminAgentAvatar({
       ) : null}
       <Canvas
         key={profileKey}
-        // Same proven framing as HeroAgentDashboard's PortraitFigure.
-        camera={{ position: [0.45, 0.2, 4.2], fov: 24 }}
+        // v178 — pulled the camera back (z 4.2 → 5.6) and lifted the
+        // lookAt target (y 0 → 0.85) so the FULL figure fits the
+        // aspect-square card with margin top/bottom. Previously the
+        // figure's legs/feet were cropped because the original
+        // PortraitFigure framing was tuned for a wider 16:9 hero
+        // dashboard, not the 1:1 admin card. fov stays at 24 to
+        // keep the gentle perspective; broader aperture would
+        // distort the head.
+        camera={{ position: [0.45, 0.85, 5.6], fov: 24 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0.0, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, 0.85, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         <ambientLight intensity={0.95} />

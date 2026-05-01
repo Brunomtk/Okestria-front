@@ -28,8 +28,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "missing agentId" }, { status: 400 });
   }
 
+  // v178 — gateway expects `agentId`, not `id`. Sending `id` triggers
+  // "invalid agents.delete params: must have required property
+  // 'agentId'; at root: unexpected property 'id'" on the operator's
+  // first orphan-delete click. Same field name used by
+  // agents.files.set / agents.files.get / agents.update across the
+  // codebase, so we're aligning with the convention.
   const result = await withGatewayClient(request, async (client) => {
-    return client.request<unknown>("agents.delete", { id: agentId });
+    return client.request<unknown>("agents.delete", { agentId });
   });
 
   if (!result.ok) {
