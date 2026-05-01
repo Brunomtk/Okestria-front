@@ -3,24 +3,30 @@ import { NodeGatewayClient } from "@/lib/gateway/nodeGatewayClient";
 import { requireAdminSession } from "@/app/admin/_lib/admin";
 
 /**
- * v162 — Per-agent sync, now using the proper gateway handshake.
+ * v162 — Per-agent sync, with the proper gateway URL + handshake.
  *
- * v159 talked to the gateway with bare jsonrpc 2.0 frames and skipped
- * the device-signed `connect` handshake — the gateway answered with
- * `code=1008 reason="connect required"` and the rest of the requests
- * came back as 1006 (connection torn down). NodeGatewayClient already
- * implements the full handshake (Ed25519 device key, nonce challenge,
- * `{type:"req"}` framing) and is what the office/remote-message route
- * uses — we reuse it here.
+ * Two bugs to unwind in sequence:
+ *   v159  → talked to the gateway with bare jsonrpc 2.0 frames and
+ *           skipped the device-signed `connect` handshake → gateway
+ *           closed with `1008 connect required` / `1006`.
+ *   v162a → switched to NodeGatewayClient (Ed25519 device key, nonce
+ *           challenge, `{type:"req"}` framing) but pointed it at the
+ *           NEXT proxy URL with the user's session JWT → underlying
+ *           WS errored ("Remote gateway connection failed.") because
+ *           the user JWT is not a gateway operator token.
+ *
+ * The fix that actually works: ask the back for the REAL gateway URL
+ * and operator upstream token via /api/Runtime/gateway-settings (same
+ * endpoint the in-app gateway settings UI uses), then connect there.
  *
  * Pipeline (one agent per HTTP call, browser loops these):
  *   1. PUT /api/Agents/{id}/profile (re-save → triggers v84
  *      ComposeAutoInjectedToolsAsync on the back).
  *   2. GET /api/Agents/{id} → read freshly-composed TOOLS file.
- *   3. NodeGatewayClient.connect(wss://api.ptxgrowth.us/api/gateway/ws,
- *      jwt) → device handshake completes.
- *   4. client.request("agents.files.set", { agentId: slug, name, content })
- *   5. Close, return JSON.
+ *   3. GET /api/Runtime/gateway-settings → { baseUrl, upstreamToken }.
+ *   4. NodeGatewayClient.connect(baseUrl, upstreamToken) → device handshake.
+ *   5. client.request("agents.files.set", { agentId: slug, name, content }).
+ *   6. Close, return JSON.
  *
  * Hard timeouts everywhere so a hung gateway never holds the request
  * hostage; total budget per agent stays at 25s.
@@ -39,14 +45,6 @@ function resolveBackendBaseUrl(): string {
     process.env.OKESTRIA_API_URL ||
     "http://localhost:5227"
   ).replace(/\/$/, "");
-}
-
-function resolveGatewayProxyUrl(): string {
-  const api = resolveBackendBaseUrl();
-  return (
-    api.replace(/^https?:\/\//, (m) => (m === "https://" ? "wss://" : "ws://")) +
-    "/api/gateway/ws"
-  );
 }
 
 async function fetchWithTimeout(
@@ -243,16 +241,53 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // 4. Push to OpenClaw via the proper device handshake.
-  // NodeGatewayClient handles the connect.challenge / Ed25519 signature
-  // dance; without it the gateway closes with 1008 "connect required".
+  // 4a. Resolve the REAL OpenClaw gateway URL + operator upstream token
+  //     from the back. The user's session JWT is NOT a gateway operator
+  //     token — the gateway would reject it (or simply error the WS,
+  //     which is what we observed). The back exposes baseUrl + token via
+  //     /api/Runtime/gateway-settings (admin-protected).
+  type GatewaySettings = {
+    configured?: boolean;
+    baseUrl?: string;
+    upstreamToken?: string;
+  };
+  let gatewayUrl = "";
+  let upstreamToken = "";
+  try {
+    const settings = await jsonOrThrow<GatewaySettings>(
+      await fetchWithTimeout(`${apiBase}/api/Runtime/gateway-settings`, {
+        headers: auth,
+        cache: "no-store",
+      }),
+    );
+    if (!settings.configured || !settings.baseUrl) {
+      throw new Error("gateway not configured on backend");
+    }
+    gatewayUrl = settings.baseUrl.trim();
+    upstreamToken = (settings.upstreamToken ?? "").trim();
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        step: "push",
+        agentId,
+        agentSlug: slug,
+        toolsChars: toolsContent.length,
+        error: `gateway settings: ${err instanceof Error ? err.message : String(err)}`,
+        ms: Date.now() - start,
+      } satisfies Report,
+      { status: 200 },
+    );
+  }
+
+  // 4b. Open the gateway with the operator token + Ed25519 device handshake.
   const gateway = new NodeGatewayClient();
   try {
     const remainingForConnect = TOTAL_BUDGET_MS - (Date.now() - start);
     await withDeadline(
       gateway.connect({
-        gatewayUrl: resolveGatewayProxyUrl(),
-        token: jwt,
+        gatewayUrl,
+        token: upstreamToken || null,
       }),
       remainingForConnect,
       "gateway connect",
