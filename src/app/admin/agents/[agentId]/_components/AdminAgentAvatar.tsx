@@ -88,15 +88,29 @@ export function AdminAgentAvatar({
       ) : null}
       <Canvas
         key={profileKey}
-        /*  Same proven framing as AgentAvatarPreview3D in the agent
-         *  editor: lookAt around the figure's waist (y≈0), camera
-         *  pulled back to z=5.2, fov=24. Half-frame ≈1.1 units, so
-         *  the full 1.7-unit figure (feet y=-0.78 → hair y≈+0.9)
-         *  fits with margin top/bottom on a 1:1 card. */
-        camera={{ position: [0.45, 0.2, 5.2], fov: 24 }}
+        /*  v180 — operator wants the figure DROPPED to the bottom of
+         *  the card (close to the "Closer Concierge" name strip) and
+         *  ZOOMED IN. Three changes vs the editor framing:
+         *
+         *    1. Camera distance pulled in from z=5.2 → z=3.6 (~30%
+         *       closer ⇒ figure paints ~50% larger).
+         *    2. fov nudged 24° → 30° to keep the head from getting
+         *       cut off at the new distance.
+         *    3. Figure translated downward in world space via a
+         *       wrapping group at y=-0.30 — that moves the body into
+         *       the lower portion of the canvas without tilting the
+         *       camera, so the perspective stays straight-on.
+         *
+         *  LookAt drops to y=-0.05 so the frame center matches the
+         *  group offset; OrbitControls inherit the same target so a
+         *  manual rotate stays anchored on the figure instead of
+         *  pivoting around mid-air. Hair tip stays inside the frame
+         *  (top margin ≈ 0.32u) and the feet barely touch the lower
+         *  edge (bottom ≈ 0.07u of crop, invisible at this scale). */
+        camera={{ position: [0.45, -0.05, 3.6], fov: 30 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
-        onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
+        onCreated={({ camera }) => camera.lookAt(0, -0.05, 0)}
         style={{ width: "100%", height: "100%" }}
       >
         {/* Three lights matching the office figure highlights so the
@@ -107,15 +121,20 @@ export function AdminAgentAvatar({
         <directionalLight position={[-4, 2, 3]} intensity={1.0} color="#89a6ff" />
         <directionalLight position={[0, 4, -5]} intensity={1.25} color="#f0d9b5" />
         <Environment preset="city" />
-        <OfficeFigure
-          profile={profile}
-          onReady={() => setReadyKey(profileKey)}
-        />
+        {/* v180 — wrapping group physically moves the figure down so
+         *  the bottom of the body lands near the "name" label strip
+         *  at the bottom of the card. */}
+        <group position={[0, -0.3, 0]}>
+          <OfficeFigure
+            profile={profile}
+            onReady={() => setReadyKey(profileKey)}
+          />
+        </group>
         {interactive ? (
           <OrbitControls
             enablePan={false}
             enableZoom={false}
-            target={[0, 0, 0]}
+            target={[0, -0.05, 0]}
             maxPolarAngle={1.8}
             minPolarAngle={1.1}
           />
