@@ -1,25 +1,24 @@
 "use client";
 
 /**
- * v165 — Admin · Gateway cron tab.
- * v167 — editor moved to the shared
- * `@/features/gateway-cron/CronEditorModal` so semantics stay
- * identical between admin and the office modal.
+ * v166 — Office · Gateway cron tab (lives inside CronJobsModal).
+ * v167 — moved the editor modal into the shared
+ * `@/features/gateway-cron/CronEditorModal` so the admin tab and the
+ * office tab can never drift on payload semantics. The list / row /
+ * confirm-delete UI stays here.
  *
- * Lists every OpenClaw cron job (cron.list) and lets the operator
- * run-now / edit / delete / create. All RPCs go through the four
- * /api/admin/gateway-crons/* routes (which proxy via NodeGatewayClient
- * with the v164 device handshake + Origin header).
+ * The office tab calls the gateway directly through the GatewayClient
+ * the office already has open — no new server routes, no new WS,
+ * naturally scoped to this company's gateway/token.
  *
- * Edit semantics: gateway has no cron.update, so editing performs a
- * remove + add. The id changes; the list refreshes and shows the
- * job in place.
+ * Edit semantics mirror PTX (no cron.update on the gateway, so save
+ * runs cron.remove(existingId) + cron.add(input); id changes; the
+ * list refreshes and the job shows up in place with the new fields).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
-  Bot,
   Loader2,
   Pencil,
   Play,
@@ -28,7 +27,6 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { Section, StatCard, StatusPill } from "../../_components/AdminUI";
 import { GatewayCronEditorModal } from "@/features/gateway-cron/CronEditorModal";
 import type { CronInput, CronJob, Payload, Schedule } from "@/features/gateway-cron/types";
 
@@ -36,6 +34,10 @@ type Banner =
   | { kind: "success"; text: string }
   | { kind: "error"; text: string }
   | null;
+
+export type OfficeGatewayClientLike = {
+  call?: <T = unknown>(method: string, params: unknown) => Promise<T>;
+};
 
 const fmtNextRun = (ms?: number) => {
   if (!ms) return "—";
@@ -71,7 +73,17 @@ const fmtSchedule = (s: Schedule): string => {
 const fmtPayload = (p: Payload): string =>
   p.kind === "systemEvent" ? `system: ${p.text.slice(0, 80)}` : `turn: ${p.message.slice(0, 80)}`;
 
-export function GatewayCronTab() {
+export function OfficeGatewayCronTab({
+  gatewayClient,
+  gatewayConnected,
+  agentSlugSuggestions,
+}: {
+  gatewayClient: OfficeGatewayClientLike | null | undefined;
+  gatewayConnected: boolean;
+  /** Optional list of agent slugs known in this office, to power the
+   *  autocomplete in the editor. */
+  agentSlugSuggestions?: string[];
+}) {
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +92,8 @@ export function GatewayCronTab() {
   const [editorJob, setEditorJob] = useState<CronJob | "new" | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  const canCall = Boolean(gatewayConnected && gatewayClient?.call);
+
   const showBanner = useCallback((b: Banner) => {
     setBanner(b);
     if (b) {
@@ -87,44 +101,46 @@ export function GatewayCronTab() {
     }
   }, []);
 
-  const load = useCallback(async (mode: "initial" | "refresh") => {
-    if (mode === "initial") setLoading(true);
-    else setRefreshing(true);
-    try {
-      const res = await fetch("/api/admin/gateway-crons/list", { cache: "no-store" });
-      const json = (await res.json()) as { ok?: boolean; jobs?: CronJob[]; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error ?? `HTTP ${res.status}`);
+  const load = useCallback(
+    async (mode: "initial" | "refresh") => {
+      if (!gatewayClient?.call) {
+        setLoading(false);
+        return;
       }
-      setJobs(Array.isArray(json.jobs) ? json.jobs : []);
-    } catch (err) {
-      showBanner({
-        kind: "error",
-        text: err instanceof Error ? err.message : "Failed to list gateway crons.",
-      });
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [showBanner]);
+      if (mode === "initial") setLoading(true);
+      else setRefreshing(true);
+      try {
+        const result = await gatewayClient.call<{ jobs: CronJob[] }>("cron.list", {
+          includeDisabled: true,
+        });
+        setJobs(Array.isArray(result?.jobs) ? result.jobs : []);
+      } catch (err) {
+        showBanner({
+          kind: "error",
+          text: err instanceof Error ? err.message : "Failed to list gateway crons.",
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [gatewayClient, showBanner],
+  );
 
   useEffect(() => {
-    void load("initial");
-  }, [load]);
+    if (canCall) {
+      void load("initial");
+    } else {
+      setLoading(false);
+    }
+  }, [canCall, load]);
 
   const handleRunNow = useCallback(
     async (job: CronJob) => {
+      if (!gatewayClient?.call) return;
       setBusyId(job.id);
       try {
-        const res = await fetch("/api/admin/gateway-crons/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: job.id }),
-        });
-        const json = (await res.json()) as { ok?: boolean; error?: string };
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error ?? `HTTP ${res.status}`);
-        }
+        await gatewayClient.call("cron.run", { id: job.id, mode: "force" });
         showBanner({ kind: "success", text: `Triggered ${job.name}.` });
         await load("refresh");
       } catch (err) {
@@ -136,22 +152,15 @@ export function GatewayCronTab() {
         setBusyId(null);
       }
     },
-    [load, showBanner],
+    [gatewayClient, load, showBanner],
   );
 
   const handleDelete = useCallback(
     async (job: CronJob) => {
+      if (!gatewayClient?.call) return;
       setBusyId(job.id);
       try {
-        const res = await fetch("/api/admin/gateway-crons/remove", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: job.id }),
-        });
-        const json = (await res.json()) as { ok?: boolean; error?: string };
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error ?? `HTTP ${res.status}`);
-        }
+        await gatewayClient.call("cron.remove", { id: job.id });
         showBanner({ kind: "success", text: `Deleted ${job.name}.` });
         setConfirmDeleteId(null);
         await load("refresh");
@@ -164,19 +173,35 @@ export function GatewayCronTab() {
         setBusyId(null);
       }
     },
-    [load, showBanner],
+    [gatewayClient, load, showBanner],
   );
 
   const handleSave = useCallback(
     async (input: CronInput, existingId?: string) => {
-      const res = await fetch("/api/admin/gateway-crons/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...input, existingId }),
-      });
-      const json = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error ?? `HTTP ${res.status}`);
+      if (!gatewayClient?.call) {
+        throw new Error("Gateway client not available.");
+      }
+      if (existingId) {
+        try {
+          await gatewayClient.call("cron.remove", { id: existingId });
+        } catch (err) {
+          throw new Error(
+            `cron.remove(${existingId}) failed before recreate — original kept: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        try {
+          await gatewayClient.call("cron.add", input);
+        } catch (err) {
+          throw new Error(
+            `cron.add failed after removing original ${existingId} — the cron was DELETED and could not be recreated. Cause: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      } else {
+        await gatewayClient.call("cron.add", input);
       }
       showBanner({
         kind: "success",
@@ -185,7 +210,7 @@ export function GatewayCronTab() {
       setEditorJob(null);
       await load("refresh");
     },
-    [load, showBanner],
+    [gatewayClient, load, showBanner],
   );
 
   const summary = useMemo(() => {
@@ -195,42 +220,61 @@ export function GatewayCronTab() {
     return { total: jobs.length, enabled, disabled, lastErrors };
   }, [jobs]);
 
-  const agentSlugSuggestions = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          jobs
-            .map((j) => j.agentId?.trim())
-            .filter((s): s is string => Boolean(s)),
-        ),
-      ).sort(),
-    [jobs],
-  );
-
   const confirmDeleteJob = jobs.find((j) => j.id === confirmDeleteId) ?? null;
 
+  if (!canCall) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 py-10">
+        <div className="max-w-md rounded-2xl border border-amber-400/30 bg-amber-500/[0.06] p-5 text-center">
+          <AlertTriangle className="mx-auto h-5 w-5 text-amber-300" />
+          <p className="mt-2 text-[13px] text-amber-100/90">
+            Gateway not connected — agent crons need an active OpenClaw connection.
+          </p>
+          <p className="mt-1 text-[11.5px] text-amber-100/65">
+            Reconnect the gateway and reopen this tab.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total" value={summary.total} icon={Bot} accent="cyan" />
-        <StatCard label="Active" value={summary.enabled} icon={Play} accent="emerald" />
-        <StatCard
-          label="Disabled"
-          value={summary.disabled}
-          icon={X}
-          accent={summary.disabled > 0 ? "amber" : "violet"}
-        />
-        <StatCard
-          label="Last failed"
-          value={summary.lastErrors}
-          icon={AlertTriangle}
-          accent={summary.lastErrors > 0 ? "rose" : "violet"}
-        />
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-5 py-3.5">
+        <div className="flex flex-wrap items-center gap-3">
+          <Stat label="Total" value={summary.total} tone="info" />
+          <Stat label="Active" value={summary.enabled} tone="ok" />
+          <Stat label="Disabled" value={summary.disabled} tone={summary.disabled > 0 ? "warn" : "idle"} />
+          <Stat label="Last failed" value={summary.lastErrors} tone={summary.lastErrors > 0 ? "error" : "idle"} />
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void load("refresh")}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-white/75 transition hover:bg-white/[0.08] disabled:opacity-40"
+          >
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditorJob("new")}
+            className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/40 bg-cyan-500/15 px-3 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/25"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Novo cron
+          </button>
+        </div>
       </div>
 
       {banner ? (
         <div
-          className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-[12.5px] leading-relaxed ${
+          className={`mx-5 mt-4 flex items-start gap-3 rounded-xl border px-4 py-3 text-[12.5px] leading-relaxed ${
             banner.kind === "error"
               ? "border-rose-400/40 bg-rose-500/10 text-rose-100"
               : "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
@@ -250,65 +294,33 @@ export function GatewayCronTab() {
         </div>
       ) : null}
 
-      <Section
-        title={`Gateway crons · ${jobs.length}`}
-        subtitle="powered by cron.list — newest update first"
-        accent="cyan"
-        right={
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void load("refresh")}
-              disabled={refreshing}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-white/75 transition hover:bg-white/[0.08] disabled:opacity-40"
-            >
-              {refreshing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorJob("new")}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/25"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Novo cron
-            </button>
+      <div className="min-h-0 flex-1 overflow-auto px-5 py-5">
+        {loading ? (
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-6 text-[13px] text-white/65">
+            <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
+            Loading agent crons…
           </div>
-        }
-      >
-        <div className="p-5">
-          {loading ? (
-            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-6 text-[13px] text-white/65">
-              <Loader2 className="h-4 w-4 animate-spin text-cyan-300" />
-              Loading gateway crons…
-            </div>
-          ) : jobs.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-6 text-center text-[13px] text-white/55">
-              No gateway crons yet. Click <strong className="text-white/85">Novo cron</strong> to
-              schedule one.
-            </div>
-          ) : (
-            <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-2xl border border-white/8 bg-[rgba(8,11,20,0.55)]">
-              {[...jobs]
-                .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
-                .map((job) => (
-                  <CronRow
-                    key={job.id}
-                    job={job}
-                    busy={busyId === job.id}
-                    onRunNow={() => void handleRunNow(job)}
-                    onEdit={() => setEditorJob(job)}
-                    onAskDelete={() => setConfirmDeleteId(job.id)}
-                  />
-                ))}
-            </ul>
-          )}
-        </div>
-      </Section>
+        ) : jobs.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-6 text-center text-[13px] text-white/55">
+            No agent crons yet. Click <strong className="text-white/85">Novo cron</strong> to schedule one.
+          </div>
+        ) : (
+          <ul className="divide-y divide-white/[0.05] overflow-hidden rounded-2xl border border-white/8 bg-[rgba(8,11,20,0.55)]">
+            {[...jobs]
+              .sort((a, b) => b.updatedAtMs - a.updatedAtMs)
+              .map((job) => (
+                <CronRow
+                  key={job.id}
+                  job={job}
+                  busy={busyId === job.id}
+                  onRunNow={() => void handleRunNow(job)}
+                  onEdit={() => setEditorJob(job)}
+                  onAskDelete={() => setConfirmDeleteId(job.id)}
+                />
+              ))}
+          </ul>
+        )}
+      </div>
 
       {editorJob !== null ? (
         <GatewayCronEditorModal
@@ -331,6 +343,38 @@ export function GatewayCronTab() {
   );
 }
 
+// ─── Stat chip ────────────────────────────────────────────────────────────
+
+function Stat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "ok" | "warn" | "error" | "idle" | "info";
+}) {
+  const palette = {
+    ok: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    warn: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    error: "border-rose-400/30 bg-rose-500/10 text-rose-200",
+    idle: "border-white/12 bg-white/[0.04] text-white/65",
+    info: "border-cyan-400/30 bg-cyan-500/10 text-cyan-200",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] ${palette}`}
+    >
+      <span className="font-mono text-[10px] uppercase tracking-[0.18em] opacity-70">
+        {label}
+      </span>
+      <span className="font-mono text-[12px] font-semibold">{value}</span>
+    </span>
+  );
+}
+
+// ─── Per-row ──────────────────────────────────────────────────────────────
+
 function CronRow({
   job,
   busy,
@@ -345,26 +389,21 @@ function CronRow({
   onAskDelete: () => void;
 }) {
   const lastStatus = job.state?.lastStatus;
-  const pill =
-    !job.enabled
-      ? { status: "warn" as const, label: "disabled" }
-      : lastStatus === "error"
-        ? { status: "error" as const, label: "last failed" }
-        : lastStatus === "ok"
-          ? { status: "ok" as const, label: "ok" }
-          : { status: "info" as const, label: "armed" };
+  const pill = !job.enabled
+    ? { color: "amber", label: "disabled" }
+    : lastStatus === "error"
+      ? { color: "rose", label: "last failed" }
+      : lastStatus === "ok"
+        ? { color: "emerald", label: "ok" }
+        : { color: "cyan", label: "armed" };
 
   return (
     <li className="grid gap-3 px-5 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[13.5px] font-semibold text-white">{job.name}</span>
-          <StatusPill status={pill.status} label={pill.label} />
-          {job.deleteAfterRun ? (
-            <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.16em] text-amber-200/85">
-              one-shot
-            </span>
-          ) : null}
+          <Pill color={pill.color}>{pill.label}</Pill>
+          {job.deleteAfterRun ? <Pill color="amber">one-shot</Pill> : null}
         </div>
         <p className="mt-1 font-mono text-[10.5px] text-white/45">
           id <span className="text-white/65">{job.id}</span>
@@ -405,11 +444,7 @@ function CronRow({
           disabled={busy}
           className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-emerald-400/40 bg-emerald-500/15 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-40"
         >
-          {busy ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Play className="h-3.5 w-3.5" />
-          )}
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           Run now
         </button>
         <button
@@ -435,6 +470,24 @@ function CronRow({
   );
 }
 
+function Pill({ color, children }: { color: string; children: React.ReactNode }) {
+  const palette: Record<string, string> = {
+    cyan: "border-cyan-400/30 bg-cyan-500/10 text-cyan-200",
+    emerald: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
+    amber: "border-amber-400/30 bg-amber-500/10 text-amber-200",
+    rose: "border-rose-400/30 bg-rose-500/10 text-rose-200",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.18em] ${
+        palette[color] ?? palette.cyan
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
 function ConfirmDeleteModal({
   job,
   busy,
@@ -447,7 +500,7 @@ function ConfirmDeleteModal({
   onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-rose-400/30 bg-[rgba(13,16,28,0.95)] p-5">
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-rose-200">

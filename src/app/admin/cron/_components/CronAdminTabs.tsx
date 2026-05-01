@@ -57,14 +57,14 @@ export function CronAdminTabs({
         <TabButton
           active={tab === "ptx"}
           icon={Server}
-          label="Sistema (PTX)"
+          label="Sistema"
           count={ptxJobCount}
           onClick={() => select("ptx")}
         />
         <TabButton
           active={tab === "gateway"}
           icon={Bot}
-          label="Agentes (OpenClaw)"
+          label="Agents"
           onClick={() => select("gateway")}
         />
       </div>

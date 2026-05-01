@@ -12,6 +12,7 @@ import {
 import {
   AlertTriangle,
   ArrowDown,
+  Bot,
   CalendarClock,
   CircleStop,
   Clock,
@@ -24,6 +25,7 @@ import {
   RefreshCcw,
   Save,
   Send,
+  Server,
   Sparkles,
   Timer,
   Trash2,
@@ -34,6 +36,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
+import { OfficeGatewayCronTab } from "./cron/OfficeGatewayCronTab";
 import {
   applyCronRunMessageBySession,
   cancelCronJob,
@@ -228,11 +231,15 @@ type CronJobsModalProps = {
   onClose: () => void;
   /** GatewayClient — when supplied, the modal listens for chat events on cron
    *  run sessions and forwards the assistant text to the back's apply-message
-   *  endpoint. Mirrors the squad chat bridge. */
+   *  endpoint. Mirrors the squad chat bridge.
+   *  v166 — also exposes `call` so the new "Agents" tab can hit
+   *  cron.list / cron.add / cron.remove / cron.run directly through the
+   *  already-open WS, instead of going through a server proxy. */
   gatewayClient?: {
     onEvent: (
       handler: (event: { event: string; payload?: unknown }) => void,
     ) => () => void;
+    call?: <T = unknown>(method: string, params: unknown) => Promise<T>;
   } | null;
   gatewayConnected?: boolean;
 };
@@ -262,6 +269,26 @@ function CronJobsModalInner({
   const [composerError, setComposerError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<CronJob | null>(null);
+  // v166 — top-level tab inside the cron modal: "sistema" keeps the
+  // existing PTX-backed cron CRUD intact, "agents" mounts the gateway
+  // cron tab (cron.list/add/remove/run via the open WS).
+  const [activeTab, setActiveTab] = useState<"sistema" | "agents">(() => {
+    if (typeof window === "undefined") return "sistema";
+    try {
+      const stored = window.localStorage.getItem("okestria.office.cron.tab");
+      return stored === "agents" ? "agents" : "sistema";
+    } catch {
+      return "sistema";
+    }
+  });
+  const switchTab = useCallback((next: "sistema" | "agents") => {
+    setActiveTab(next);
+    try {
+      window.localStorage.setItem("okestria.office.cron.tab", next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const agentLookup = useMemo(() => {
     const m = new Map<number, CronAgentOption>();
@@ -618,25 +645,29 @@ function CronJobsModalInner({
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => loadJobs()}
-              disabled={loading}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-2.5 text-[11px] text-white/70 transition hover:bg-white/10 disabled:opacity-50"
-              title="Refresh list"
-            >
-              <RefreshCcw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
-              <span>Refresh</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-medium text-white transition"
-              style={{ backgroundColor: `${ACCENT}33`, border: `1px solid ${ACCENT}66` }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>New cron</span>
-            </button>
+            {activeTab === "sistema" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => loadJobs()}
+                  disabled={loading}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.03] px-2.5 text-[11px] text-white/70 transition hover:bg-white/10 disabled:opacity-50"
+                  title="Refresh list"
+                >
+                  <RefreshCcw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+                  <span>Refresh</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateOpen(true)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-medium text-white transition"
+                  style={{ backgroundColor: `${ACCENT}33`, border: `1px solid ${ACCENT}66` }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>New cron</span>
+                </button>
+              </>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -648,8 +679,55 @@ function CronJobsModalInner({
           </div>
         </div>
 
-        {/* Body — list rail + chat panel */}
-        <div className="flex min-h-0 flex-1">
+        {/* v166 — tab strip: Sistema (PTX cron, original UI) | Agents (gateway cron) */}
+        <div className="flex items-center gap-1 border-b border-white/8 bg-black/30 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => switchTab("sistema")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium transition ${
+              activeTab === "sistema"
+                ? "bg-gradient-to-r from-violet-500/35 to-fuchsia-500/30 text-white shadow-[0_0_18px_rgba(167,139,250,0.25)]"
+                : "text-white/60 hover:bg-white/[0.04] hover:text-white"
+            }`}
+          >
+            <Server className="h-3.5 w-3.5" />
+            Sistema
+            <span
+              className={`rounded-md px-1.5 py-0.5 font-mono text-[10px] ${
+                activeTab === "sistema" ? "bg-white/15 text-white" : "bg-white/[0.05] text-white/65"
+              }`}
+            >
+              {jobs.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("agents")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-medium transition ${
+              activeTab === "agents"
+                ? "bg-gradient-to-r from-cyan-500/35 to-violet-500/30 text-white shadow-[0_0_18px_rgba(34,211,238,0.25)]"
+                : "text-white/60 hover:bg-white/[0.04] hover:text-white"
+            }`}
+          >
+            <Bot className="h-3.5 w-3.5" />
+            Agents
+          </button>
+        </div>
+
+        {/* Body — Sistema (existing) OR Agents (gateway crons). Both          */}
+        {/* mounted; the inactive one is `hidden` so React keeps state and the */}
+        {/* tab swap is instant. Sistema keeps its full 2-pane layout (list    */}
+        {/* rail + chat panel) intact.                                         */}
+        <div hidden={activeTab !== "agents"} className="flex min-h-0 flex-1 flex-col">
+          <OfficeGatewayCronTab
+            gatewayClient={gatewayClient ?? null}
+            gatewayConnected={Boolean(gatewayConnected)}
+            agentSlugSuggestions={agents
+              .map((a) => (a.slug ?? "").trim())
+              .filter((s) => s.length > 0)}
+          />
+        </div>
+        <div hidden={activeTab !== "sistema"} className="flex min-h-0 flex-1">
           {/* List rail */}
           <aside className="flex w-72 flex-none flex-col overflow-hidden border-r border-white/10 bg-black/30">
             <div className="flex items-center justify-between px-4 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">
