@@ -38,6 +38,10 @@ import { AgentAvatar } from "@/features/agents/components/AgentAvatar";
 import { MARKDOWN_COMPONENTS } from "./shared/chatMarkdownComponents";
 import { OfficeGatewayCronTab } from "./cron/OfficeGatewayCronTab";
 import {
+  reconcileStuckCronRun,
+  reconcileStuckRunsForJob,
+} from "@/lib/cron/stuckRunReconciler";
+import {
   applyCronRunMessageBySession,
   cancelCronJob,
   createCronJob,
@@ -321,6 +325,28 @@ function CronJobsModalInner({
     try {
       const job = await fetchCronJob(jobId);
       setSelectedJob(job);
+
+      // v174 — auto-recover stuck runs. The WS `final` event can be
+      // missed (operator closed the office before the cron fired,
+      // bridge unsubscribed mid-flight). The reconciler queries
+      // chat.history for each stuck run's sessionKey, finds the
+      // latest assistant message AFTER startedAtUtc, and POSTs it
+      // through applyCronRunMessageBySession. If anything actually
+      // gets applied, refetch so the chat panel flips from
+      // "thinking…" to the real reply on the next render.
+      try {
+        const recovered = await reconcileStuckRunsForJob({
+          client: gatewayClient ?? null,
+          job,
+        });
+        if (recovered > 0) {
+          const refreshed = await fetchCronJob(jobId);
+          setSelectedJob(refreshed);
+        }
+      } catch {
+        // Reconciler is best-effort — a failure here is silent so
+        // we don't block the user from seeing the (still-stuck) run.
+      }
     } catch (e) {
       // v102 — a 404 here means the job was deleted (likely by this
       // operator a moment ago). Clear the selection silently instead
@@ -339,7 +365,7 @@ function CronJobsModalInner({
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [gatewayClient]);
 
   useEffect(() => {
     if (!open) return;
@@ -785,6 +811,7 @@ function CronJobsModalInner({
                 onDelete={handleDelete}
                 onEdit={() => setEditingJob(selectedJob)}
                 onRefresh={() => loadJobDetail(selectedJob.id)}
+                gatewayClient={gatewayClient ?? null}
               />
             ) : (
               <div className="flex h-full items-center justify-center px-6">
@@ -926,6 +953,7 @@ function CronChatPanel({
   onDelete,
   onEdit,
   onRefresh,
+  gatewayClient,
 }: {
   job: CronJob;
   agent: CronAgentOption | null | undefined;
@@ -940,6 +968,9 @@ function CronChatPanel({
   onDelete: (id: number) => void | Promise<unknown>;
   onEdit: () => void;
   onRefresh: () => void;
+  /** v174 — forwarded down to RunBubble so each stuck-run row can
+   *  query chat.history and stamp the recovered message. */
+  gatewayClient?: { call?: <T = unknown>(method: string, params: unknown) => Promise<T> } | null;
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -1179,6 +1210,8 @@ function CronChatPanel({
                 run={run}
                 agent={agent}
                 seed={seed}
+                gatewayClient={gatewayClient}
+                onRecovered={onRefresh}
               />
             ))}
             <div ref={chatBottomRef} aria-hidden className="h-px w-px" />
@@ -1338,10 +1371,16 @@ function RunBubble({
   run,
   agent,
   seed,
+  gatewayClient,
+  onRecovered,
 }: {
   run: CronJobRun;
   agent: CronAgentOption | null | undefined;
   seed: string;
+  /** v174 — used by the per-row "Recover" button to query chat.history
+   *  for the run's sessionKey and apply the latest assistant message. */
+  gatewayClient?: { call?: <T = unknown>(method: string, params: unknown) => Promise<T> } | null;
+  onRecovered?: () => void;
 }) {
   const status = run.status;
   const out = (run.resultText ?? "").trim();
@@ -1349,6 +1388,37 @@ function RunBubble({
   const isFailed = status === "failed";
   const isRunning = status === "queued" || status === "running";
   const isCancelled = status === "cancelled" || status === "skipped";
+  const [recovering, setRecovering] = useState(false);
+  const [recoverHint, setRecoverHint] = useState<string | null>(null);
+  const startedMs = (() => {
+    const v = run.startedAtUtc ? Date.parse(run.startedAtUtc) : NaN;
+    return Number.isFinite(v) ? v : null;
+  })();
+  const stuckOldEnough = isRunning && Boolean(run.sessionKey) && (
+    startedMs === null || Date.now() - startedMs > 30_000
+  );
+  const handleRecover = async () => {
+    if (!gatewayClient || recovering) return;
+    setRecovering(true);
+    setRecoverHint(null);
+    try {
+      const outcome = await reconcileStuckCronRun({
+        client: gatewayClient,
+        run,
+        ageFloorMs: 0, // bypass the freshness guard — this is a manual click
+      });
+      if (outcome.kind === "applied") {
+        setRecoverHint(`recovered ${outcome.chars} chars`);
+        onRecovered?.();
+      } else if (outcome.kind === "skipped") {
+        setRecoverHint(`nothing to apply (${outcome.reason})`);
+      } else {
+        setRecoverHint(`failed: ${outcome.error}`);
+      }
+    } finally {
+      setRecovering(false);
+    }
+  };
   const ts = run.finishedAtUtc || run.startedAtUtc || run.createdDate;
 
   return (
@@ -1412,24 +1482,46 @@ function RunBubble({
             </div>
           </div>
         ) : isRunning ? (
-          <div className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border border-cyan-400/25 bg-cyan-500/10 px-4 py-2.5 text-sm text-cyan-100/85">
-            <span className="inline-flex gap-1">
-              <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
-                style={{ animationDelay: "0ms" }}
-              />
-              <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
-                style={{ animationDelay: "150ms" }}
-              />
-              <span
-                className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
-                style={{ animationDelay: "300ms" }}
-              />
-            </span>
-            <span className="opacity-90">
-              {status === "queued" ? "queued — waiting in line" : "thinking..."}
-            </span>
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-2 rounded-[20px] rounded-tl-md border border-cyan-400/25 bg-cyan-500/10 px-4 py-2.5 text-sm text-cyan-100/85">
+              <span className="inline-flex gap-1">
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <span
+                  className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-200"
+                  style={{ animationDelay: "300ms" }}
+                />
+              </span>
+              <span className="opacity-90">
+                {status === "queued" ? "queued — waiting in line" : "thinking..."}
+              </span>
+              {/* v174 — manual recover for runs whose WS final event was lost. */}
+              {stuckOldEnough && gatewayClient ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRecover()}
+                  disabled={recovering}
+                  className="ml-2 inline-flex items-center gap-1 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-cyan-100 transition hover:bg-cyan-400/20 disabled:opacity-40"
+                  title="Pull the latest agent message for this session and stamp it on the run"
+                >
+                  {recovering ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCcw className="h-3 w-3" />
+                  )}
+                  Recover
+                </button>
+              ) : null}
+            </div>
+            {recoverHint ? (
+              <p className="font-mono text-[10.5px] text-white/45">{recoverHint}</p>
+            ) : null}
           </div>
         ) : (
           <div className="rounded-[20px] rounded-tl-md border border-white/10 bg-white/[0.02] px-4 py-2.5 text-sm italic text-white/45">
