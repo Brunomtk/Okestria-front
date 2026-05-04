@@ -13,6 +13,7 @@ import { BriefcaseBusiness, FileText, MessageSquare, ChevronDown, Loader2, Mic, 
 import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
+import { OrkestriaLoader } from "@/components/OrkestriaLoader";
 import { useAgentStore, type AgentState, type AgentStoreSeed } from "@/features/agents/state/store";
 import {
   GatewayClient,
@@ -6481,13 +6482,37 @@ export function OfficeScreen({
         !shouldPromptForConnect &&
         (!didAttemptGatewayConnect || status === "connecting")))
   ) {
+    // v183 — was a bare cyan spinner + tiny progress bar. This splash
+    // is the FIRST thing the operator sees on every office mount (or
+    // every refresh during a long connect), and the rest of the app
+    // already uses OrkestriaLoader for the same kind of "wait for the
+    // workspace" moment (Cortex modal, GatewayConnectScreen, login).
+    // Bringing them in line — same brand mark, same cosmic backdrop,
+    // same cycling messages, same gradient sweep — so the boot path
+    // feels like one continuous experience instead of three different
+    // loaders stitched together.
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-500/20 border-t-cyan-500" />
-          <div className="h-1 w-32 overflow-hidden rounded-full bg-white/5">
-            <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-cyan-500/50 to-cyan-500" />
-          </div>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#050a14] overflow-hidden">
+        {/* Same cosmic glow + grid the GatewayConnectScreen paints
+           behind its loader, so the splash → connect transition is
+           seamless if it happens. */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-br from-cyan-500/8 via-violet-500/6 to-transparent rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-violet-600/5 rounded-full blur-3xl" />
+          <div className="absolute top-0 right-0 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-3xl" />
+        </div>
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(99,179,237,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(99,179,237,0.02)_1px,transparent_1px)] bg-[size:80px_80px] pointer-events-none" />
+        <div className="relative z-10 flex flex-col items-center px-6">
+          <OrkestriaLoader
+            showProgress={false}
+            messages={[
+              "Booting the office…",
+              "Restoring your workspace…",
+              "Pulling agents from cache…",
+              "Reaching the gateway…",
+              "Almost there…",
+            ]}
+          />
         </div>
       </div>
     );
@@ -7477,11 +7502,9 @@ export function OfficeScreen({
         >
           <Users2 className="h-3.5 w-3.5" />
           <span>Squads</span>
-          {companySquads.length > 0 ? (
-            <span className="rounded-full bg-violet-500/25 px-1.5 py-px text-[10px] font-bold text-violet-100">
-              {companySquads.length}
-            </span>
-          ) : null}
+          {/* v183 — count badge removed per operator. The button's
+             enabled/disabled state already signals whether any squads
+             exist; the number was visual noise. */}
         </button>
 
         <button
@@ -7553,11 +7576,9 @@ export function OfficeScreen({
             <>
               <MessageSquare className="h-3.5 w-3.5" />
               <span>Open chat</span>
-              {runningCount > 0 ? (
-                <span className="rounded-full bg-amber-500/25 px-1.5 py-px text-[10px] font-bold text-amber-100">
-                  {runningCount}
-                </span>
-              ) : null}
+              {/* v183 — running-count badge removed per operator.
+                 Live agents already pulse in the chat sidebar, the
+                 button-side number was duplicated info. */}
             </>
           )}
         </button>
