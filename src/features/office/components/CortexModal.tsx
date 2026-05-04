@@ -65,6 +65,10 @@ import {
   ZoomOut,
 } from "lucide-react";
 import {
+  CortexUploadProgressModal,
+  type CortexUploadEntry,
+} from "@/features/office/components/cortex/CortexUploadProgressModal";
+import {
   deleteNote,
   fetchNote,
   fetchNotesGraph,
@@ -324,6 +328,11 @@ export function CortexModal({ open, onClose, initialPath, initialView = "graph" 
   const [body, setBody] = useState("");
   const [originalBody, setOriginalBody] = useState("");
   const [editorBusy, setEditorBusy] = useState(false);
+  // v185 — bulk upload progress modal state. Owned by the parent so
+  // tree/graph refresh (which the parent already controls) can fire
+  // at the right moment.
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadEntries, setUploadEntries] = useState<CortexUploadEntry[]>([]);
   const lastLoadedPathRef = useRef<string | null>(null);
   const isDirty = body !== originalBody;
 
@@ -414,81 +423,106 @@ export function CortexModal({ open, onClose, initialPath, initialView = "graph" 
 
   /**
    * v184 — Bulk-upload .md files into the company vault.
+   * v185 — drives the CortexUploadProgressModal: each picked file
+   * gets a row that flips queued → uploading → done | failed as the
+   * batch walks through. Modal stays open until the operator
+   * dismisses (or auto-closes after 1.5s on a clean run).
    *
-   * Triggered by the "Upload" button in the EditorView sidebar. The
-   * EditorView opens an <input type="file" accept=".md" multiple/>
-   * and forwards the picked File[] here. We:
-   *   1. Validate extension (.md / .markdown) + size cap (250 KB
-   *      per file, generous for any hand-written note).
-   *   2. Read each file with FileReader as text.
-   *   3. Resolve a final vault path: keep the file's basename, drop
-   *      it under `imports/` so they don't collide with curated
-   *      folders like briefings/, leads/, journal/. If the operator
-   *      picked a file at a relative path (rare in browsers), keep
-   *      that structure under imports/.
-   *   4. POST via the existing upsertNote() endpoint — same write
-   *      path the editor's Save button uses, so the back's idempotent
-   *      "create or overwrite" behavior just works.
-   *   5. Refresh tree + graph; select the LAST uploaded path so the
-   *      operator drops straight into the editor on its content.
+   * Strict .md only — `.markdown` and other extensions are rejected
+   * up-front per operator request.
    *
-   * Errors per-file are collected and surfaced; partial successes are
-   * fine — we don't roll back files that already wrote.
+   * Pipeline per file:
+   *   1. Validate extension (`.md`) + size cap (256 KB).
+   *   2. Resolve vault path under `imports/` (keep folder structure
+   *      if the operator dropped a directory — webkitRelativePath).
+   *   3. Read with `file.text()` (UTF-8 safe, accents preserved).
+   *   4. POST via `upsertNote` (same idempotent write path the
+   *      editor's Save button uses).
+   *   5. Refresh tree + graph at the end of the batch and select
+   *      the LAST successful path.
+   *
+   * Per-file outcomes are reported via `setUploadEntries` row-by-row
+   * so the modal animates instead of flipping straight to done.
    */
   const MAX_UPLOAD_BYTES = 256 * 1024;
   const handleUpload = async (files: File[]) => {
     if (files.length === 0) return;
+    // Build the initial queued list and OPEN the progress modal.
+    const initial: CortexUploadEntry[] = files.map((file, idx) => ({
+      id: `${idx}-${file.name}-${file.size}`,
+      filename: file.name,
+      sizeBytes: file.size,
+      vaultPath: null,
+      status: "queued",
+      error: null,
+    }));
+    setUploadEntries(initial);
+    setUploadOpen(true);
     setEditorBusy(true);
     setError(null);
-    const errors: string[] = [];
+
+    const updateEntry = (id: string, patch: Partial<CortexUploadEntry>) => {
+      setUploadEntries((prev) =>
+        prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+      );
+    };
+
     let lastUploadedPath: string | null = null;
-    for (const file of files) {
+    for (let i = 0; i < files.length; i += 1) {
+      const file = files[i];
+      const id = initial[i].id;
       const lower = file.name.toLowerCase();
-      if (!lower.endsWith(".md") && !lower.endsWith(".markdown")) {
-        errors.push(`${file.name}: only .md / .markdown files are accepted`);
+      // v185 — strict .md only.
+      if (!lower.endsWith(".md")) {
+        updateEntry(id, {
+          status: "failed",
+          error: "Only .md files are accepted.",
+        });
         continue;
       }
       if (file.size > MAX_UPLOAD_BYTES) {
-        errors.push(
-          `${file.name}: ${(file.size / 1024).toFixed(1)} KB exceeds the 256 KB note limit`,
-        );
+        updateEntry(id, {
+          status: "failed",
+          error: `${(file.size / 1024).toFixed(1)} KB exceeds the 256 KB per-note limit.`,
+        });
         continue;
       }
-      let text = "";
-      try {
-        text = await file.text();
-      } catch (err) {
-        errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
-        continue;
-      }
-      // Normalize the basename → safe vault path. webkitRelativePath
-      // is set when the operator drops a folder; honor it under the
-      // `imports/` namespace so curated folders aren't polluted.
       const fileWithRelative = file as File & { webkitRelativePath?: string };
       const relative = fileWithRelative.webkitRelativePath ?? "";
       const safeName = (relative || file.name)
         .trim()
         .replace(/^\/+/, "")
-        // strip illegal chars; only allow letters/digits/_/-/./space//
-        .replace(/[^a-zA-Z0-9._\- /]/g, "_")
-        .replace(/\.markdown$/i, ".md");
-      const path = safeName.startsWith("imports/") ? safeName : `imports/${safeName}`;
+        .replace(/[^a-zA-Z0-9._\- /]/g, "_");
+      const vaultPath = safeName.startsWith("imports/") ? safeName : `imports/${safeName}`;
+      updateEntry(id, { status: "uploading", vaultPath });
+
+      let text = "";
       try {
-        await upsertNote({ path, body: text });
-        lastUploadedPath = path;
+        text = await file.text();
       } catch (err) {
-        errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+        updateEntry(id, {
+          status: "failed",
+          error: `Read failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
+      try {
+        await upsertNote({ path: vaultPath, body: text });
+        updateEntry(id, { status: "done" });
+        lastUploadedPath = vaultPath;
+      } catch (err) {
+        updateEntry(id, {
+          status: "failed",
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
+
     void loadTree();
     void loadGraph();
     if (lastUploadedPath) {
       setSelectedPath(lastUploadedPath);
       lastLoadedPathRef.current = null;
-      setMode("editor");
-    }
-    if (errors.length > 0) {
-      setError(`Uploaded with ${errors.length} issue(s): ${errors.join(" · ")}`);
     }
     setEditorBusy(false);
   };
@@ -669,6 +703,14 @@ export function CortexModal({ open, onClose, initialPath, initialView = "graph" 
           ) : null}
         </div>
       </section>
+
+      {/* v185 — bulk upload progress, sits above the Cortex modal at
+         z-[170] so it's always reachable while the upload runs. */}
+      <CortexUploadProgressModal
+        open={uploadOpen}
+        entries={uploadEntries}
+        onClose={() => setUploadOpen(false)}
+      />
     </div>
   );
 }
@@ -1690,7 +1732,11 @@ function EditorView({
             <input
               ref={uploadInputRef}
               type="file"
-              accept=".md,.markdown,text/markdown"
+              // v185 — strict .md only per operator. Dropped
+              // .markdown / text/markdown so the OS picker greys
+              // anything else out instead of letting the operator
+              // pick a .docx and only learning at the row level.
+              accept=".md"
               multiple
               className="hidden"
               onChange={(e) => {
