@@ -59,6 +59,7 @@ import {
   Search,
   Settings2,
   Trash2,
+  Upload,
   X as XIcon,
   ZoomIn,
   ZoomOut,
@@ -411,6 +412,87 @@ export function CortexModal({ open, onClose, initialPath, initialView = "graph" 
     }
   };
 
+  /**
+   * v184 — Bulk-upload .md files into the company vault.
+   *
+   * Triggered by the "Upload" button in the EditorView sidebar. The
+   * EditorView opens an <input type="file" accept=".md" multiple/>
+   * and forwards the picked File[] here. We:
+   *   1. Validate extension (.md / .markdown) + size cap (250 KB
+   *      per file, generous for any hand-written note).
+   *   2. Read each file with FileReader as text.
+   *   3. Resolve a final vault path: keep the file's basename, drop
+   *      it under `imports/` so they don't collide with curated
+   *      folders like briefings/, leads/, journal/. If the operator
+   *      picked a file at a relative path (rare in browsers), keep
+   *      that structure under imports/.
+   *   4. POST via the existing upsertNote() endpoint — same write
+   *      path the editor's Save button uses, so the back's idempotent
+   *      "create or overwrite" behavior just works.
+   *   5. Refresh tree + graph; select the LAST uploaded path so the
+   *      operator drops straight into the editor on its content.
+   *
+   * Errors per-file are collected and surfaced; partial successes are
+   * fine — we don't roll back files that already wrote.
+   */
+  const MAX_UPLOAD_BYTES = 256 * 1024;
+  const handleUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+    setEditorBusy(true);
+    setError(null);
+    const errors: string[] = [];
+    let lastUploadedPath: string | null = null;
+    for (const file of files) {
+      const lower = file.name.toLowerCase();
+      if (!lower.endsWith(".md") && !lower.endsWith(".markdown")) {
+        errors.push(`${file.name}: only .md / .markdown files are accepted`);
+        continue;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        errors.push(
+          `${file.name}: ${(file.size / 1024).toFixed(1)} KB exceeds the 256 KB note limit`,
+        );
+        continue;
+      }
+      let text = "";
+      try {
+        text = await file.text();
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      // Normalize the basename → safe vault path. webkitRelativePath
+      // is set when the operator drops a folder; honor it under the
+      // `imports/` namespace so curated folders aren't polluted.
+      const fileWithRelative = file as File & { webkitRelativePath?: string };
+      const relative = fileWithRelative.webkitRelativePath ?? "";
+      const safeName = (relative || file.name)
+        .trim()
+        .replace(/^\/+/, "")
+        // strip illegal chars; only allow letters/digits/_/-/./space//
+        .replace(/[^a-zA-Z0-9._\- /]/g, "_")
+        .replace(/\.markdown$/i, ".md");
+      const path = safeName.startsWith("imports/") ? safeName : `imports/${safeName}`;
+      try {
+        await upsertNote({ path, body: text });
+        lastUploadedPath = path;
+      } catch (err) {
+        errors.push(`${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    void loadTree();
+    void loadGraph();
+    if (lastUploadedPath) {
+      setSelectedPath(lastUploadedPath);
+      lastLoadedPathRef.current = null;
+      setMode("editor");
+    }
+    if (errors.length > 0) {
+      setError(`Uploaded with ${errors.length} issue(s): ${errors.join(" · ")}`);
+    }
+    setEditorBusy(false);
+  };
+
   const handleCreateNew = () => {
     const today = new Date().toISOString().slice(0, 10);
     const proposed = `journal/${today}.md`;
@@ -570,6 +652,7 @@ export function CortexModal({ open, onClose, initialPath, initialView = "graph" 
               selectedPath={selectedPath}
               onSelect={(p) => setSelectedPath(p)}
               onCreateNew={handleCreateNew}
+              onUpload={handleUpload}
               body={body}
               onBodyChange={setBody}
               isDirty={isDirty}
@@ -1544,6 +1627,7 @@ function EditorView({
   selectedPath,
   onSelect,
   onCreateNew,
+  onUpload,
   body,
   onBodyChange,
   isDirty,
@@ -1556,6 +1640,10 @@ function EditorView({
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onCreateNew: () => void;
+  /** v184 — bulk-upload .md files into imports/. Owner of state +
+   *  refresh logic is the parent CortexModal; this view just wires
+   *  the file picker. */
+  onUpload: (files: File[]) => void;
   body: string;
   onBodyChange: (next: string) => void;
   isDirty: boolean;
@@ -1563,6 +1651,9 @@ function EditorView({
   onDelete: () => void;
   onBackToGraph: () => void;
 }) {
+  // v184 — hidden file input ref so the visible "Upload" button can
+  // open the OS file picker.
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const groupedTree = useMemo(() => {
     const map = new Map<string, CompanyNote[]>();
     for (const note of tree?.notes ?? []) {
@@ -1592,16 +1683,47 @@ function EditorView({
             </div>
             <div className="text-[11px] text-white/35">vault · default</div>
           </div>
-          <button
-            type="button"
-            onClick={onCreateNew}
-            title="New note"
-            aria-label="New note"
-            className="inline-flex items-center gap-1 rounded-lg border border-violet-500/35 bg-violet-500/10 px-2 py-1 text-[11px] font-semibold text-violet-100 transition hover:border-violet-400/55 hover:bg-violet-500/20"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* v184 — bulk .md upload. Triggers a hidden file picker
+               accepting .md/.markdown; the parent CortexModal handles
+               read+upsert+refresh. */}
+            <input
+              ref={uploadInputRef}
+              type="file"
+              accept=".md,.markdown,text/markdown"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const list = e.target.files;
+                if (!list || list.length === 0) return;
+                const files = Array.from(list);
+                onUpload(files);
+                // Reset so picking the SAME file twice in a row still
+                // triggers onChange.
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => uploadInputRef.current?.click()}
+              title="Upload .md files into imports/"
+              aria-label="Upload .md files"
+              className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/35 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:border-cyan-400/55 hover:bg-cyan-500/20"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Upload
+            </button>
+            <button
+              type="button"
+              onClick={onCreateNew}
+              title="New note"
+              aria-label="New note"
+              className="inline-flex items-center gap-1 rounded-lg border border-violet-500/35 bg-violet-500/10 px-2 py-1 text-[11px] font-semibold text-violet-100 transition hover:border-violet-400/55 hover:bg-violet-500/20"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New
+            </button>
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
           {loading && !tree ? (
