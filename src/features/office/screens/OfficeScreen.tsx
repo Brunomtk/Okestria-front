@@ -590,7 +590,12 @@ const mapAgentToOffice = (agent: AgentState): OfficeAgent => {
       avatarProfile: agent.avatarProfile ?? null,
     };
   }
-  const isWorking = agent.status === "running" || Boolean(agent.runId);
+  // v186 — was `status === "running" || Boolean(agent.runId)`, but
+  // the runId can outlive the run (back-side workflow clears status
+  // on its own race timeline; runId can hang around for a tick or
+  // two more). The OR fallback meant agents stayed GREEN long after
+  // OpenClaw stopped thinking. Status is the single source of truth.
+  const isWorking = agent.status === "running";
   return {
     id: agent.agentId,
     name: agent.name || "Unknown",
@@ -1689,6 +1694,55 @@ export function OfficeScreen({
   useEffect(() => {
     void loadCompanySquads(false);
   }, [loadCompanySquads, state.agents.length]);
+
+  // v186 — stale-run watchdog. Sweeps every 30 s for agents stuck on
+  // status="running" with NO live activity (no thinkingTrace, no
+  // streamText, lastActivityAt and runStartedAt both older than the
+  // STALE threshold). When found, demote to "idle" + clear runId /
+  // runStartedAt / streamText / thinkingTrace so the office figure
+  // stops glowing green and matches what OpenClaw is actually doing.
+  //
+  // Why this is needed: chatSendOperation flips status to "running"
+  // optimistically the moment Send is clicked, but the WS "final"
+  // event that flips it back to "idle" can be missed (operator
+  // closed a tab, gateway hiccup, etc.). Without a watchdog the
+  // agent stays green forever.
+  useEffect(() => {
+    const STALE_RUN_AFTER_MS = 4 * 60 * 1000; // 4 minutes
+    const sweep = () => {
+      const now = Date.now();
+      for (const agent of stateRef.current.agents) {
+        if (agent.status !== "running") continue;
+        // Live activity = thinking trace, streamed assistant text, or
+        // a fresh activity timestamp. Anything that proves the
+        // gateway is currently producing tokens.
+        const hasLiveTrace =
+          (agent.thinkingTrace && agent.thinkingTrace.trim().length > 0) ||
+          (agent.streamText && agent.streamText.trim().length > 0);
+        const lastActivity = Math.max(
+          agent.lastActivityAt ?? 0,
+          agent.runStartedAt ?? 0,
+          agent.lastAssistantMessageAt ?? 0,
+        );
+        const sinceActivity = lastActivity > 0 ? now - lastActivity : Infinity;
+        if (hasLiveTrace || sinceActivity < STALE_RUN_AFTER_MS) continue;
+        // Stale → demote.
+        dispatch({
+          type: "updateAgent",
+          agentId: agent.agentId,
+          patch: {
+            status: "idle",
+            runId: null,
+            runStartedAt: null,
+            streamText: null,
+            thinkingTrace: null,
+          },
+        });
+      }
+    };
+    const id = window.setInterval(sweep, 30_000);
+    return () => window.clearInterval(id);
+  }, [dispatch]);
 
   // Keep the access token fresh while the user lingers on the Office screen.
   // We decode the JWT expiry and proactively refresh before it lapses so they
