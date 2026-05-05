@@ -14,6 +14,12 @@ import { RetroOffice3D } from "@/features/retro-office/RetroOffice3D";
 import type { OfficeAgent } from "@/features/retro-office/core/types";
 import { GatewayConnectScreen } from "@/features/agents/components/GatewayConnectScreen";
 import { OrkestriaLoader } from "@/components/OrkestriaLoader";
+import {
+  WATCHDOG_SWEEP_MS,
+  getStaleRunningAgents,
+  idlePatch,
+  isAgentActuallyWorking,
+} from "@/features/agents/state/agentWorkingState";
 import { useAgentStore, type AgentState, type AgentStoreSeed } from "@/features/agents/state/store";
 import {
   GatewayClient,
@@ -590,12 +596,12 @@ const mapAgentToOffice = (agent: AgentState): OfficeAgent => {
       avatarProfile: agent.avatarProfile ?? null,
     };
   }
-  // v186 — was `status === "running" || Boolean(agent.runId)`, but
-  // the runId can outlive the run (back-side workflow clears status
-  // on its own race timeline; runId can hang around for a tick or
-  // two more). The OR fallback meant agents stayed GREEN long after
-  // OpenClaw stopped thinking. Status is the single source of truth.
-  const isWorking = agent.status === "running";
+  // v187 — single source of truth. See agentWorkingState.ts. The
+  // helper enforces: status==='running' AND has live trace OR fresh
+  // activity within the heartbeat window. Replaces the v186 inline
+  // check + the lying `|| Boolean(agent.runId)` that lived here
+  // through v185.
+  const isWorking = isAgentActuallyWorking(agent);
   return {
     id: agent.agentId,
     name: agent.name || "Unknown",
@@ -1495,11 +1501,11 @@ export function OfficeScreen({
     stateRef.current = state;
   }, [state]);
 
+  // v187 — ask the SSOT. The old `|| Boolean(agent.runId)` lied
+  // when runId outlived the run, leaving polling effects gated on
+  // hasRunningAgents firing forever after every chat ended.
   const hasRunningAgents = useMemo(
-    () =>
-      state.agents.some(
-        (agent) => agent.status === "running" || Boolean(agent.runId),
-      ),
+    () => state.agents.some((agent) => isAgentActuallyWorking(agent)),
     [state.agents],
   );
 
@@ -1695,54 +1701,58 @@ export function OfficeScreen({
     void loadCompanySquads(false);
   }, [loadCompanySquads, state.agents.length]);
 
-  // v186 — stale-run watchdog. Sweeps every 30 s for agents stuck on
-  // status="running" with NO live activity (no thinkingTrace, no
-  // streamText, lastActivityAt and runStartedAt both older than the
-  // STALE threshold). When found, demote to "idle" + clear runId /
-  // runStartedAt / streamText / thinkingTrace so the office figure
-  // stops glowing green and matches what OpenClaw is actually doing.
-  //
-  // Why this is needed: chatSendOperation flips status to "running"
-  // optimistically the moment Send is clicked, but the WS "final"
-  // event that flips it back to "idle" can be missed (operator
-  // closed a tab, gateway hiccup, etc.). Without a watchdog the
-  // agent stays green forever.
+  // v187 — stale-run watchdog using the SSOT. Sweeps every 15s, asks
+  // getStaleRunningAgents which agents are stuck on status="running"
+  // with no proof of life from OpenClaw, and dispatches the canonical
+  // idlePatch for each. Single helper means tests + UI agree.
   useEffect(() => {
-    const STALE_RUN_AFTER_MS = 4 * 60 * 1000; // 4 minutes
     const sweep = () => {
-      const now = Date.now();
-      for (const agent of stateRef.current.agents) {
-        if (agent.status !== "running") continue;
-        // Live activity = thinking trace, streamed assistant text, or
-        // a fresh activity timestamp. Anything that proves the
-        // gateway is currently producing tokens.
-        const hasLiveTrace =
-          (agent.thinkingTrace && agent.thinkingTrace.trim().length > 0) ||
-          (agent.streamText && agent.streamText.trim().length > 0);
-        const lastActivity = Math.max(
-          agent.lastActivityAt ?? 0,
-          agent.runStartedAt ?? 0,
-          agent.lastAssistantMessageAt ?? 0,
-        );
-        const sinceActivity = lastActivity > 0 ? now - lastActivity : Infinity;
-        if (hasLiveTrace || sinceActivity < STALE_RUN_AFTER_MS) continue;
-        // Stale → demote.
+      const stale = getStaleRunningAgents(stateRef.current.agents);
+      if (stale.length === 0) return;
+      for (const agent of stale) {
         dispatch({
           type: "updateAgent",
           agentId: agent.agentId,
-          patch: {
-            status: "idle",
-            runId: null,
-            runStartedAt: null,
-            streamText: null,
-            thinkingTrace: null,
-          },
+          patch: idlePatch(),
         });
       }
     };
-    const id = window.setInterval(sweep, 30_000);
+    const id = window.setInterval(sweep, WATCHDOG_SWEEP_MS);
     return () => window.clearInterval(id);
   }, [dispatch]);
+
+  // v187 — WS reconnect demote. When the gateway connection flaps
+  // (drops then reconnects), every "running" agent that was mid-flight
+  // before the drop is suspect: the gateway likely lost track of
+  // their session and we'll never see a "final" event for them. The
+  // safest move is to clear them and let the next message restart
+  // the cycle clean. We trigger on the connected→… transition by
+  // tracking a ref of the previous status.
+  const previousGatewayStatusRef = useRef<typeof status>(status);
+  useEffect(() => {
+    const prev = previousGatewayStatusRef.current;
+    previousGatewayStatusRef.current = status;
+    if (prev === status) return;
+    // We only act on the transition INTO "connected" (after we lost
+    // it). On the very first connect, status was "connecting" /
+    // "disconnected" which also crosses into "connected" — but in
+    // that case there are no running agents yet, so the loop is a
+    // no-op. Keeping the rule simple: any time we (re)gain
+    // connectivity, demote stale running agents.
+    if (status !== "connected") return;
+    const now = Date.now();
+    for (const agent of stateRef.current.agents) {
+      if (!isAgentActuallyWorking(agent, now)) {
+        if (agent.status === "running") {
+          dispatch({
+            type: "updateAgent",
+            agentId: agent.agentId,
+            patch: idlePatch(),
+          });
+        }
+      }
+    }
+  }, [dispatch, status]);
 
   // Keep the access token fresh while the user lingers on the Office screen.
   // We decode the JWT expiry and proactively refresh before it lapses so they
@@ -3628,8 +3638,13 @@ export function OfficeScreen({
           );
           if (agent) {
             const wasWorking = prevWorkingRef.current[agentId] ?? false;
-            const isNowWorking =
-              patch.status === "running" || Boolean(patch.runId);
+            // v187 — drift watcher uses the SSOT. The old check
+            // ORed with `Boolean(patch.runId)` and emitted bogus
+            // "started working" feed events whenever any patch
+            // happened to carry a runId, even on cleanup patches.
+            // Build the post-patch agent and let the SSOT decide.
+            const merged = { ...agent, ...patch } as typeof agent;
+            const isNowWorking = isAgentActuallyWorking(merged);
             if (isNowWorking !== wasWorking) {
               prevWorkingRef.current[agentId] = isNowWorking;
               const text = isNowWorking ? "started working" : "went idle";
